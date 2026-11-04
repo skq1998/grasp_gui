@@ -1,0 +1,184 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "manual_zf",
+ "order": 15,
+ "title": {
+  "zh": "手册 §14.1：Fe XIII，零阶 / 一阶划分",
+  "en": "Manual §14.1: Fe XIII, zero/first-order partition"
+ },
+ "summary": {
+  "zh": "Si 样 Fe 的 3s²3p² 五个低能级；多参考为 3s²3p²、3s3p²3d、3p⁴。先优化多参考轨道，再加入到 n = 4 的价价、核价激发。以多参考 CSF 为零阶空间，逐块 ICCUT 自动读为 9、15、20；MCDHF 和含 Breit、QED 的 CI 均采用此划分。使用现有 rcsfzerofirst 程序页指定两个列表，等价于旧手册使用 mr.exc 的方式；初始轨道显式读取 mr.w。",
+  "en": "Five low levels of 3s²3p² in Si-like Fe, with multireference 3s²3p², 3s3p²3d, 3p⁴. Optimize the MR orbitals, then add valence and core–valence excitations through n = 4. The MR CSFs define the zero-order space, with automatically read block ICCUT = 9, 15, 20 for MCDHF and CI with Breit and QED. The current rcsfzerofirst form specifies the two lists explicitly instead of the old manual’s mr.exc mechanism; initial orbitals are read explicitly from mr.w."
+ },
+ "runtime": {
+  "zh": "约 1 分钟",
+  "en": "about 1 minute"
+ },
+ "jobs": [
+  {
+   "step": "rnucleus",
+   "vals": {
+    "z": "26",
+    "a": "56",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "56",
+    "spin": "1",
+    "mu": "1",
+    "q": "1"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "1",
+    "lists": [
+     {
+      "configs": "2s(2,i)2p(6,i)3s(2,i)3p(2,i)\n2s(2,i)2p(6,i)3s(1,i)3p(2,i)3d(1,i)\n2s(2,i)2p(6,i)3p(4,i)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "mr.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "mr.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": false,
+    "wfile": "",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1,2\n1\n1,2",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "900",
+    "log": "",
+    "save": "mr"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "1",
+    "lists": [
+     {
+      "configs": "2s(2,i)2p(6,5)3s(2,*)3p(2,*)\n2s(2,i)2p(6,5)3s(1,*)3p(2,*)3d(1,*)\n2s(2,i)2p(6,5)3p(4,*)",
+      "active": "4s,4p,4d,4f",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "full.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfzerofirst",
+   "vals": {
+    "zero": "mr.c",
+    "full": "full.c",
+    "saveas": "zerofirst_n4.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "zerofirst_n4.c",
+    "zf": true,
+    "zero": "mr.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "mr.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1,2\n1\n1,2",
+    "weights": "5",
+    "uweights": "",
+    "vary": "4*",
+    "spec": "",
+    "nscf": "100",
+    "log": "",
+    "save": "zerofirst_n4"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "zerofirst_n4",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": false,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1,2\n1\n1,2",
+    "zf": true,
+    "zero": "mr.c",
+    "log": "outodd_rci"
+   },
+   "group": "even"
+  }
+ ],
+ "reference": [
+  {
+   "file": "zerofirst_n4.cm",
+   "energies": [
+    -1210.0291799118,
+    -1209.6132079873,
+    -1209.9855869288,
+    -1209.9431604139,
+    -1209.8062266551
+   ]
+  }
+ ]
+}

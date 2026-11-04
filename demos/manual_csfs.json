@@ -1,0 +1,188 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "manual_csfs",
+ "order": 14,
+ "title": {
+  "zh": "手册 §5.1–5.8：CSF 生成与相互作用筛选",
+  "en": "Manual §§5.1–5.8: CSF generation and interaction filtering"
+ },
+ "summary": {
+  "zh": "手册正文中输入完整的 CSF 教学例：价价、核价、核核与核间关联、大多参考、相互作用筛选、双占据关联轨道、合并多次激发和混合宇称。各节输出保存在 section51.c 到 section58.c；§5.5 使用 §5.4 的完整列表。这里只生成组态，不指定核、不计算能量，因而没有 reference 能量。§5.9 自定义轨道排序和 §5.10 jjgen 缺少相应程序页输入，未收录。",
+  "en": "Complete CSF tutorials from the manual: valence, core–valence, core–core and intercore correlation, large multireferences, interaction filtering, doubly occupied correlation orbitals, combined excitations and mixed parity. Outputs are section51.c through section58.c; §5.5 filters the full list from §5.4. These are configuration lists only, with no nucleus or energy calculation, so no reference energies. §§5.9–5.10 require unsupported custom orbital ordering / jjgen input."
+ },
+ "runtime": {
+  "zh": "约 20 秒，只生成 CSF",
+  "en": "about 20 seconds, CSF generation only"
+ },
+ "jobs": [
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,*)2s(2,*)\n1s(2,*)2p(2,*)",
+      "active": "4s,4p,4d,4f",
+      "jmin": "0",
+      "jmax": "0",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "section51.c"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "1",
+    "lists": [
+     {
+      "configs": "2s(2,1)2p(6,i)3s(1,*)3p(1,*)\n2s(2,i)2p(6,5)3s(1,*)3p(1,*)\n2s(2,1)2p(6,i)3p(1,*)3d(1,*)\n2s(2,i)2p(6,5)3p(1,*)3d(1,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "section52.c"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "1",
+    "lists": [
+     {
+      "configs": "2s(2,1)2p(6,5)3s(1,*)3p(1,*)\n2s(2,1)2p(6,5)3p(1,*)3d(1,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "section53.c"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,1)2s(2,*)2p(2,*)\n1s(2,1)2p(4,*)\n1s(2,1)2s(2,*)2p(1,*)3p(1,*)\n1s(2,1)2s(1,*)2p(2,*)3s(1,*)\n1s(2,1)2s(1,*)2p(2,*)3d(1,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "0",
+      "jmax": "10",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "section54.c"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(2,i)2p(2,i)\n1s(2,i)2p(4,i)\n1s(2,i)2s(2,i)2p(1,i)3p(1,i)\n1s(2,i)2s(1,i)2p(2,i)3s(1,i)\n1s(2,i)2s(1,i)2p(2,i)3d(1,i)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "10",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "section55_mr.c"
+   }
+  },
+  {
+   "step": "rcsfinteract",
+   "vals": {
+    "mr": "section55_mr.c",
+    "full": "section54.c",
+    "ham": "1",
+    "saveas": "section55.c"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "1",
+    "lists": [
+     {
+      "configs": "2s(2,i)2p(6,5)3s(1,*)3p(1,*)\n2s(2,1)2p(6,i)3s(1,*)3p(1,*)\n2s(2,i)2p(6,5)3p(1,*)3d(1,*)\n2s(2,1)2p(6,i)3p(1,*)3d(1,*)",
+      "active": "8s,8p,8d,8f,8g,8h",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "2"
+     },
+     {
+      "configs": "2s(2,*)2p(6,*)3s(1,*)3p(1,*)\n2s(2,*)2p(6,*)3p(1,*)3d(1,*)",
+      "active": "8s,8p,8d,8f,8g,8h",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "-2"
+     }
+    ],
+    "saveas": "section56.c"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,*)2p(1,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "1",
+      "jmax": "3",
+      "nexc": "3"
+     },
+     {
+      "configs": "1s(2,*)2p(1,*)",
+      "active": "7s,7p,7d,7f,7g,7h,7i",
+      "jmin": "1",
+      "jmax": "3",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "section57.c"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,*)2p(1,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "1",
+      "jmax": "3",
+      "nexc": "3"
+     },
+     {
+      "configs": "1s(2,*)2s(1,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "1",
+      "jmax": "1",
+      "nexc": "3"
+     }
+    ],
+    "saveas": "section58.c"
+   }
+  }
+ ],
+ "reference": []
+}

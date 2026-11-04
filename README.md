@@ -69,7 +69,7 @@ automatically); the result is drawn as an arrow with its wavelength, with A, gf,
 - **Radial wave functions**: plot P(r), Q(r), P² + Q² of several `.w` files with orbital properties.
 - **Levels**: energy level diagram, ASF compositions (jj and LSJ), transitions computed by dragging between two
   levels; export as PDF / SVG / PNG, CSV or a GRASP `.ct` file.
-- **Examples and shared configurations**: the GRASP2018 manual's examples ready to run; export a calculation to a
+- **Examples and shared configurations**: the GRASP2018 manual's examples ready to run ([coverage](docs/MANUAL_EXAMPLES.md)); export a calculation to a
   small file that others can import and repeat ([format](docs/CONFIG_FORMAT.md); scripts and AI agents can write
   such files too: [rules](docs/AGENT_SPEC.md)).
 - Chinese / English interface; parameters saved per working directory; a single executable, also for old servers
@@ -80,7 +80,7 @@ automatically); the result is drawn as an arrow with its wavelength, with A, gf,
   再次打开该目录即可接上 ([登录结束时结束全部进程的服务器](docs/INTERFACE.md#background-runs-and-logging-out--后台运行与退出登录-killuserprocesses))。
 - **径向波函数**：叠加多个 `.w` 文件的 P(r)、Q(r)、P² + Q² 并列出轨道性质。
 - **能级图**：能级图、原子态组成 (jj 与 LSJ)，在两个能级之间拖动即可计算跃迁；导出 PDF / SVG / PNG、CSV 或 GRASP `.ct` 文件。
-- **示例与共享配置**：GRASP2018 手册算例可直接运行；把计算方案导出为小文件，别人导入即可重复计算 ([格式](docs/CONFIG_FORMAT.md)；脚本和 AI agent 也可以生成：[规范](docs/AGENT_SPEC.md))。
+- **示例与共享配置**：GRASP2018 手册算例可直接运行 ([覆盖清单](docs/MANUAL_EXAMPLES.md))；把计算方案导出为小文件，别人导入即可重复计算 ([格式](docs/CONFIG_FORMAT.md)；脚本和 AI agent 也可以生成：[规范](docs/AGENT_SPEC.md))。
 - 中文 / English 界面；参数按工作目录自动保存；单个可执行文件，旧服务器也可通过 `ssh -X` 使用。
 
 Every window, control and option is described in [docs/INTERFACE.md](docs/INTERFACE.md).

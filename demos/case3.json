@@ -1,0 +1,496 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "case3",
+ "order": 13,
+ "title": {
+  "zh": "算例 3：Fe XV (Z = 26)，Mg 样序列的单个元素",
+  "en": "Case 3: Fe XV (Z = 26), one Mg-like ion"
+ },
+ "summary": {
+  "zh": "原脚本实际对 Z = 26–60 循环 (不是 Z = 6–12)；这里只算 Z = 26，采用 z < 27 的首元素分支，独立计算角向数据。冻结 Ne 核，偶宇称 3s²、3p²、3d²、3s3d 和奇宇称 3s3p、3p3d 共 35 个能级；从 Dirac-Fock 到 n = 4、5 的价电子 SD MCDHF，随后 CI、超精细常数、E1 跃迁、LSJ 标记及能级表。单进程约 1 分钟。首层直接读 DFeven.w / DFodd.w，省去原脚本的副本。",
+  "en": "The original actually loops over Z = 26–60 (not Z = 6–12); only Z = 26 is calculated, using the z < 27 branch with independent angular data. Frozen Ne core; 35 levels of even 3s², 3p², 3d², 3s3d and odd 3s3p, 3p3d. Dirac-Fock followed by valence SD MCDHF at n = 4, 5, CI, hyperfine constants, E1 transitions, LSJ labels and an energy table. About 1 minute serial. The first layer reads DFeven.w / DFodd.w directly, omitting the original copies."
+ },
+ "runtime": {
+  "zh": "单进程约 1 分钟",
+  "en": "about 1 minute serial"
+ },
+ "jobs": [
+  {
+   "step": "rnucleus",
+   "vals": {
+    "z": "26",
+    "a": "56",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "55.845",
+    "spin": "1",
+    "mu": "1",
+    "q": "1"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "2",
+    "lists": [
+     {
+      "configs": "3s(2,i)\n3p(2,i)\n3d(2,i)\n3s(1,i)3d(1,i)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "8",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "DFeven.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "2",
+    "lists": [
+     {
+      "configs": "3s(1,i)3p(1,i)\n3p(1,i)3d(1,i)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "8",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "DFodd.c"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "2",
+    "lists": [
+     {
+      "configs": "3s(2,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "0",
+      "jmax": "8",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "even.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfsplit",
+   "vals": {
+    "state": "even",
+    "splits": "4s,4p,4d,4f 4\n5s,5p,5d,5f,5g 5"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "2",
+    "lists": [
+     {
+      "configs": "3s(1,*)3p(1,*)",
+      "active": "5s,5p,5d,5f,5g",
+      "jmin": "0",
+      "jmax": "8",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "odd.c"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rcsfsplit",
+   "vals": {
+    "state": "odd",
+    "splits": "4s,4p,4d,4f 4\n5s,5p,5d,5f,5g 5"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "DFeven.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": false,
+    "wfile": "",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-5\n1-3\n1-7\n1-2\n1-2",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "log": "",
+    "save": "DFeven"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "DFodd.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": false,
+    "wfile": "",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-2\n1-5\n1-5\n1-3\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "log": "",
+    "save": "DFodd"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "even4.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "DFeven.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-5\n1-3\n1-7\n1-2\n1-2",
+    "weights": "5",
+    "uweights": "",
+    "vary": "4*",
+    "spec": "",
+    "nscf": "100",
+    "log": "",
+    "save": "even4"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "even5.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "even4.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-5\n1-3\n1-7\n1-2\n1-2",
+    "weights": "5",
+    "uweights": "",
+    "vary": "5*",
+    "spec": "",
+    "nscf": "100",
+    "log": "",
+    "save": "even5"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "odd4.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "DFodd.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-2\n1-5\n1-5\n1-3\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "4*",
+    "spec": "",
+    "nscf": "100",
+    "log": "",
+    "save": "odd4"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "odd5.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "odd4.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-2\n1-5\n1-5\n1-3\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "5*",
+    "spec": "",
+    "nscf": "100",
+    "log": "",
+    "save": "odd5"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "even5",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": true,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1-5\n1-3\n1-7\n1-2\n1-2",
+    "zf": false,
+    "zero": "odd2.c",
+    "log": ""
+   },
+   "group": "even"
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "odd5",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": true,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1-2\n1-5\n1-5\n1-3\n1",
+    "zf": false,
+    "zero": "odd2.c",
+    "log": ""
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rhfs",
+   "vals": {
+    "state": "even5",
+    "ci": true,
+    "lsj": false,
+    "sort": true,
+    "log": ""
+   },
+   "group": "even"
+  },
+  {
+   "step": "rhfs",
+   "vals": {
+    "state": "odd5",
+    "ci": true,
+    "lsj": false,
+    "sort": true,
+    "log": ""
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rbiotransform",
+   "vals": {
+    "ci": true,
+    "init": "even5",
+    "final": "odd5",
+    "log": "out_rbiotransform"
+   }
+  },
+  {
+   "step": "rtransition",
+   "vals": {
+    "ci": true,
+    "init": "even5",
+    "final": "odd5",
+    "kind": "E1",
+    "m1_diffj": false,
+    "e2_diffj": false,
+    "log": "out_transition"
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "even5",
+    "ci": true,
+    "unique": true,
+    "log": ""
+   },
+   "group": "even"
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "odd5",
+    "ci": true,
+    "unique": true,
+    "log": ""
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rlevels",
+   "vals": {
+    "files": "even5.cm odd5.cm",
+    "log": "energy26"
+   }
+  }
+ ],
+ "reference": [
+  {
+   "file": "even5.cm",
+   "energies": [
+    -1182.3727764422,
+    -1179.8373300657,
+    -1179.3515752218,
+    -1175.9539313698,
+    -1175.5824951735,
+    -1179.7920925988,
+    -1179.2726720766,
+    -1175.9511232433,
+    -1179.8217549439,
+    -1179.7154123588,
+    -1179.268127733,
+    -1178.8798081981,
+    -1176.116540047,
+    -1175.9683502599,
+    -1175.9446851623,
+    -1179.2610199662,
+    -1176.1091750143,
+    -1176.1001735467,
+    -1175.949688981
+   ]
+  },
+  {
+   "file": "odd5.cm",
+   "energies": [
+    -1181.3113834493,
+    -1177.8238082471,
+    -1181.284726533,
+    -1180.7554699968,
+    -1177.8805639433,
+    -1177.8213612784,
+    -1177.4560253509,
+    -1181.2205550776,
+    -1178.1400306908,
+    -1178.044294678,
+    -1177.8791774451,
+    -1177.8188345553,
+    -1178.0956514176,
+    -1177.8255556467,
+    -1177.5116442346,
+    -1178.0436090475
+   ]
+  }
+ ]
+}

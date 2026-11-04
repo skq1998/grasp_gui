@@ -9,12 +9,28 @@ import pytest
 
 import grasp_config as config
 import grasp_core as core
+import grasp_mix
 from conftest import DEMOS
 
 pytestmark = pytest.mark.grasp
 FAST = ["example1", "example2", "example8", "example9"]
-SLOW = ["case4", "example3", "example4", "example5", "case1"]
+SLOW = ["case4", "example3", "example4", "example5", "case1", "case2", "case3", "manual_zf"]
 TOLERANCE = 1e-7          # Hartree：不同编译器 / BLAS 的舍入差别
+
+
+def test_manual_csfs(grasp_bindir, tmp_path):
+    """只有 CSF 的教学例按手册的块大小核对，不能用能量作参考。"""
+    cfg, _ = config.load(os.path.join(DEMOS, "manual_csfs.json"))
+    script = core.shell_script(config.session(cfg)["pipeline"], grasp_bindir, ".")
+    r = subprocess.run(["sh", "-c", script], cwd=tmp_path, capture_output=True, text=True,
+                       env=core.child_env(), timeout=300)
+    assert r.returncode == 0, r.stderr[-3000:]
+    expected = {"51": [361], "52": [1912, 5210, 7122], "53": [10743, 29589, 41500],
+                "54": [14351, 38928, 53645, 56147, 48973, 36562],
+                "55": [7765, 24492, 33925, 29299, 17134, 7542],
+                "56": [21399, 59512, 85284], "57": [2408, 4174], "58": [1463, 1454, 2478]}
+    for section, counts in expected.items():
+        assert [len(b) for b in grasp_mix.read_csfs(tmp_path / f"section{section}.c")] == counts
 
 
 @pytest.mark.parametrize("name", FAST + SLOW)

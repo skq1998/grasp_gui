@@ -69,6 +69,11 @@ GRASP2018 的图形界面：填写参数后自动生成各程序的交互输入�
   - rnucleus 读不了 `9.6D1` 这种 Fortran 格式的数。
 - **新增的专门页面**：rhfs、ris4、rcsfinteract、rtablevels、rtabtrans1、rtabtrans2。程序页按功能分为四组：核与组态 (v2.3.3 起改名为“准备”，组内除 rnucleus 外都是 CSF 程序)、自洽场与 CI、性质与跃迁、结果与工具。
 
+- 补齐单元素 case2 (C IV，Z=6) 与 case3 (Fe XV，Z=26)，分别保留 n=5 模型；原 case3 的范围为 Z=26–60。
+- 增加正文 CSF 教学例 `manual_csfs` (§5.1–5.8) 与 Fe XIII 零阶 / 一阶例 `manual_zf` (§14.1)。
+  输入与原脚本 / 手册转录逐行核对；能量由真实计算生成，CSF-only 例按手册块大小核对。
+  [完整清单](MANUAL_EXAMPLES.md) 列出 example6/7 及其余教学例的覆盖情况与缺失程序页。
+
 ### 5. 独立可执行文件与布局
 
 - **`build.sh` 用 PyInstaller 打包成单个文件**，遇到两个问题：

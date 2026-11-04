@@ -228,7 +228,7 @@ Remedies / 解决办法:
 ### Import example / configuration (导入示例 / 导入配置)
 
 Dialog *Import configuration (导入配置)*: an explanatory line at the top; left the list of examples (GRASP2018 manual:
-example1–5, 8, 9, case1, case4; GRASPG: graspg1 = `graspgtest/script1/csfg`, case 1 with CSFGs; graspg_zf = C III zero/first-order partition through n = 4, both package GRASPG) or, with *Open configuration file… (打开配置文件…)*, a file; right an information
+example1–5, 8, 9, case1–4; case2 is C IV at Z=6, case3 Fe XV at Z=26; manual_csfs covers §§5.1–5.8, manual_zf covers §14.1; GRASPG: graspg1 = `graspgtest/script1/csfg`, case 1 with CSFGs; graspg_zf = C III zero/first-order partition through n = 4, both package GRASPG) or, with *Open configuration file… (打开配置文件…)*, a file; right an information
 pane: title, origin (*Example included with the program*), summary, *Estimated time (预计时间)*, *Package (程序包)*,
 *Pipeline (流程)* (n steps), *Programs used (用到的程序)* (missing ones in the GRASP bin directory marked), attached
 files, compatibility warnings, **custom commands** (orange, on a light background: *Custom* tab steps and steps
@@ -237,7 +237,8 @@ files). Bottom: *Import into directory (导入到目录)* + *Browse…* (default
 `~/grasp_calcs/<name>` for files; must be empty or new), *Import (导入)*, *Cancel*. Importing a file with custom
 commands asks for confirmation. After import the GUI switches to that directory; *▶ Run all* computes it.
 
-示例列表还包括 GRASPG 的 `graspg_zf`：C III 零阶 / 一阶划分，到 n = 4，24 个能级；使用 2 个 MPI 进程约 10 秒。
+新增示例：case2 为 C IV (Z=6)，case3 为 Fe XV (Z=26)，只计算所选元素；manual_csfs 为 §5.1–5.8 的 CSF 教学例，
+只生成组态列表；manual_zf 为 §14.1 的 Fe XIII 零阶 / 一阶能量计算。[完整清单 / Full inventory](MANUAL_EXAMPLES.md)。
 
 ### Export configuration (导出配置)
 
