@@ -67,7 +67,7 @@ GRASP2018 的图形界面：填写参数后自动生成各程序的交互输入�
   - rtransition 计算 M1 / E2 时的追加提问没有回答；
   - rwfnestimate 缺少方法 4；
   - rnucleus 读不了 `9.6D1` 这种 Fortran 格式的数。
-- **新增的专门页面**：rhfs、ris4、rcsfinteract、rtablevels、rtabtrans1、rtabtrans2。程序页按功能分为四组：核与组态、自洽场与 CI、性质与跃迁、结果与工具。
+- **新增的专门页面**：rhfs、ris4、rcsfinteract、rtablevels、rtabtrans1、rtabtrans2。程序页按功能分为四组：核与组态 (v2.3.3 起改名为“准备”，组内除 rnucleus 外都是 CSF 程序)、自洽场与 CI、性质与跃迁、结果与工具。
 
 ### 5. 独立可执行文件与布局
 

@@ -75,7 +75,7 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 ## Calculation tab / 计算页
 
 ```
-┌ Nucleus & CSFs ┬ SCF & CI ┬ Properties & transitions ┬ Results & tools ┐  Package [GRASP2018▾]  State group [odd][even] Copy to even
+┌ Setup ┬ SCF & CI ┬ Properties & transitions ┬ Results & tools ┐  Package [GRASP2018▾]  State group [odd][even] Copy to even
 │ rangular·odd ┬ rwfnestimate·odd ┬ rmcdhf·odd ┬ rsave·odd ┬ rci·odd       │
 │  description of the program                                             │
 │  form fields (label, editor, hint)                                      │
@@ -87,7 +87,7 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 ```
 
 * **Program tabs**, two levels (top: group, bottom: program):
-  * *Nucleus & CSFs (核与组态)*: `rnucleus`, `rcsfgenerate`, `rcsfinteract`, `rcsfsplit`, `rcsfzerofirst`
+  * *Setup (准备)*: `rnucleus`, `rcsfgenerate`, `rcsfinteract`, `rcsfsplit`, `rcsfzerofirst`
   * *SCF & CI (自洽场与 CI)*: `rangular`, `rwfnestimate`, `rmcdhf`, `rsave`, `rci`
   * *Properties & transitions (性质与跃迁)*: `rhfs` (optionally followed by `rhfs_lsj`), `ris4`, `rbiotransform`,
     `rtransition`
@@ -96,7 +96,7 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 * **Package (程序包)** combo box at the top right: *GRASP2018* (default) or *GRASPG* (V3). It selects which program
   tabs are shown and is saved per working directory; importing a GRASPG configuration switches to it. With GRASPG
   the tabs are:
-  * *Nucleus & CSFs*: `rnucleus`, `rcsfggenerate_csfg`, `rcsfginteract_csfg`, `rcsfgsplit_csfg`, `rcsfgzerofirst_csfg`
+  * *Setup*: `rnucleus`, `rcsfggenerate_csfg`, `rcsfginteract_csfg`, `rcsfgsplit_csfg`, `rcsfgzerofirst_csfg`
   * *SCF & CI*: `rangular_csfg`, `rwfnestimate_csfg`, `rmcdhf_csfg`, `rsave_csfg`, `rci_csfg`, `rci_block_csfg`
     (block-by-block CI of one block file such as `oddCI6_odd1`: *Mode* one step / only build and save the H matrix /
     restart from the saved H matrix; *First copy this wave function file to name.w*; the `rci_csfg` options;
@@ -300,7 +300,7 @@ Refresh  Energy unit [eV▾]  Export▾  ☐ Show all computed transitions of th
 
 For the selected pair: header `upper → lower`, ΔE and λ; a plan (whether `rbiotransform` is needed — skipped when both
 levels come from the same file — and which multipoles: E1, or M2 when E1 is forbidden; M1 and E2 between levels of the
-same parity; J = 0 → 0 is refused). Buttons: *Compute (selected J) (计算跃迁 (所选 J))* — only the J^π symmetries of
+same parity; J = 0 → 0 is refused). Buttons, in two rows: *Compute (selected J) (计算跃迁 (所选 J))* — only the J^π symmetries of
 the two levels (the GUI writes `.c`/`.cm` files with just those blocks), with the main window's process count;
 *Compute all J (MPI) (计算全部 J (MPI))* — all transitions between the two files (lifetimes, branching ratios) with
 the MPI programs and *Processes (进程数)* next to it; *Stop*; *Export ▾*: transitions of the current level (CSV),
@@ -311,7 +311,8 @@ Results: table *Type*, *Gauge (规范)* — Babushkin (length) and Coulomb (velo
 ratio close to 1 indicates a reliable calculation. *Transitions drawn in the diagram (图上标注的跃迁)* list with
 *Remove / Clear all*. *Computed transitions of level … (能级 … 的已算跃迁)*: ↓ decay to a lower level, ↑ excitation
 from a lower level, total decay rate and lifetime (computed transitions only); table *Other level*, ↓/↑, *Type*,
-λ (Å), A (s⁻¹), gf, *Branching ratio (分支比)*. At the bottom the output of the GRASP programs.
+λ (Å), A (s⁻¹), gf, *Branching ratio (分支比)*. At the bottom the output of the GRASP programs. The page scrolls
+when the right column is small, so it does not set the minimum size of the window.
 
 All levels within the computed symmetries are done at once, so other pairs there show immediately. Results are
 cached in `<workdir>/.grasp_gui/tr/<hash>/` and reused until an input file changes. Needs `isodata` and the matching

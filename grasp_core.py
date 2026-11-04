@@ -467,7 +467,7 @@ EN = {
     "导出…": "Export…",
     "取消": "Cancel",
     # 程序列表分组
-    "核与组态": "Nucleus & CSFs",
+    "准备": "Setup",
     "自洽场与 CI": "SCF & CI",
     "性质与跃迁": "Properties & transitions",
     "结果与工具": "Results & tools",
@@ -1959,13 +1959,13 @@ PACKAGE_PROBE = {"GRASPG": "rcsfggenerate_csfg"}
 # 界面左侧程序列表的功能分组 (每个程序包中每个程序恰好出现一次)
 STEP_GROUPS = {
     "GRASP2018": [
-        ("核与组态", ["rnucleus", "rcsfgenerate", "rcsfinteract", "rcsfsplit", "rcsfzerofirst"]),
+        ("准备", ["rnucleus", "rcsfgenerate", "rcsfinteract", "rcsfsplit", "rcsfzerofirst"]),
         ("自洽场与 CI", ["rangular", "rwfnestimate", "rmcdhf", "rsave", "rci"]),
         ("性质与跃迁", ["rhfs", "ris4", "rbiotransform", "rtransition"]),
         ("结果与工具", ["jj2lsj", "rlevels", "rtablevels", "rtabtrans1", "rtabtrans2", "custom"]),
     ],
     "GRASPG": [
-        ("核与组态", ["rnucleus", "rcsfggenerate_csfg", "rcsfginteract_csfg", "rcsfgsplit_csfg", "rcsfgzerofirst_csfg"]),
+        ("准备", ["rnucleus", "rcsfggenerate_csfg", "rcsfginteract_csfg", "rcsfgsplit_csfg", "rcsfgzerofirst_csfg"]),
         ("自洽场与 CI", ["rangular_csfg", "rwfnestimate_csfg", "rmcdhf_csfg", "rsave_csfg", "rci_csfg", "rci_block_csfg"]),
         ("性质与跃迁", ["rhfs", "ris4", "rbiotransform", "rtransition"]),
         ("结果与工具", ["jj2lsj_csfg", "rlevels_csfg", "rtablevels", "rtabtrans1", "rtabtrans2", "custom"]),

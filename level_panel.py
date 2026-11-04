@@ -19,7 +19,7 @@ from PySide6.QtGui import (QColor, QFont, QFontDatabase, QFontMetricsF, QImage, 
                            QTextCursor)
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QLabel, QMenu, QMessageBox, QSpinBox,
-                               QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton, QSplitter,
+                               QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton, QScrollArea, QSplitter,
                                QStyledItemDelegate, QTableWidget, QTableWidgetItem, QTabWidget, QToolTip,
                                QVBoxLayout, QWidget)
 
@@ -992,6 +992,10 @@ class LevelPanel(Panel):
         self.tr_stop.clicked.connect(self.runner.stop)
         row.addWidget(self.tr_run)
         row.addWidget(self.tr_all)
+        row.addStretch()
+        lay.addLayout(row)
+        # 按钮分两行：一行放不下时右栏的最小宽度很大，分隔条往右拖要多拖一半最小宽度才能收起
+        row = QHBoxLayout()
         row.addWidget(QLabel(T("进程数")))
         row.addWidget(self.tr_np)
         row.addWidget(self.tr_stop)
@@ -1007,8 +1011,9 @@ class LevelPanel(Panel):
         self.pair_table = table([T("类型"), T("规范"), "A (s⁻¹)", "gf", "S (a.u.)"])
         lay.addWidget(self.pair_table, 1)
         mrow = QHBoxLayout()
-        mrow.addWidget(QLabel(T("图上标注的跃迁")))
-        mrow.addStretch()
+        marked = QLabel(T("图上标注的跃迁"))
+        marked.setWordWrap(True)
+        mrow.addWidget(marked, 1)
         for text, slot in [("移除", self.unmark_selected), ("全部清除", self.clear_marked)]:
             b = QPushButton(T(text))
             b.clicked.connect(slot)
@@ -1032,7 +1037,13 @@ class LevelPanel(Panel):
         self.tr_log.setFont(mono)
         self.tr_log.setPlaceholderText(T("GRASP 程序的输出"))
         lay.addWidget(self.tr_log, 1)
-        return w
+        # 放在滚动区中：否则这一页的最小尺寸 (约 300 × 600) 决定了右栏和整个窗口的最小尺寸，
+        # 屏幕较小 (如 150% 缩放的 1080p) 时窗口最大化也放不下，分隔条往右拖也要多拖很远才收起
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.NoFrame)
+        area.setWidget(w)
+        return area
 
     # ---- 导出 ----
     def level_desc(self, key):
