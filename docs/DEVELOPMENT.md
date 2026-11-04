@@ -302,11 +302,21 @@ GRASP2018 的图形界面：填写参数后自动生成各程序的交互输入�
 v2.3.2 起，GRASP2018 的同一份 jj2lsj 源码由 CMake 安装为 `jj2lsj`，Makefile 安装为 `jj2lsj_2025`：运行和程序缺失检查优先用原名，找不到时用后者。
 导出的 shell / Slurm 脚本在运行时选择名称；不替代输入不同的 `jj2lsj_2024` 或 GRASPG 的 `jj2lsj_csfg`。
 
+GRASPG 零阶 / 一阶示例 `demos/graspg_zf.json` 按作者 `script3_ZF/csfg` 缩小到 n = 4：Be 样 C III，24 个能级；冻结 1s² 的价电子激发作为零阶空间，完整空间允许 1s 激发。ICCUT 从零阶列表自动取得。2 个 MPI 进程约 10 秒，参考能量由导出的脚本重算得到，与同规模作者脚本一致。
+
 ## 测试方法
 
 自动测试在 `tests/` 中 (`python3 -m pytest tests`，GitHub Actions 对每个 PR 运行)：算例的配置检查和生成脚本的标准结果
 (`tests/golden/`)、导出 / 导入往返、翻译完整、只用标准库的模块不导入 Qt、Python 3.10 语法、后台运行进程、offscreen 界面冒烟测试；
 有 GRASP 时 (`GRASP_BINDIR`) 用 GRASP 重算算例并与参考能量比较。参与开发的规则见根目录的 `AGENTS.md`。
+GRASPG 测试单独读取 `GRASPG_BINDIR` (目录中须有 `rcsfggenerate_csfg`)，未设置时跳过，
+不受 `GRASP_REQUIRED` 影响。`GRASPG_NP` 指定 MPI 进程数，默认 2；角向、SCF 和 CI 共用此进程数。
+`graspg_zf` 属于快算例，`graspg1` 需要 `GRASP_SLOW=1`：
+
+```bash
+GRASPG_BINDIR=/path/to/graspg/bin GRASPG_NP=2 GRASP_SLOW=1 python3 -m pytest tests/test_grasp.py -k graspg
+```
+
 下表是此前的人工 / 一次性测试：
 
 | 测试 | 内容 |

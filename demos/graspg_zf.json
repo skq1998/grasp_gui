@@ -1,0 +1,394 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASPG",
+ "title": {
+  "zh": "GRASPG 零阶 / 一阶划分：C III，到 n = 4",
+  "en": "GRASPG zero/first-order partition: C III through n = 4"
+ },
+ "summary": {
+  "zh": "Be 样 C III 的 24 个能级，按作者 script3_ZF/csfg 缩小到 n = 4，逐层 MCDHF 后计算含 Breit 和 QED 的 CI。多参考组态为 1s²(2s²、2p²、2s3s、2s3d、2s2p、2s3p、2p3s)。零阶空间为冻结 1s² 的价电子单、双激发；完整空间允许 1s 激发，均筛选与多参考相互作用的 CSFG。rcsfgzerofirst_csfg 排序后，rangular_csfg 和 rci_csfg 从 Zero_n4.g 自动取得各块 ICCUT (26、17、34、42、49、41、28)。初始 n = 3 SCF 重复一次，以保存的 n3.w 经 rwfnestimate_csfg 读回，无自定义步骤。",
+  "en": "24 levels of Be-like C III, reducing the authors’ script3_ZF/csfg to n = 4: layer-by-layer MCDHF followed by CI with Breit and QED. The multireference is 1s²(2s², 2p², 2s3s, 2s3d, 2s2p, 2s3p, 2p3s). The zero-order space contains valence single and double excitations with frozen 1s²; the full space allows 1s excitations. Both are filtered for interaction with the multireference. After rcsfgzerofirst_csfg reorders the list, rangular_csfg and rci_csfg derive block ICCUT values (26, 17, 34, 42, 49, 41, 28) from Zero_n4.g. The initial n = 3 SCF is repeated using rwfnestimate_csfg to reload saved n3.w; no custom steps."
+ },
+ "created_by": "skq-agent-bot",
+ "runtime": {
+  "zh": "2 个 MPI 进程约 10 秒 (取决于硬件)",
+  "en": "about 10 seconds with 2 MPI processes (hardware dependent)"
+ },
+ "jobs": [
+  {
+   "step": "rcsfggenerate_csfg",
+   "group": "even",
+   "vals": {
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(2,*)\n1s(2,i)2p(2,*)\n1s(2,i)2s(1,*)3s(1,*)\n1s(2,i)2s(1,*)3d(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "6",
+      "nexc": "0"
+     },
+     {
+      "configs": "1s(2,i)2s(1,*)2p(1,*)\n1s(2,i)2s(1,*)3p(1,*)\n1s(2,i)2p(1,*)3s(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "n3"
+   }
+  },
+  {
+   "step": "rcsfggenerate_csfg",
+   "group": "even",
+   "vals": {
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(2,*)\n1s(2,i)2p(2,*)\n1s(2,i)2s(1,*)3s(1,*)\n1s(2,i)2s(1,*)3d(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "6",
+      "nexc": "0"
+     },
+     {
+      "configs": "1s(2,i)2s(1,*)2p(1,*)\n1s(2,i)2s(1,*)3p(1,*)\n1s(2,i)2p(1,*)3s(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "0"
+     },
+     {
+      "configs": "1s(2,i)2s(2,*)\n1s(2,i)2p(2,*)\n1s(2,i)2s(1,*)3s(1,*)\n1s(2,i)2s(1,*)3d(1,*)",
+      "active": "9s,9p,9d,9f,9g",
+      "jmin": "0",
+      "jmax": "6",
+      "nexc": "2"
+     },
+     {
+      "configs": "1s(2,i)2s(1,*)2p(1,*)\n1s(2,i)2s(1,*)3p(1,*)\n1s(2,i)2p(1,*)3s(1,*)",
+      "active": "9s,9p,9d,9f,9g",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "raw_zero"
+   }
+  },
+  {
+   "step": "rcsfginteract_csfg",
+   "group": "even",
+   "vals": {
+    "mr": "n3",
+    "full": "raw_zero",
+    "ham": "1",
+    "saveas": "Zero_n"
+   }
+  },
+  {
+   "step": "rcsfgsplit_csfg",
+   "group": "even",
+   "vals": {
+    "state": "Zero_n",
+    "label": "Zero_n.l",
+    "splits": "4s,4p,4d,4f 4"
+   }
+  },
+  {
+   "step": "rcsfggenerate_csfg",
+   "group": "even",
+   "vals": {
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(2,*)\n1s(2,i)2p(2,*)\n1s(2,i)2s(1,*)3s(1,*)\n1s(2,i)2s(1,*)3d(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "6",
+      "nexc": "0"
+     },
+     {
+      "configs": "1s(2,i)2s(1,*)2p(1,*)\n1s(2,i)2s(1,*)3p(1,*)\n1s(2,i)2p(1,*)3s(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "0"
+     },
+     {
+      "configs": "1s(2,*)2s(2,*)\n1s(2,*)2p(2,*)\n1s(2,*)2s(1,*)3s(1,*)\n1s(2,*)2s(1,*)3d(1,*)",
+      "active": "9s,9p,9d,9f,9g",
+      "jmin": "0",
+      "jmax": "6",
+      "nexc": "2"
+     },
+     {
+      "configs": "1s(2,*)2s(1,*)2p(1,*)\n1s(2,*)2s(1,*)3p(1,*)\n1s(2,*)2p(1,*)3s(1,*)",
+      "active": "9s,9p,9d,9f,9g",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "raw_full"
+   }
+  },
+  {
+   "step": "rcsfginteract_csfg",
+   "group": "even",
+   "vals": {
+    "mr": "n3",
+    "full": "raw_full",
+    "ham": "1",
+    "saveas": "Full_n"
+   }
+  },
+  {
+   "step": "rcsfgsplit_csfg",
+   "group": "even",
+   "vals": {
+    "state": "Full_n",
+    "label": "Full_n.l",
+    "splits": "4s,4p,4d,4f 4"
+   }
+  },
+  {
+   "step": "rcsfgzerofirst_csfg",
+   "group": "even",
+   "vals": {
+    "zero": "Zero_n4.g",
+    "full": "Full_n4.g",
+    "saveas": "n4.g"
+   }
+  },
+  {
+   "step": "rnucleus",
+   "group": "even",
+   "vals": {
+    "z": "6",
+    "a": "12",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "12",
+    "spin": "0",
+    "mu": "0",
+    "q": "0"
+   }
+  },
+  {
+   "step": "rangular_csfg",
+   "group": "even",
+   "vals": {
+    "csf": "n3",
+    "zf": false,
+    "zero": "odd2.g"
+   }
+  },
+  {
+   "step": "rwfnestimate_csfg",
+   "group": "even",
+   "vals": {
+    "use_file": false,
+    "wfile": "odd2.w",
+    "forbs": "*",
+    "method": "3",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf_csfg",
+   "group": "even",
+   "vals": {
+    "levels": "1-4\n1-3\n1-3\n1-6\n1-4\n1-3\n1-1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "log": "out_n3",
+    "save": "n3"
+   }
+  },
+  {
+   "step": "rwfnestimate_csfg",
+   "group": "even",
+   "vals": {
+    "use_file": true,
+    "wfile": "n3.w",
+    "forbs": "*",
+    "method": "3",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf_csfg",
+   "group": "even",
+   "vals": {
+    "levels": "1-4\n1-3\n1-3\n1-6\n1-4\n1-3\n1-1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "log": "out_n3_repeat",
+    "save": "n3"
+   }
+  },
+  {
+   "step": "rangular_csfg",
+   "group": "even",
+   "vals": {
+    "csf": "n4",
+    "zf": true,
+    "zero": "Zero_n4.g"
+   }
+  },
+  {
+   "step": "rwfnestimate_csfg",
+   "group": "even",
+   "vals": {
+    "use_file": true,
+    "wfile": "n3.w",
+    "forbs": "*",
+    "method": "3",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf_csfg",
+   "group": "even",
+   "vals": {
+    "levels": "1-4\n1-3\n1-3\n1-6\n1-4\n1-3\n1-1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "4*",
+    "spec": "",
+    "nscf": "200",
+    "log": "out_n4",
+    "save": "n4"
+   }
+  },
+  {
+   "step": "rci_csfg",
+   "group": "even",
+   "vals": {
+    "state": "n4CI",
+    "copyfrom": "n4",
+    "trans": true,
+    "modfreq": true,
+    "factor": "1.d-6",
+    "limn": false,
+    "maxn": "15",
+    "liml": false,
+    "maxl": "14",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "mem": "4",
+    "levels": "1-4\n1-3\n1-3\n1-6\n1-4\n1-3\n1-1",
+    "log": "out_n4CI",
+    "zf": true,
+    "zero": "Zero_n4.g"
+   }
+  }
+ ],
+ "reference": [
+  {
+   "file": "n3.m",
+   "energies": [
+    -36.4920891502,
+    -35.857337202,
+    -35.6020610065,
+    -35.3374751508,
+    -36.2501833002,
+    -35.3108680202,
+    -35.080368514,
+    -35.8571897133,
+    -35.402384071,
+    -35.2598225186,
+    -36.2500297439,
+    -35.9714649616,
+    -35.3108348444,
+    -35.3100861782,
+    -35.0801814324,
+    -35.0355938239,
+    -35.8568964184,
+    -35.7914883738,
+    -35.2598153054,
+    -35.221706137,
+    -36.2497221297,
+    -35.3107600976,
+    -35.0798029884,
+    -35.2598044809
+   ]
+  },
+  {
+   "file": "n4.m",
+   "energies": [
+    -36.5332767434,
+    -35.9056717445,
+    -35.6802292301,
+    -35.4049753952,
+    -36.2958837198,
+    -35.3542057521,
+    -35.126140349,
+    -35.9055933351,
+    -35.4497874825,
+    -35.3073966061,
+    -36.2956469287,
+    -36.0554511222,
+    -35.3541795707,
+    -35.3539010705,
+    -35.1259532667,
+    -35.0893967721,
+    -35.9052817081,
+    -35.8612434352,
+    -35.3073897341,
+    -35.2761621958,
+    -36.2954219297,
+    -35.3541067718,
+    -35.1255842748,
+    -35.3073591247
+   ]
+  },
+  {
+   "file": "n4CI.cm",
+   "energies": [
+    -36.5291283008,
+    -35.9015922242,
+    -35.6761847128,
+    -35.4009393402,
+    -36.2917196049,
+    -35.3501811879,
+    -35.1221298403,
+    -35.901539033,
+    -35.4457751152,
+    -35.3034051659,
+    -36.291536709,
+    -36.051377658,
+    -35.350164869,
+    -35.3499045562,
+    -35.1219781566,
+    -35.085444715,
+    -35.9013230487,
+    -35.8572497341,
+    -35.3034044598,
+    -35.2721761732,
+    -36.291376105,
+    -35.3501081108,
+    -35.1216758664,
+    -35.3033778547
+   ]
+  }
+ ],
+ "id": "graspg_zf",
+ "order": 21
+}

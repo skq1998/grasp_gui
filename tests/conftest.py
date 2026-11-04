@@ -3,6 +3,7 @@
 
     不需要 GRASP 的测试总是运行；需要 GRASP 的测试 (标记 grasp) 在找不到 GRASP 程序时跳过：
     用 GRASP_BINDIR=/path/to/grasp/bin 指定程序目录。GRASP_SLOW=1 时也运行需要几分钟以上的算例。
+    GRASPG 用 GRASPG_BINDIR 指定目录，GRASPG_NP 指定 MPI 进程数 (默认 2)。
     界面测试 (标记 gui) 在 offscreen 模式下运行，没有 PySide6 时跳过。
 """
 
@@ -53,6 +54,15 @@ def grasp_bindir():
         if os.environ.get("GRASP_REQUIRED"):          # CI：编译出问题时报错，而不是跳过
             pytest.fail(f"GRASP2018 not found in GRASP_BINDIR={d!r}")
         pytest.skip("GRASP2018 not found: set GRASP_BINDIR")
+    return d
+
+
+@pytest.fixture(scope="session")
+def graspg_bindir():
+    """GRASPG 单独指定目录；没有时跳过，不受 GRASP_REQUIRED 影响。"""
+    d = os.environ.get("GRASPG_BINDIR", "")
+    if not d or not os.path.isfile(os.path.join(d, "rcsfggenerate_csfg")):
+        pytest.skip("GRASPG not found: set GRASPG_BINDIR")
     return d
 
 
