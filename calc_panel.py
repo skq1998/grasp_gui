@@ -684,10 +684,11 @@ class CalcPanel(QWidget):
         export.setMenu(menu)
         for i, b in enumerate([button("▶ 运行全部", self.run_pipeline), button("▶ 从选中开始", self.run_from_selected),
                                button("上移", lambda: self.move(-1)), button("下移", lambda: self.move(1)),
+                               button("编辑", self.edit_job), button("更新所选", self.update_job),
                                button("查看", self.show_job), button("删除", self.remove_job),
                                button("清空", self.clear_pipeline), export]):
             btns.addWidget(b, i // 2, i % 2)
-        btns.setRowStretch(4, 1)
+        btns.setRowStretch(5, 1)
         pl.addLayout(btns)
         self.btabs.addTab(pw, T("流程"))
 
@@ -1069,6 +1070,42 @@ class CalcPanel(QWidget):
         self.refresh_list()
         self.plist.setCurrentRow(i + d)
         self.save_session()
+
+    def edit_job(self):
+        """把选中步骤的参数载入它的程序页 (切换到该步骤的态组)，改好后用“更新所选”写回。"""
+        i = self.selected()
+        if i is None:
+            return
+        job = self.pipeline[i]
+        form = next((f for f in self.forms if f.step.key == job.get("step")), None)
+        if form is None or not isinstance(job.get("vals"), dict):
+            QMessageBox.information(self, T("编辑"), T("这一步没有程序页参数 (导入的命令)，不能载入表单。"))
+            return
+        if job["step"] in core.GROUP_STEPS and job.get("group") in core.GROUPS:
+            self.switch_group(job["group"])
+        form.set_values(job["vals"])
+        self.nav.setCurrentWidget(form)
+        self.status(T("已把第 {i} 步载入表单；修改后点“更新所选”替换这一步", i=i + 1))
+
+    def update_job(self):
+        """用当前程序页的参数替换选中的步骤 (须是同一个程序)。"""
+        i = self.selected()
+        if i is None:
+            return
+        form = self.nav.currentWidget()
+        if self.pipeline[i].get("step") != form.step.key:
+            QMessageBox.information(self, T("更新所选"), T("第 {i} 步不是 {p}：先选中这一步并点“编辑”，修改后再更新。",
+                                                          i=i + 1, p=T(form.step.name)))
+            return
+        job = self.current_job()
+        if job:
+            if job["step"] in core.GROUP_STEPS:
+                job["group"] = self.group
+            self.pipeline[i] = job
+            self.refresh_list()
+            self.plist.setCurrentRow(i)
+            self.save_session()
+            self.status(T("已更新第 {i} 步", i=i + 1))
 
     def remove_job(self):
         i = self.selected()

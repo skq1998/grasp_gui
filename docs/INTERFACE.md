@@ -82,7 +82,7 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 ├ Preview input · ▶ Run this program · Add to pipeline ↓ ········ ■ Stop ─┤
 │ ┌ Pipeline ┬ Input preview ┐ │ Program output (last 5000 lines) List files Clear │
 │ │ 1. rnucleus   ▶Run all ▶Run from selected │  dark terminal-style output         │
-│ │ 2. …          Move up / Move down / Show / Remove / Clear / Export▾             │
+│ │ 2. …          Move up / Move down / Edit / Update selected / Show / Remove / …  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -159,8 +159,11 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 * **Buttons**: *Preview input (预览输入)* (shows the generated stdin in *Input preview*), *▶ Run this program
   (运行当前程序)*, *Add to pipeline ↓ (加入流程)*, *■ Stop (停止)*.
 * **Pipeline (流程)**: list of steps; *▶ Run all (运行全部)* (stops at the first error), *▶ Run from selected
-  (从选中开始)*, *Move up / Move down (上移 / 下移)*, *Show (查看)* (input preview of the step), *Remove (删除)*,
-  *Clear (清空)*, *Export ▾ (导出)*: shell script / Slurm job script.
+  (从选中开始)*, *Move up / Move down (上移 / 下移)*, *Edit (编辑)* (loads the selected step's parameters into its
+  form, switching to its program tab and state group), *Update selected (更新所选)* (replaces the selected step by
+  the current form; it must be the same program), *Show (查看)* (input preview of the step), *Remove (删除)*,
+  *Clear (清空)*, *Export ▾ (导出)*: shell script / Slurm job script. Steps imported as commands have no form and
+  cannot be edited.
 * **Input preview (输入预览)**: the command, the here-document with the program's stdin and the file actions, e.g.
   `rmcdhf <<'EOF' … EOF` followed by `rsave odd4`.
 * **Program output (程序输出)**: dark terminal-style pane, last 5000 lines (set a log file in the form for the full

@@ -76,6 +76,15 @@ EN = {
     "查看": "Show",
     "上移": "Move up",
     "下移": "Move down",
+    "编辑": "Edit",
+    "更新所选": "Update selected",
+    "这一步没有程序页参数 (导入的命令)，不能载入表单。":
+        "This step has no form parameters (an imported command) and cannot be loaded into a form.",
+    "已把第 {i} 步载入表单；修改后点“更新所选”替换这一步":
+        "Step {i} loaded into its form; after changing it, click “Update selected” to replace the step",
+    "第 {i} 步不是 {p}：先选中这一步并点“编辑”，修改后再更新。":
+        "Step {i} is not {p}: select the step and click “Edit” first, then update it after changing the form.",
+    "已更新第 {i} 步": "Step {i} updated",
     "删除": "Remove",
     "清空": "Clear",
     "导出脚本…": "Export script…",

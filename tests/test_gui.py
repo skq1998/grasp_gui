@@ -66,6 +66,38 @@ def test_imported_demo_fills_pipeline(qapp, tmp_path, no_dialogs, name):
     assert no_dialogs == []
 
 
+def test_edit_pipeline_step(qapp, tmp_path, no_dialogs):
+    """“编辑”把步骤的参数和态组载回表单，“更新所选”只替换同一程序的步骤。"""
+    w = window(tmp_path)
+    c = w.calc
+    forms = {f.step.key: f for f in c.forms}
+    c.switch_group("even")
+    c.nav.setCurrentWidget(forms["rmcdhf"])
+    forms["rmcdhf"].set_values({"nscf": "100", "save": "even2"})
+    c.add_to_pipeline()
+    c.nav.setCurrentWidget(forms["rnucleus"])
+    c.add_to_pipeline()
+    c.switch_group("odd")
+    c.plist.setCurrentRow(0)
+    c.edit_job()
+    assert c.group == "even"
+    assert c.nav.currentWidget() is forms["rmcdhf"]
+    assert forms["rmcdhf"].values()["save"] == "even2"
+    forms["rmcdhf"].set_values({"nscf": "250"})
+    c.update_job()
+    assert c.pipeline[0]["vals"]["nscf"] == "250"
+    assert c.pipeline[0]["group"] == "even"
+    assert c.pipeline[0]["stdin"].split()[-1] == "250"
+    assert [j["step"] for j in c.pipeline] == ["rmcdhf", "rnucleus"]
+    assert no_dialogs == []
+    c.plist.setCurrentRow(1)
+    c.update_job()
+    assert c.pipeline[1]["step"] == "rnucleus"
+    assert [n for n, _ in no_dialogs] == ["information"]
+    no_dialogs.clear()
+    assert w.close()
+
+
 @pytest.mark.parametrize("command", ["sleep 0.5; echo hello-from-test", "echo hello-from-test"],
                          ids=["normal", "instant"])
 def test_run_pipeline_shows_output(qapp, tmp_path, no_dialogs, command):
