@@ -102,7 +102,7 @@ program `rwfnestimate`; `group`: "odd" / "even"
 
 program `rmcdhf`; MPI `rmcdhf_mpi`; `group`: "odd" / "even"
 
-> 自洽场计算 (读取 rcsf.inp, rwfn.inp, mcp.*；输出 rwfn.out, rmix.out)。每个 J 对称块一行能级号，例如 1,2,3 或 1-3。 / Self-consistent field calculation (reads rcsf.inp, rwfn.inp, mcp.*; writes rwfn.out, rmix.out). One line of level numbers per J block, e.g. 1,2,3 or 1-3.
+> 自洽场计算 (读取 rcsf.inp, rwfn.inp, mcp.*；输出 rwfn.out, rmix.out)。每个 J 对称块一行能级号，例如 1,2,3 或 1-3。NSIC 是首轮 SCF 额外改进自洽性最差的轨道数。默认：EOL 串行为 (NW-NFIX)/4、MPI 为 4+(NW-NFIX)/4，含变分关联轨道时为 0；AL 为 2+(NW-NFIX)/4 (整数除法)。 / Self-consistent field calculation (reads rcsf.inp, rwfn.inp, mcp.*; writes rwfn.out, rmix.out). One line of level numbers per J block, e.g. 1,2,3 or 1-3. NSIC is the number of extra improvements of the least self-consistent orbitals in the first SCF cycle. Default EOL: (NW-NFIX)/4 serial, 4+(NW-NFIX)/4 MPI, or 0 if any varied orbital is a correlation orbital; AL: 2+(NW-NFIX)/4 (integer division).
 
 | key | type | default | meaning / 含义 |
 |---|---|---|---|
@@ -113,6 +113,8 @@ program `rmcdhf`; MPI `rmcdhf_mpi`; `group`: "odd" / "even"
 | `vary` | string | `"*"` | 变分轨道 / Orbitals to vary — 如 *  或 3*  或 2s,2p* / e.g. *  or 3*  or 2s,2p* |
 | `spec` | string | `"*"` | 谱学轨道 (非关联轨道) / Spectroscopic orbitals — 空 = 无 / empty = none |
 | `nscf` | string | `"100"` | 最大 SCF 迭代次数 / Max SCF cycles |
+| `modify_nsic` | bool | `false` | 修改 NSIC / Modify NSIC — 勾选后修改 NSIC；不勾选时用程序的默认值 / Override NSIC when checked; otherwise use the program default *(2.4.0)* |
+| `nsic` | string | `"0"` | NSIC — 非负整数；仅勾选修改 NSIC 时使用 / Non-negative integer; used only when Modify NSIC is checked *(2.4.0)* |
 | `log` | string | `"outodd_rmcdhf_initial"` | 输出日志文件 / Output log file — 空 = 只显示在窗口 / empty = show in window only |
 | `save` | string | `"odd2"` | 结束后 rsave 保存为 / rsave afterwards as — 空 = 不保存 / empty = do not save |
 
@@ -364,7 +366,7 @@ program `rwfnestimate_csfg`; `group`: "odd" / "even"
 
 program `rmcdhf_csfg_mpi`; MPI `rmcdhf_csfg_mpi_mpi`; `group`: "odd" / "even"
 
-> 自洽场计算 (读取 rcsfg.inp, rlabel.inp, rwfn.inp 和 rangular_csfg 的角系数；输出 rwfn.out, rmix.out)。每个 J 对称块一行能级号，例如 1,2,3 或 1-3。 / Self-consistent field calculation (reads rcsfg.inp, rlabel.inp, rwfn.inp and the angular coefficients of rangular_csfg; writes rwfn.out, rmix.out). One line of level numbers per J block, e.g. 1,2,3 or 1-3.
+> 自洽场计算 (读取 rcsfg.inp, rlabel.inp, rwfn.inp 和 rangular_csfg 的角系数；输出 rwfn.out, rmix.out)。每个 J 对称块一行能级号，例如 1,2,3 或 1-3。NSIC 是首轮 SCF 额外改进自洽性最差的轨道数。默认 (只有 MPI 版本)：EOL 为 4+(NW-NFIX)/4，含变分关联轨道时为 0。 / Self-consistent field calculation (reads rcsfg.inp, rlabel.inp, rwfn.inp and the angular coefficients of rangular_csfg; writes rwfn.out, rmix.out). One line of level numbers per J block, e.g. 1,2,3 or 1-3. NSIC is the number of extra improvements of the least self-consistent orbitals in the first SCF cycle. Default (MPI version only): EOL 4+(NW-NFIX)/4, or 0 if any varied orbital is a correlation orbital.
 
 | key | type | default | meaning / 含义 |
 |---|---|---|---|
@@ -374,6 +376,8 @@ program `rmcdhf_csfg_mpi`; MPI `rmcdhf_csfg_mpi_mpi`; `group`: "odd" / "even"
 | `vary` | string | `"*"` | 变分轨道 / Orbitals to vary — 如 *  或 3*  或 2s,2p* / e.g. *  or 3*  or 2s,2p* |
 | `spec` | string | `"*"` | 谱学轨道 (非关联轨道) / Spectroscopic orbitals — 空 = 无 / empty = none |
 | `nscf` | string | `"100"` | 最大 SCF 迭代次数 / Max SCF cycles |
+| `modify_nsic` | bool | `false` | 修改 NSIC / Modify NSIC — 勾选后修改 NSIC；不勾选时用程序的默认值 / Override NSIC when checked; otherwise use the program default *(2.4.0)* |
+| `nsic` | string | `"0"` | NSIC — 非负整数；仅勾选修改 NSIC 时使用 / Non-negative integer; used only when Modify NSIC is checked *(2.4.0)* |
 | `log` | string | `"outodd_rmcdhf_initial"` | 输出日志文件 / Output log file — 空 = 只显示在窗口 / empty = show in window only |
 | `save` | string | `"odd2"` | 结束后 rsave 保存为 / rsave afterwards as — 空 = 不保存 / empty = do not save |
 

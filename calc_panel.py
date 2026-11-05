@@ -95,6 +95,7 @@ class StepForm(QScrollArea):
         g = QGridLayout(inner)
         g.setColumnStretch(1, 1)
         self.get, self.put = {}, {}
+        controls = {}
         r = 0
         for f in step.fields:
             if isinstance(f, core.Note):
@@ -134,9 +135,17 @@ class StepForm(QScrollArea):
                 g.addWidget(label, r, 0, Qt.AlignTop if isinstance(f, core.Text) else Qt.AlignVCenter)
                 g.addWidget(w, r, 1)
                 g.addWidget(hint_label(f.hint), r, 2)
+            if isinstance(f, core.Field):
+                controls[f.key] = w
             r += 1
         g.setRowStretch(r, 1)
         self.setWidget(inner)
+        self.enabled_controls = []
+        for f in step.fields:
+            if getattr(f, "enabled_by", None):
+                source, target = controls[f.enabled_by], controls[f.key]
+                source.toggled.connect(target.setEnabled)
+                self.enabled_controls.append((source, target))
         self.set_values(step.defaults())
 
     def values(self):
@@ -147,6 +156,8 @@ class StepForm(QScrollArea):
         for k, val in d.items():
             if k in self.put:
                 self.put[k](core.normalize(fields[k], val))
+        for source, target in self.enabled_controls:
+            target.setEnabled(source.isChecked())
 
     def job(self):
         return self.step.job(self.values())

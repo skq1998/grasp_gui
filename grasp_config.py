@@ -106,6 +106,10 @@ def check(doc):
             warnings.append(T("第 {i} 步 ({step}) 中不认识的参数已忽略：{k}", i=i, step=step.key, k=", ".join(unknown)))
         if missing:
             warnings.append(T("第 {i} 步 ({step}) 缺少的参数用默认值：{k}", i=i, step=step.key, k=", ".join(missing)))
+        try:
+            step.validate(job_values(job))
+        except ValueError as e:
+            raise ConfigError(T("第 {i} 步 ({step})：{e}", i=i, step=step.key, e=e)) from e
     total = 0
     for f in cfg.get("files", []):
         name = f.get("name") if isinstance(f, dict) else None

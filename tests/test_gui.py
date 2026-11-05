@@ -150,3 +150,48 @@ def test_csfg_partition_forms(qapp, tmp_path, no_dialogs, lang):
     assert "zf" not in w.calc.nav.by_key["rci_block_csfg"].put
     assert w.close()
     assert no_dialogs == []
+
+
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_nsic_form(qapp, tmp_path, no_dialogs, lang):
+    from calc_panel import StepForm
+
+    core.set_lang(lang)
+    form = StepForm(core.RMcdhf(), "")
+    value = form.get["nsic"].__self__
+    assert not value.isEnabled()
+    form.set_values(dict(nsic="3", modify_nsic=True))
+    assert value.isEnabled()
+    assert "\ny\n3\nn\nn\n1\n" in form.job()["stdin"]
+    form.put["modify_nsic"](False)
+    assert not value.isEnabled()
+    form.close()
+
+    w = window(tmp_path)
+    form = next(f for f in w.calc.forms if f.step.key == "rmcdhf")
+    form.set_values(dict(modify_nsic=True, nsic="-1"))
+    w.calc.nav.setCurrentWidget(form)
+    assert w.calc.current_job() is None
+    assert no_dialogs[-1][0] == "critical"
+    assert "NSIC" in no_dialogs[-1][1][1]
+    w.close()
+
+
+@pytest.mark.parametrize("checked", [False, True])
+def test_field_enabled_by(qapp, checked):
+    from calc_panel import StepForm
+
+    class DependentStep(core.Step):
+        key = "dependency_test"
+        # 被控制字段可以放在复选框之前；默认状态和恢复后的状态都要生效。
+        fields = [core.Entry("value", "value", "0", enabled_by="enabled"),
+                  core.Check("enabled", "enabled", checked)]
+
+    form = StepForm(DependentStep(), "")
+    value = form.get["value"].__self__
+    assert value.isEnabled() == checked
+    form.set_values(dict(enabled=not checked))
+    assert value.isEnabled() != checked
+    form.put["enabled"](checked)
+    assert value.isEnabled() == checked
+    form.close()

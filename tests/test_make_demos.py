@@ -12,7 +12,10 @@ from tools import make_demos as demos
 def test_manual_demo_rebuilds_jobs(make):
     d = make()
     stored = json.loads((Path(demos.OUT) / (d.id + ".json")).read_text())
-    assert d.jobs == stored["jobs"]
+    # 旧示例允许缺少带 added 版本的新字段，比较补齐默认值后的表单。
+    rebuilt = [dict(j, vals=demos.grasp_config.job_values(j)) for j in d.jobs]
+    imported = [dict(j, vals=demos.grasp_config.job_values(j)) for j in stored["jobs"]]
+    assert rebuilt == imported
     _, warnings = demos.grasp_config.check(stored)
     assert not warnings
     assert all(j["step"] != "custom" for j in d.jobs)

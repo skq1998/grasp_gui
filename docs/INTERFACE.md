@@ -120,7 +120,8 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   (NQEDMAX)* (always asked) and *Memory limit per process (GB)*, and copies `.g/.l/.w`. `rangular_csfg`,
   `rmcdhf_csfg`, `rci_csfg` exist only as MPI programs (`*_csfg_mpi`): with 1 MPI process they are started directly
   (MPI_TMP is still set), otherwise with the MPI command. Before `rmcdhf_csfg` the GUI checks the angular files
-  `MPI_TMP/<rank>/csfg_mcp<rank>.*` (same process count, not older than `rcsfg.inp`). GRASPG programs exit with code 0
+  `MPI_TMP/<rank>/csfg_mcp<rank>.*` (same process count, not older than `rcsfg.inp`). `rmcdhf_csfg` has the same
+  *Modify NSIC* option as `rmcdhf` (same non-default input order; default EOL NSIC `4+(NW-NFIX)/4` as in MPI GRASP). GRASPG programs exit with code 0
   on errors; the GUI recognises their error messages (`Stop Error`, `Error!`, `… is not found`, `not exists`,
   `Problems with opening`, `STOP …error…`) and stops the pipeline.
   Choosing GRASPG when the bin directory has no `rcsfggenerate_csfg` shows a warning in the status bar.
@@ -139,6 +140,9 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   of the manual's test cases (`grasptest/` case1–4, example1–5, 8, 9) except non-default `jj2lsj` runs (use
   *Custom*). `rcsfgenerate` has several CSF lists (*+ Add list*, *− Delete current list*, *Reference configurations
   (one per line)*). `rmcdhf` can use the in-memory version `rmcdhf_mem` / `rmcdhf_mem_mpi`.
+* **rmcdhf NSIC**: *Modify NSIC (修改 NSIC)* enables a non-negative count of extra first-cycle orbital improvements; unchecked uses the program default.
+  EOL defaults: `(NW-NFIX)/4` serial, `4+(NW-NFIX)/4` MPI, or 0 with varied correlation orbitals; AL: `2+(NW-NFIX)/4` (integer division).
+  The page description explains the defaults; older configurations import with this option unchecked and no warning.
 * **Zero/first-order partition (零阶 / 一阶划分)**: `rcsfzerofirst` (*CSF list of the zero-order space*, *CSF list to
   partition*, *Save the result rcsf.out as*) puts the zero-order CSFs at the top of each block. `rangular` and `rci`
   have the check box *Zero/first-order partition: CSFs outside the zero-order space treated as first-order
