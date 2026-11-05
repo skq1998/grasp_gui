@@ -31,8 +31,9 @@ GRASP2018 的图形界面：填写参数后自动生成各程序的交互输入�
 | v2.1.0 | 见标签 `v2.1.0` | 共享配置 (导出 / 导入计算方案，手册算例采用同一格式)；旧系统版 `grasp_gui-legacy` (glibc ≥ 2.17、ssh -X，`legacy` 分支) |
 | v2.2.0 | 见标签 `v2.2.0` | 零阶 / 一阶划分：`rcsfzerofirst` 程序页，`rangular`、`rci` 按零阶列表自动给出各块 ICCUT |
 | v2.3.0 | 见标签 `v2.3.0` | 关闭窗口后计算在后台继续 (重新打开目录时接上)；供脚本和 AI agent 使用的配置规范与 `check` / `script` / `steps` / `reference` 命令 |
-| v2.3.2 | 见标签 `v2.3.2` | 只装有 `jj2lsj_2025` (Makefile 编译的 GRASP、GRASPG) 时自动改用它；“停止”恰好在程序启动时到达也能结束程序 |
 | v2.3.1 | 见标签 `v2.3.1` | 修正：很快结束的计算 (如单独运行 rnucleus) 不再报告“无法启动后台运行进程”；自动测试与 CI，参与开发的规则 (`AGENTS.md`) |
+| v2.3.2 | 见标签 `v2.3.2` | 只装有 `jj2lsj_2025` (Makefile 编译的 GRASP、GRASPG) 时自动改用它；“停止”恰好在程序启动时到达也能结束程序 |
+| v2.4.0 | 见标签 `v2.4.0` | rmcdhf 可修改 NSIC；手册算例 case2、case3 (各取一个 Z) 与正文例 manual_csfs、manual_zf，手册算例清单；流程中的步骤可载回表单修改；第一组程序页改名为“准备”；能级图右栏可收得更窄 |
 
 ## 开发经过
 
@@ -361,6 +362,7 @@ GRASPG_BINDIR=/path/to/graspg/bin GRASPG_NP=2 GRASP_SLOW=1 python3 -m pytest tes
   - v2.3.0：供脚本和 AI agent 使用的配置规范与命令行工具 (见第 16 节)；关闭窗口后继续运行 (见第 17 节)。
   - v2.3.1：修正很快结束的计算接不上后台运行进程的问题；自动测试、CI 和参与开发的规则 (其他 agent 通过 PR 参与开发)。
   - v2.3.2：`jj2lsj_2025` 的自动替代；停止与程序启动同时发生时的修正。
+  - v2.4.0：rmcdhf 的 NSIC (见第 18 节)；手册算例补齐 (case2、case3、manual_csfs、manual_zf，清单见 `MANUAL_EXAMPLES.md`)；流程步骤的“编辑 / 更新所选”。
 - **legacy**：旧系统版 (见第 13 节)，与 main 一起发布。
 - **V3** (分支 `v3`)：支持 GRASP 的扩展和再开发版本。基础工作：把各程序的输入规则（`grasp_core.py` 中的字段和提问顺序）按
   “程序包 / 版本”区分 (共享配置的 `package` 字段已为此预留)，按 bin 目录中的程序识别可用的扩展，并识别它们特有的程序和文件格式。
