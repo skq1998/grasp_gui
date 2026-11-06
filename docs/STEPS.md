@@ -46,7 +46,7 @@ program `rcsfinteract`; `group`: "odd" / "even"
 | `mr` | string | `"odd2.c"` | 多参考 CSF 文件 → rcsfmr.inp / Multireference CSF file → rcsfmr.inp — 留空则直接用现有 rcsfmr.inp / leave empty to use existing rcsfmr.inp |
 | `full` | string | `"odd.c"` | 完整 CSF 文件 → rcsf.inp / Full CSF file → rcsf.inp — 留空则直接用现有 rcsf.inp / leave empty to use existing rcsf.inp |
 | `ham` | choice | `"1"` | 按哪种哈密顿量判断相互作用 / Interaction through<br>`1` = Dirac-Coulomb, `2` = Dirac-Coulomb-Breit |
-| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save rcsf.out as — 如 odd.c；与完整列表同名时覆盖原列表；留空则不复制 / e.g. odd.c; the same name as the full list overwrites it; empty = no copy |
+| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save the result rcsf.out as — 如 odd.c；与完整列表同名时覆盖原列表；留空则不复制 / e.g. odd.c; the same name as the full list overwrites it; empty = no copy |
 
 ## `rcsfsplit`
 
@@ -69,7 +69,7 @@ program `rcsfzerofirst`; `group`: "odd" / "even"
 |---|---|---|---|
 | `zero` | string | `"odd2.c"` | 零阶空间的 CSF 列表 / CSF list of the zero-order space — 如多参考列表；对称块须与要划分的列表一一对应 / e.g. the multireference list; its symmetry blocks must match those of the list to partition |
 | `full` | string | `"odd3.c"` | 要划分的 CSF 列表 / CSF list to partition |
-| `saveas` | string | `"odd3.c"` | 结果 rcsf.out 保存为 / Save rcsf.out as — 与要划分的列表同名时覆盖原列表；留空则不复制 / the same name as the list to partition overwrites it; empty = no copy |
+| `saveas` | string | `"odd3.c"` | 结果 rcsf.out 保存为 / Save the result rcsf.out as — 与要划分的列表同名时覆盖原列表；留空则不复制 / the same name as the list to partition overwrites it; empty = no copy |
 
 ## `rangular`
 
@@ -205,7 +205,7 @@ program `rmixextract`; `group`: "odd" / "even"
 | `scope` | choice | `"0"` | 提取方式 / Extraction scope<br>`0` = 各能级分别提取 / Each state separately, `1` = 所有能级联合提取 / Across all states *(2.5.0)* |
 | `cutoff` | string | `"0.01"` | 混合系数绝对值下限 / Minimum absolute mixing coefficient *(2.5.0)* |
 | `sort` | bool | `true` | 按混合系数排序 CSF / Sort CSFs by mixing coefficient *(2.5.0)* |
-| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save rcsf.out as — 空 = 不复制 / empty = no copy *(2.5.0)* |
+| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save the result rcsf.out as — 空 = 不复制 / empty = no copy *(2.5.0)* |
 
 ## `rmixaccumulate`
 
@@ -219,7 +219,7 @@ program `rmixaccumulate`; `group`: "odd" / "even"
 | `ci` | bool | `true` | 混合系数来自 CI 计算 / Mixing coefficients from CI calculation — 否则读 .m / otherwise .m is read *(2.5.0)* |
 | `fraction` | string | `"0.9999"` | 保留的累积权重 (0–1) / Retained accumulated weight (0–1) *(2.5.0)* |
 | `sort` | bool | `true` | 按混合系数排序 CSF / Sort CSFs by mixing coefficient *(2.5.0)* |
-| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save rcsf.out as — 空 = 不复制 / empty = no copy *(2.5.0)* |
+| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save the result rcsf.out as — 空 = 不复制 / empty = no copy *(2.5.0)* |
 
 ## `rtabhfs`
 
@@ -502,7 +502,7 @@ program `rcsfgexpand_csfg`; `group`: "odd" / "even"
 | key | type | default | meaning / 含义 |
 |---|---|---|---|
 | `csf` | string | `"odd"` | CSFG 列表 (不含扩展名) / CSFG list (without extension) — 复制 name.g / name.l 为 rcsfg.inp / rlabel.inp；留空则用现有文件 / copies name.g / name.l to rcsfg.inp / rlabel.inp; empty = use the existing files |
-| `saveas` | string | `"odd.c"` | 结果 rcsf.out 保存为 / Save rcsf.out as — 留空则不复制 / leave empty to skip copy |
+| `saveas` | string | `"odd.c"` | 结果 rcsf.out 保存为 / Save the result rcsf.out as — 留空则不复制 / leave empty to skip copy |
 
 ## `rcsfgextend_csfg`
 

@@ -799,7 +799,6 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "列出能级。可给多个 .m / .cm 文件；也能读 rci_block_csfg 逐块写出、尚未写完的文件。": "Lists the levels. Several .m / .cm files can be given; files that rci_block_csfg is still writing block by block can be read too.",
     "CSFG 工具": "CSFG tools",
     "把 CSFG 列表展开为普通的 CSF 列表 rcsf.out (GRASP2018 的程序可以使用)。读取 rcsfg.inp、rlabel.inp。": "Expands a CSFG list into an ordinary CSF list rcsf.out (usable by the GRASP2018 programs). Reads rcsfg.inp, rlabel.inp.",
-    "结果 rcsf.out 保存为": "Save rcsf.out as",
     "把 name.g 中的 CSFG 扩展到更大的轨道集 (各 l 的最高 n 加大)，每个轨道集写出 name<标签>.g 和 name<标签>.l。读取 name.g、name.l。新的轨道集不能比原来的小。": "Extends the CSFGs of name.g to larger orbital sets (higher n per l), writing name<label>.g and name<label>.l for each set. Reads name.g, name.l. The new sets must not be smaller than the original one.",
     "扩展 (每行: 轨道集  标签)": "Extensions (per line: orbital set  label)",
     "把 name.g 按 J 和宇称拆分为每块一个文件 name_odd1.g、name_even1.g …，并各复制一份 name.l。用于逐块的 CI 计算。各块必须由同一组轨道构成 (到同一 n 的单双激发一般满足，多参考列表不一定)。": "Splits name.g by J and parity into one file per block, name_odd1.g, name_even1.g …, each with a copy of name.l. Used for block-by-block CI. All blocks must be built from the same orbital set (normally true for single and double excitations to one n, not necessarily for multireference lists).",
