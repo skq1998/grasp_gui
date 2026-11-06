@@ -91,7 +91,7 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   * *SCF & CI (自洽场与 CI)*: `rangular`, `rwfnestimate`, `rmcdhf`, `rsave`, `rci`
   * *Properties & transitions (性质与跃迁)*: `rhfs` (optionally followed by `rhfs_lsj`), `ris4`, `rbiotransform`,
     `rtransition`
-  * *Results & tools (结果与工具)*: `jj2lsj`, `rlevels`, `rtablevels`, `rtabtrans1`, `rtabtrans2`, *Custom (自定义)*
+  * *Results & tools (结果与工具)*: `jj2lsj`, `rlevels`, `rtablevels`, `rtabtrans1`, `rtabtrans2`, `rmixextract`, `rmixaccumulate`, `rtabhfs`, `rasfsplit`, *Custom (自定义)*
     (any program with hand-written input)
 * **Package (程序包)** combo box at the top right: *GRASP2018* (default) or *GRASPG* (V3). It selects which program
   tabs are shown and is saved per working directory; importing a GRASPG configuration switches to it. With GRASPG
@@ -153,6 +153,14 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   1 < ICCUT < ncf for `rangular_mpi`); the preview and exported scripts compute them with `awk` in an unquoted
   here-document. `rmcdhf` needs no change. Configurations from 2.1.0 without these fields import without warnings
   (partition off).
+* **CSF/ASF tools**: *rmixextract* extracts CSFs above an absolute-coefficient cutoff, either per state or across all states;
+  *rmixaccumulate* retains a fraction of the squared coefficients. Both read `name.c` and `name.(c)m`, write `rcsf.out`,
+  and can copy it to *Save rcsf.out as (结果 rcsf.out 保存为)*; extraction also writes `name.rmx`.
+  *rtabhfs* reads 1–20 `name.(c)hlsj` files (one per line) from rhfs_lsj and writes `hfs.tex`; this source version supports HFS only.
+  *rasfsplit* splits `.c` and available `.m`/`.cm` files into `name_evenN.*`/`name_oddN.*` and copies `.w`.
+  Prerequisite: all blocks must share the same orbital set, otherwise the split `.w` files are meaningless.
+  The form always answers `y` to the common-orbital question; there is no confirmation checkbox.
+  The three single-state tools keep separate odd/even parameters; the multi-file HFS table is shared.
 * **Built-in file steps**: save `rcsf.out` as `name.c`, copy a `.c` file to `rcsf.inp` before `rangular`, run
   `rsave` after `rmcdhf` (*rsave afterwards as*), copy `.c/.w` before `rci`.
 * **State groups odd / even (态组)**: `rcsfgenerate`, `rcsfinteract`, `rcsfsplit`, `rcsfzerofirst`, `rangular`, `rwfnestimate`,

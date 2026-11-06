@@ -14,3 +14,9 @@ manual inputs, not generated golden files. The source is licensed CC BY 4.0; att
 
 `section141_00.in`–`section141_10.in` 是 §14.1 的 11 次调用；零阶排序在旧手册中无 stdin。
 当前接口与旧手册的四处等价差异在生成器检查输出及清单中逐项说明，不改写转录以隐藏差异。
+
+工具程序新增转录：`section72_extract.in` / `section72_accumulate.in`（§7.2），`section75.in`（§7.5），
+`section711.in`（§7.11），`section142_accumulate.in`（§14.2）。新版 rmixextract 在旧手册输入之前新增范围选择，
+生成器显式声明这处等价差异；rtabhfs 在当前源码中固定为 HFS，旧版 IS 分支不提供选项。
+`section142_sort.in` 和 `section142_rci.in` 转录 §14.2 后续零阶排序及 CI；手册给出的 ICCUT 是该次计算的结果，
+新流程读取实际累积空间的块大小，在比较器中声明等价，而不把这些常数作为新计算的输入。

@@ -1,0 +1,394 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "manual_tools",
+ "order": 16,
+ "title": {
+  "zh": "手册工具：Li I 的 CSF 提取、累积与超精细表",
+  "en": "Manual tools: Li I CSF extraction, accumulation and HFS table"
+ },
+ "summary": {
+  "zh": "先重算 example1，再完成手册 §7.2、§7.5：提取 2p_3 的主要 CSF，累积到 0.9999，生成 hfs.tex。新版 rmixextract 比旧手册多问提取范围，这里按各能级分别提取。",
+  "en": "Recalculate example1, then perform §§7.2 and 7.5: extract dominant CSFs from 2p_3, accumulate to 0.9999 and write hfs.tex. The newer rmixextract asks an extra scope question; extraction here is per state."
+ },
+ "runtime": {
+  "zh": "几秒钟",
+  "en": "a few seconds"
+ },
+ "jobs": [
+  {
+   "step": "rnucleus",
+   "vals": {
+    "z": "3",
+    "a": "7",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "6.941",
+    "spin": "1.5",
+    "mu": "3.2564268",
+    "q": "-0.040"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(1,i)",
+      "active": "2s,2p",
+      "jmin": "1",
+      "jmax": "1",
+      "nexc": "0"
+     },
+     {
+      "configs": "1s(2,i)2p(1,i)",
+      "active": "2s,2p",
+      "jmin": "1",
+      "jmax": "3",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "2s_2p_DF.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2s_2p_DF.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": false,
+    "wfile": "",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": true,
+    "levels": "1\n1\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2s_2p_DF"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,*)2s(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "1",
+      "jmax": "1",
+      "nexc": "3"
+     }
+    ],
+    "saveas": "2s_3.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2s_3.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "2s_2p_DF.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": true,
+    "levels": "1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "3*",
+    "spec": "",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2s_3"
+   }
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "2s_3",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": true,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1",
+    "zf": false,
+    "zero": "odd2.c",
+    "log": ""
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "2s_3",
+    "ci": true,
+    "unique": true,
+    "log": ""
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,*)2p(1,*)",
+      "active": "3s,3p,3d",
+      "jmin": "1",
+      "jmax": "3",
+      "nexc": "3"
+     }
+    ],
+    "saveas": "2p_3.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2p_3.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "2s_2p_DF.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": true,
+    "levels": "1\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "3*",
+    "spec": "",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2p_3"
+   }
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "2p_3",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": true,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1\n1",
+    "zf": false,
+    "zero": "odd2.c",
+    "log": ""
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "2p_3",
+    "ci": true,
+    "unique": true,
+    "log": ""
+   }
+  },
+  {
+   "step": "rhfs",
+   "vals": {
+    "state": "2s_3",
+    "ci": true,
+    "lsj": true,
+    "sort": true,
+    "log": ""
+   }
+  },
+  {
+   "step": "rhfs",
+   "vals": {
+    "state": "2p_3",
+    "ci": true,
+    "lsj": true,
+    "sort": true,
+    "log": ""
+   }
+  },
+  {
+   "step": "ris4",
+   "vals": {
+    "state": "2s_3",
+    "ci": true,
+    "higher": true,
+    "save": true,
+    "log": ""
+   }
+  },
+  {
+   "step": "ris4",
+   "vals": {
+    "state": "2p_3",
+    "ci": true,
+    "higher": true,
+    "save": true,
+    "log": ""
+   }
+  },
+  {
+   "step": "rbiotransform",
+   "vals": {
+    "ci": true,
+    "init": "2s_3",
+    "final": "2p_3",
+    "log": "out_rbiotransform"
+   }
+  },
+  {
+   "step": "rtransition",
+   "vals": {
+    "ci": true,
+    "init": "2s_3",
+    "final": "2p_3",
+    "kind": "E1",
+    "m1_diffj": false,
+    "e2_diffj": false,
+    "log": "out_transition"
+   }
+  },
+  {
+   "step": "rlevels",
+   "vals": {
+    "files": "2s_3.cm 2p_3.cm",
+    "log": "energy3"
+   }
+  },
+  {
+   "step": "rtablevels",
+   "vals": {
+    "nskip": "0",
+    "files": "energy3"
+   }
+  },
+  {
+   "step": "rtabtrans1",
+   "vals": {
+    "files": "2s_3.cm\n2p_3.cm",
+    "nskip": "0",
+    "fmt": "0"
+   }
+  },
+  {
+   "step": "rtabtrans2",
+   "vals": {
+    "tfile": "2s_3.2p_3.ct",
+    "fmt": "0",
+    "ion": "",
+    "cutoff": "0",
+    "frac": "0",
+    "sorted": true,
+    "digits": "3"
+   }
+  },
+  {
+   "step": "rmixextract",
+   "vals": {
+    "state": "2p_3",
+    "ci": true,
+    "scope": "0",
+    "cutoff": "0.01",
+    "sort": true,
+    "saveas": "extracted.c"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rmixaccumulate",
+   "vals": {
+    "state": "2p_3",
+    "ci": true,
+    "fraction": "0.9999",
+    "sort": true,
+    "saveas": "accumulated.c"
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rtabhfs",
+   "vals": {
+    "files": "2s_3.chlsj\n2p_3.chlsj",
+    "nskip": "0"
+   }
+  }
+ ],
+ "reference": [
+  {
+   "file": "2s_3.cm",
+   "energies": [
+    -7.4719739834
+   ]
+  },
+  {
+   "file": "2p_3.cm",
+   "energies": [
+    -7.404260995,
+    -7.4042596827
+   ]
+  }
+ ]
+}

@@ -44,13 +44,13 @@ and moments. The sequence-only collection and plotting steps are excluded.
 | §5.9，自定义轨道顺序 | 无 / none | `rcsfgenerate.order` 只允许 `* / r / s`，没有 `u` 和配套 `clist.ref` 工作流 / Unsupported user ordering |
 | §5.10，jjgen | 无 / none | 缺 jjgen 程序页 / No jjgen form |
 | §7.1，拆分 CSF | 无 / none | case2 已包含同样的 1s²2p、n=5 SDT 列表及 n=3/4/5 拆分 / Covered by case2 |
-| §7.2，提取与压缩 | 无 / none | 无 rmixextract / rmixaccumulate 页；部分压缩流程已在 example3 的原有 custom 步骤演示 / No dedicated forms |
+| §7.2，提取与压缩 | 无 / none | 新增 manual_tools：先重算 Li I，再提取和累积 / New complete Li I workflow |
 | §7.3，轨道绘图 | 无 / none | rwfnplot 无程序页；GUI 波函数页提供绘图，但不等价于运行原始交互练习 / Viewer capability, not a runnable form workflow |
 | §7.4，LSJ 超精细输出 | 无 / none | rhfs 的 lsj 字段可处理已有 example1 输出；不是另一个独立计算模型 / Supported on example1 results |
-| §7.5，超精细表 | 无 / none | 无 rtabhfs 页 / No rtabhfs form |
+| §7.5，超精细表 | 无 / none | 新增 manual_tools；先运行 rhfs_lsj，再生成 hfs.tex / HFS-only table from calculated data |
 | §§7.6–7.9，能级、跃迁及寿命表 | example1 等 / etc. | 现有示例使用 rtablevels / rtabtrans1 / rtabtrans2；手工标签编辑不自动化 / Existing table workflows, manual editing excluded |
 | §7.10，含 LS 成分的表 | 无 / none | 无 perl_lscomp / lscomp.pl 页，且依赖先前结果 / No dedicated form |
-| §7.11，按对称块拆 ASF | 无 / none | 无 rasfsplit 页 / No rasfsplit form |
+| §7.11，按对称块拆 ASF | 无 / none | 新增 manual_asfsplit：先重算 Si VIII，再按对称块拆分 / New complete Si VIII workflow |
 | §8，输出文件说明 | 对应已有例 / existing | 解释 §6 结果，不增加计算流程 / Output descriptions, not new workflows |
 | §§9.2–9.6、10.2、11.3–11.5 | case1–3 | 实验比较、序列绘图和拟合，不是单个工作目录中的 GRASP 输入流程 / Analysis of existing results |
 | §13.1，逐层收敛建议 | 无 / none | 方法建议，无独立完整输入；已有逐层示例 / General advice, existing layer-by-layer examples |
@@ -60,7 +60,7 @@ and moments. The sequence-only collection and plotting steps are excluded.
 | §13.5，U I 改网格 | 无 / none | 需重编译网格尺寸并输入非默认网格，现有页不支持 / Requires rebuilt grid and unsupported grid fields |
 | §13.6，关联轨道不收敛 | example8 | 引用已有方法 4 示例，无新完整流程 / Refers to example8 |
 | §14.1，Fe XIII 零阶 / 一阶 | 无 / none | 新增 **manual_zf**，11 步，五个能级，ICCUT=9/15/20 / New complete calculation |
-| §14.2，波函数累积 | 无 / none | 无 rmixaccumulate 页 / No form |
+| §14.2，波函数累积 | 无 / none | 新增 manual_accumulate：重算 §14.1，再选零阶空间并做 CI / New accumulation and CI workflow |
 | §14.3，计算策略 | 无 / none | 方法建议，不给出独立完整的输入 / Strategy discussion |
 | 理论文章 §5.1，Zn 核四极矩 | 无 / none | 研究结果与文献引用，没有完整输入 / No complete inputs |
 | 理论文章 §5.2，核半径变化 | 无 / none | 研究结果；完整场移教学另见 case4 / Results, related worked workflow is case4 |

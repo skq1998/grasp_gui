@@ -192,6 +192,56 @@ program `ris4`; `group`: "odd" / "even"
 | `save` | bool | `true` | 保存角系数 (name.IOB / name.ITB)，以后重复计算时直接读取 / Save angular coefficients (name.IOB / name.ITB) for later runs — 这两个文件已存在时程序不询问 / not asked when these files already exist |
 | `log` | string | `""` | 输出日志文件 / Output log file |
 
+## `rmixextract`
+
+program `rmixextract`; `group`: "odd" / "even"
+
+> 按混合系数绝对值提取 CSF。读取 name.c、name.(c)m；输出 rcsf.out 和 name.rmx。 / Extract CSFs by absolute mixing coefficient. Reads name.c and name.(c)m; writes rcsf.out and name.rmx.
+
+| key | type | default | meaning / 含义 |
+|---|---|---|---|
+| `state` | string | `"oddCI6"` | 态名称 / State name *(2.5.0)* |
+| `ci` | bool | `true` | 混合系数来自 CI 计算 / Mixing coefficients from CI calculation — 否则读 .m / otherwise .m is read *(2.5.0)* |
+| `scope` | choice | `"0"` | 提取方式 / Extraction scope<br>`0` = 各能级分别提取 / Each state separately, `1` = 所有能级联合提取 / Across all states *(2.5.0)* |
+| `cutoff` | string | `"0.01"` | 混合系数绝对值下限 / Minimum absolute mixing coefficient *(2.5.0)* |
+| `sort` | bool | `true` | 按混合系数排序 CSF / Sort CSFs by mixing coefficient *(2.5.0)* |
+| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save rcsf.out as — 空 = 不复制 / empty = no copy *(2.5.0)* |
+
+## `rmixaccumulate`
+
+program `rmixaccumulate`; `group`: "odd" / "even"
+
+> 按混合系数平方的累积权重压缩 CSF。读取 name.c、name.(c)m；输出 rcsf.out。 / Condense CSFs by accumulated squared mixing coefficients. Reads name.c and name.(c)m; writes rcsf.out.
+
+| key | type | default | meaning / 含义 |
+|---|---|---|---|
+| `state` | string | `"oddCI6"` | 态名称 / State name *(2.5.0)* |
+| `ci` | bool | `true` | 混合系数来自 CI 计算 / Mixing coefficients from CI calculation — 否则读 .m / otherwise .m is read *(2.5.0)* |
+| `fraction` | string | `"0.9999"` | 保留的累积权重 (0–1) / Retained accumulated weight (0–1) *(2.5.0)* |
+| `sort` | bool | `true` | 按混合系数排序 CSF / Sort CSFs by mixing coefficient *(2.5.0)* |
+| `saveas` | string | `""` | 结果 rcsf.out 保存为 / Save rcsf.out as — 空 = 不复制 / empty = no copy *(2.5.0)* |
+
+## `rtabhfs`
+
+program `rtabhfs`
+
+> 读取 rhfs_lsj 生成的 name.(c)hlsj，输出超精细常数表 hfs.tex。此版本只支持 HFS 数据。 / Reads name.(c)hlsj from rhfs_lsj and writes hfs.tex. This version supports HFS data only.
+
+| key | type | default | meaning / 含义 |
+|---|---|---|---|
+| `files` | text | `"oddCI6.chlsj\nevenCI6.chlsj"` | 超精细常数文件 / Hyperfine constant files — 每行一个，最多 20 个 / One per line, at most 20 *(2.5.0)* |
+| `nskip` | string | `"0"` | 标签开头跳过的字符数 / Characters to skip at the start of labels *(2.5.0)* |
+
+## `rasfsplit`
+
+program `rasfsplit`; `group`: "odd" / "even"
+
+> 按 J 和宇称拆分 name.c、可用的 name.m / name.cm，并复制 name.w，输出 name_even1.* / name_odd1.* 等。前提：各块必须使用同一轨道集，否则拆出的 .w 没有意义。 / Split name.c and available name.m / name.cm by J and parity, and copy name.w to name_even1.* / name_odd1.* etc. Prerequisite: all blocks must share an orbital set; otherwise the split .w files are meaningless.
+
+| key | type | default | meaning / 含义 |
+|---|---|---|---|
+| `state` | string | `"oddCI6"` | 态名称 / State name *(2.5.0)* |
+
 ## `rlevels`
 
 program `rlevels`

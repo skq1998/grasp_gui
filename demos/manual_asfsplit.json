@@ -1,0 +1,255 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "manual_asfsplit",
+ "order": 17,
+ "title": {
+  "zh": "手册 §7.11：Si VIII 按对称块拆分 ASF",
+  "en": "Manual §7.11: split Si VIII ASFs by symmetry"
+ },
+ "summary": {
+  "zh": "先重算 example3 的 Si VIII，再按手册拆分 2s22p3_2p5_3 的 .c/.m/.cm/.w；前提是各块使用同一轨道集。",
+  "en": "Recalculate Si VIII from example3, then split 2s22p3_2p5_3 .c/.m/.cm/.w as in §7.11, requiring a common orbital set."
+ },
+ "runtime": {
+  "zh": "约半分钟",
+  "en": "about half a minute"
+ },
+ "jobs": [
+  {
+   "step": "rnucleus",
+   "vals": {
+    "z": "14",
+    "a": "28",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "27.9769271",
+    "spin": "1",
+    "mu": "1",
+    "q": "1"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(2,i)2p(3,i)\n1s(2,i)2p(5,i)",
+      "active": "2s,2p",
+      "jmin": "1",
+      "jmax": "5",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "2s22p3_2p5_DF.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2s22p3_2p5_DF.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": false,
+    "wfile": "",
+    "forbs": "*",
+    "method": "3",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-2\n1-4\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2s22p3_2p5_DF"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,*)2s(2,*)2p(3,*)\n1s(2,*)2p(5,*)",
+      "active": "3s,3p,3d",
+      "jmin": "1",
+      "jmax": "5",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "2s22p3_2p5_3.c"
+   }
+  },
+  {
+   "step": "rcsfinteract",
+   "vals": {
+    "mr": "2s22p3_2p5_DF.c",
+    "full": "2s22p3_2p5_3.c",
+    "ham": "1",
+    "saveas": "2s22p3_2p5_3.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2s22p3_2p5_3.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "2s22p3_2p5_DF.w",
+    "forbs": "*",
+    "method": "3",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-2\n1-4\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "3*",
+    "spec": "",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2s22p3_2p5_3"
+   }
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "2s22p3_2p5_3",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": true,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1-2\n1-4\n1",
+    "zf": false,
+    "zero": "odd2.c",
+    "log": ""
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "2s22p3_2p5_3",
+    "ci": true,
+    "unique": true,
+    "log": ""
+   }
+  },
+  {
+   "step": "rlevels",
+   "vals": {
+    "files": "2s22p3_2p5_3.cm",
+    "log": "energy3_LSJ"
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "cp",
+    "args": "2s22p3_2p5_3.w 2s22p3_2p5_3.bw",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "cp",
+    "args": "2s22p3_2p5_3.cm 2s22p3_2p5_3.cbm",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "rtransition",
+   "vals": {
+    "ci": true,
+    "init": "2s22p3_2p5_3",
+    "final": "2s22p3_2p5_3",
+    "kind": "M1",
+    "m1_diffj": false,
+    "e2_diffj": false,
+    "log": "out_transition"
+   }
+  },
+  {
+   "step": "rasfsplit",
+   "vals": {
+    "state": "2s22p3_2p5_3"
+   }
+  }
+ ],
+ "reference": [
+  {
+   "file": "2s22p3_2p5_3.cm",
+   "energies": [
+    -262.7906338757,
+    -259.497939898,
+    -263.2797840719,
+    -262.9550555465,
+    -262.7882742325,
+    -259.5241179046,
+    -262.9538205946
+   ]
+  },
+  {
+   "file": "2s22p3_2p5_3_odd1.cm",
+   "energies": [
+    -262.7906338757,
+    -259.497939898
+   ]
+  },
+  {
+   "file": "2s22p3_2p5_3_odd2.cm",
+   "energies": [
+    -263.2797840719,
+    -262.9550555465,
+    -262.7882742325,
+    -259.5241179046
+   ]
+  },
+  {
+   "file": "2s22p3_2p5_3_odd3.cm",
+   "energies": [
+    -262.9538205946
+   ]
+  }
+ ]
+}

@@ -632,6 +632,74 @@ def case4():
     return d
 
 
+def manual_tools():
+    d = example1()
+    d.id, d.order = "manual_tools", 16
+    d.title = dict(zh="手册工具：Li I 的 CSF 提取、累积与超精细表", en="Manual tools: Li I CSF extraction, accumulation and HFS table")
+    d.summary = dict(zh="先重算 example1，再完成手册 §7.2、§7.5：提取 2p_3 的主要 CSF，累积到 0.9999，生成 hfs.tex。新版 rmixextract 比旧手册多问提取范围，这里按各能级分别提取。",
+                     en="Recalculate example1, then perform §§7.2 and 7.5: extract dominant CSFs from 2p_3, accumulate to 0.9999 and write hfs.tex. The newer rmixextract asks an extra scope question; extraction here is per state.")
+    d.src = "example1/script"
+    for job in d.jobs:
+        if job["step"] == "rhfs":
+            job["vals"]["lsj"] = True
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_inputs")
+    d.group = "odd"
+    d.add("rmixextract", os.path.join(root, "section72_extract.in"), state="2p_3", ci=True, cutoff="0.01", sort=True,
+          saveas="extracted.c")
+    d.add("rmixaccumulate", os.path.join(root, "section72_accumulate.in"), state="2p_3", ci=True, fraction="0.9999",
+          sort=True, saveas="accumulated.c")
+    d.group = None
+    d.add("rtabhfs", os.path.join(root, "section75.in"), files="2s_3.chlsj\n2p_3.chlsj", nskip="0")
+
+    def equivalent(job, actual, expected):
+        if job["step"] == "rmixextract" and actual == ["0"] + expected:
+            return "new source asks per-state/all-state scope before the old manual input"
+        return ""
+
+    d.equivalent = equivalent
+    return d
+
+
+def manual_asfsplit():
+    d = example3()
+    d.id, d.order = "manual_asfsplit", 17
+    d.title = dict(zh="手册 §7.11：Si VIII 按对称块拆分 ASF", en="Manual §7.11: split Si VIII ASFs by symmetry")
+    d.summary = dict(zh="先重算 example3 的 Si VIII，再按手册拆分 2s22p3_2p5_3 的 .c/.m/.cm/.w；前提是各块使用同一轨道集。",
+                     en="Recalculate Si VIII from example3, then split 2s22p3_2p5_3 .c/.m/.cm/.w as in §7.11, requiring a common orbital set.")
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_inputs", "section711.in")
+    d.add("rasfsplit", src, state="2s22p3_2p5_3")
+    return d
+
+
+def manual_accumulate():
+    d = manual_zf()
+    d.id, d.order = "manual_accumulate", 18
+    d.title = dict(zh="手册 §14.2：由累积权重选择零阶空间", en="Manual §14.2: select the zero-order space by accumulation")
+    d.summary = dict(zh="先计算 §14.1 的 Fe XIII，再累积 0.9999 的权重得到新的零阶 CSF，排序后重做 CI。唯一新增的自定义步骤复制波函数，因为现有程序页没有只复制 .w 的字段。",
+                     en="Calculate Fe XIII from §14.1, accumulate weight 0.9999 to select a new zero-order CSF list, reorder and repeat CI. The single added custom step copies the wavefunction, as no existing form copies only .w.")
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_inputs")
+    d.add("rmixaccumulate", os.path.join(root, "section142_accumulate.in"), state="zerofirst_n4", ci=True,
+          fraction="0.9999", sort=True, saveas="zero_order_0.9999.c")
+    d.add("rcsfzerofirst", os.path.join(root, "section142_sort.in"), zero="zero_order_0.9999.c", full="zerofirst_n4.c", saveas="zerofirst_0.9999.c")
+    d.cp("zerofirst_n4.w", "zerofirst_0.9999.w")
+    d.add("rci", os.path.join(root, "section142_rci.in"), state="zerofirst_0.9999", copyfrom="", zf=True, zero="zero_order_0.9999.c", modfreq=False,
+          nqed="3", levels="1,2\n1\n1,2")
+    d.refs = ["manual_accumulate/zerofirst_0.9999.cm"]
+    initial_equivalent = d.equivalent
+
+    def equivalent(job, actual, expected):
+        if job["step"] == "rcsfzerofirst" and actual == ["zero_order_0.9999.c", "zerofirst_n4.c"] and expected == ["zero_order_0.9999.c", "rcsf.inp"]:
+            return "use the saved full CSF list instead of its identical rcsf.inp copy"
+        expanded = [value for line in actual for value in
+                    (["188", "396", "712"] if line.startswith("@ICCUT zero_order_0.9999.c ") else [line])]
+        if job["step"] == "rci" and expanded != actual and expanded == expected:
+            return "read ICCUT from the actual accumulated list rather than the manual's printed counts"
+        return initial_equivalent(job, actual, expected)
+
+    d.equivalent = equivalent
+    return d
+
+
 def graspg1():
     """graspgtest/script1/csfg: the same calculation as case 1 with CSFG lists (each rmcdhf run twice, as there)."""
     d = Demo("graspg1", 20,
@@ -702,7 +770,8 @@ def graspg1():
     return d
 
 
-DEMOS = [example1, example2, example3, example4, example5, example8, example9, case1, case4, case2, case3, manual_csfs, manual_zf, graspg1]
+DEMOS = [example1, example2, example3, example4, example5, example8, example9, case1, case4, case2, case3, manual_csfs,
+         manual_zf, manual_tools, manual_asfsplit, manual_accumulate, graspg1]
 
 
 def stdin_of(job):

@@ -13,8 +13,8 @@ import grasp_mix
 from conftest import DEMOS
 
 pytestmark = pytest.mark.grasp
-FAST = ["example1", "example2", "example8", "example9"]
-SLOW = ["case4", "example3", "example4", "example5", "case1", "case2", "case3", "manual_zf"]
+FAST = ["example1", "example2", "example8", "example9", "manual_tools"]
+SLOW = ["case4", "example3", "example4", "example5", "case1", "case2", "case3", "manual_zf", "manual_asfsplit", "manual_accumulate"]
 TOLERANCE = 1e-7          # Hartree：不同编译器 / BLAS 的舍入差别
 
 
@@ -61,6 +61,11 @@ def run_demo(name, bindir, tmp_path, mpi_prefix=""):
                        env=core.child_env(), timeout=6 * 3600)
     assert r.returncode == 0, r.stderr[-3000:]
     assert cfg["reference"], f"{name}: no reference energies"
+    outputs = {"manual_tools": ["extracted.c", "accumulated.c", "2p_3.rmx", "hfs.tex"],
+               "manual_asfsplit": ["2s22p3_2p5_3_odd1.cm", "2s22p3_2p5_3_odd2.cm", "2s22p3_2p5_3_odd3.cm"],
+               "manual_accumulate": ["zero_order_0.9999.c", "zerofirst_0.9999.cm"]}
+    for filename in outputs.get(name, []):
+        assert (wd / filename).stat().st_size > 0
     for ref in cfg["reference"]:
         path = wd / ref["file"]
         assert path.exists(), f"{ref['file']} not produced; see {wd}"

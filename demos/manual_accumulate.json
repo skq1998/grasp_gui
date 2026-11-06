@@ -1,0 +1,237 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "manual_accumulate",
+ "order": 18,
+ "title": {
+  "zh": "手册 §14.2：由累积权重选择零阶空间",
+  "en": "Manual §14.2: select the zero-order space by accumulation"
+ },
+ "summary": {
+  "zh": "先计算 §14.1 的 Fe XIII，再累积 0.9999 的权重得到新的零阶 CSF，排序后重做 CI。唯一新增的自定义步骤复制波函数，因为现有程序页没有只复制 .w 的字段。",
+  "en": "Calculate Fe XIII from §14.1, accumulate weight 0.9999 to select a new zero-order CSF list, reorder and repeat CI. The single added custom step copies the wavefunction, as no existing form copies only .w."
+ },
+ "runtime": {
+  "zh": "约 1 分钟",
+  "en": "about 1 minute"
+ },
+ "jobs": [
+  {
+   "step": "rnucleus",
+   "vals": {
+    "z": "26",
+    "a": "56",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "56",
+    "spin": "1",
+    "mu": "1",
+    "q": "1"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "1",
+    "lists": [
+     {
+      "configs": "2s(2,i)2p(6,i)3s(2,i)3p(2,i)\n2s(2,i)2p(6,i)3s(1,i)3p(2,i)3d(1,i)\n2s(2,i)2p(6,i)3p(4,i)",
+      "active": "3s,3p,3d",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "mr.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "mr.c",
+    "zf": false,
+    "zero": "odd2.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": false,
+    "wfile": "",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1,2\n1\n1,2",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "900",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "mr"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "1",
+    "lists": [
+     {
+      "configs": "2s(2,i)2p(6,5)3s(2,*)3p(2,*)\n2s(2,i)2p(6,5)3s(1,*)3p(2,*)3d(1,*)\n2s(2,i)2p(6,5)3p(4,*)",
+      "active": "4s,4p,4d,4f",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "full.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfzerofirst",
+   "vals": {
+    "zero": "mr.c",
+    "full": "full.c",
+    "saveas": "zerofirst_n4.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "zerofirst_n4.c",
+    "zf": true,
+    "zero": "mr.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "mr.w",
+    "forbs": "*",
+    "method": "2",
+    "orbs": "*",
+    "delz": "0"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1,2\n1\n1,2",
+    "weights": "5",
+    "uweights": "",
+    "vary": "4*",
+    "spec": "",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "zerofirst_n4"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "zerofirst_n4",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": false,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1,2\n1\n1,2",
+    "zf": true,
+    "zero": "mr.c",
+    "log": "outodd_rci"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rmixaccumulate",
+   "vals": {
+    "state": "zerofirst_n4",
+    "ci": true,
+    "fraction": "0.9999",
+    "sort": true,
+    "saveas": "zero_order_0.9999.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "rcsfzerofirst",
+   "vals": {
+    "zero": "zero_order_0.9999.c",
+    "full": "zerofirst_n4.c",
+    "saveas": "zerofirst_0.9999.c"
+   },
+   "group": "even"
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "cp",
+    "args": "zerofirst_n4.w zerofirst_0.9999.w",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "zerofirst_0.9999",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": false,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1,2\n1\n1,2",
+    "zf": true,
+    "zero": "zero_order_0.9999.c",
+    "log": "outodd_rci"
+   },
+   "group": "even"
+  }
+ ],
+ "reference": [
+  {
+   "file": "zerofirst_0.9999.cm",
+   "energies": [
+    -1210.0257011792,
+    -1209.6001093466,
+    -1209.983779339,
+    -1209.9412474815,
+    -1209.8028283883
+   ]
+  }
+ ]
+}
