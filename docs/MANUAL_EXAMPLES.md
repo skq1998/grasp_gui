@@ -14,8 +14,8 @@ or configuration format were changed. “No directory” means absent from `gras
 | 手册章节 / Section | `grasptest` | 示例 / Configuration | 覆盖或限制 / Coverage or limitation |
 |---|---|---|---|
 | §6.1，Li I | example1 | example1 | 已有 / Existing |
-| §6.2，B II | example2 | example2 | 已有；外部 Coupling 的其它耦合方案不包含 / Existing; external Coupling schemes excluded |
-| §6.3，Si VIII | example3 | example3 | 已有；外部 Coupling 不包含 / Existing; external Coupling excluded |
+| §6.2，B II | example2 | example2 | 新增 example2_coupling，独立安装 compas/coupling，可用 LK3 标记列能级 / New external Coupling workflow |
+| §6.3，Si VIII | example3 | example3 | 新增 example3_coupling 的部分标记；手册 sed 修补不自动化，未生成完整 LK3/JK3 能级表 / Partial recoupling only, manual label repairs excluded |
 | §6.4，Fe XV | example4 | example4 | 已有；可导出 MPI / Existing, MPI export available |
 | §6.5，Ni XIV | example5 | example5 | 已有 / Existing |
 | §6.6，扩展 MR | 无 / none | 暂无 / none | 缺 `rcsfmr` 程序页；还依赖 §6.5 的 LSJ 输出。不能用固定 MR 冒充按实际混合系数选择 / No rcsfmr form; requires §6.5 LSJ results and dynamic MR selection |

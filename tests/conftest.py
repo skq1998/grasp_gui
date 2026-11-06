@@ -71,3 +71,12 @@ def qapp():
     QtWidgets = pytest.importorskip("PySide6.QtWidgets")
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     yield app
+
+
+@pytest.fixture(scope="session")
+def coupling_bindir():
+    """外部 Coupling 独立查找；没有时跳过，不受 GRASP_REQUIRED 影响。"""
+    d = os.environ.get("COUPLING_BINDIR") or os.path.dirname(shutil.which("Coupling") or "")
+    if not d or not os.path.isfile(os.path.join(d, "Coupling")):
+        pytest.skip("Coupling not found: set COUPLING_BINDIR or PATH")
+    return d

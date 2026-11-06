@@ -332,6 +332,8 @@ GRASPG 测试单独读取 `GRASPG_BINDIR` (目录中须有 `rcsfggenerate_csfg`)
 ```bash
 GRASPG_BINDIR=/path/to/graspg/bin GRASPG_NP=2 GRASP_SLOW=1 python3 -m pytest tests/test_grasp.py -k graspg
 ```
+Coupling 是独立外部程序：`COUPLING_BINDIR=/path/to/coupling/bin GRASP_BINDIR=/path/to/grasp/bin python3 -m pytest tests/test_grasp.py -k coupling`。
+也可通过 PATH 找到 Coupling；缺少时跳过，不受 GRASP_REQUIRED 影响。
 
 下表是此前的人工 / 一次性测试：
 

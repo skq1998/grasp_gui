@@ -72,3 +72,17 @@ def run_demo(name, bindir, tmp_path, mpi_prefix=""):
         got = config.reference_energies(str(path))
         assert len(got) == len(ref["energies"])
         assert max(abs(a - b) for a, b in zip(got, ref["energies"])) < TOLERANCE, (got, ref["energies"])
+
+
+@pytest.mark.parametrize("name,state,backup", [
+    ("example2_coupling", "2s2p_DF", ".lsj.lbl_LSJ"),
+    ("example3_coupling", "2s22p3_2p5_3", ".lsj.lbl_SAVE"),
+])
+def test_coupling_reproduces_reference(name, state, backup, coupling_bindir, grasp_bindir, tmp_path, monkeypatch):
+    """COUPLING_BINDIR 或 PATH 指定外部程序，不在 CI 中额外编译。"""
+    monkeypatch.setenv("PATH", coupling_bindir + os.pathsep + os.environ.get("PATH", ""))
+    test_demo_reproduces_reference(name, grasp_bindir, tmp_path)
+    wd = tmp_path / name
+    for scheme in ("LK3", "JK3"):
+        assert (wd / f"{state}.coup3.{scheme}.lbl").stat().st_size > 0
+    assert (wd / (state + backup)).is_file()

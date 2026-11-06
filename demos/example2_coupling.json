@@ -1,0 +1,185 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "example2_coupling",
+ "order": 19,
+ "title": {
+  "zh": "例 2 的 Coupling：B II 的 LK3 / JK3 标记",
+  "en": "Example 2 Coupling: B II LK3 / JK3 labels"
+ },
+ "summary": {
+  "zh": "先计算 example2，再由 jj2lsj 写出 Coupling 文件，重耦合并用 LK3 标记列出能级；同时保留 JK3 等方案的文件。需另装 https://github.com/compas/coupling。",
+  "en": "Calculate example2, export jj2lsj data for Coupling, recouple and display levels with LK3 labels; JK3 and other schemes remain available. Requires separate installation of https://github.com/compas/coupling."
+ },
+ "runtime": {
+  "zh": "几秒钟",
+  "en": "a few seconds"
+ },
+ "jobs": [
+  {
+   "step": "rnucleus",
+   "vals": {
+    "z": "5",
+    "a": "11",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "10.81",
+    "spin": "1.5",
+    "mu": "2.6886489",
+    "q": "1"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(1,i)2p(1,i)",
+      "active": "2s,2p",
+      "jmin": "0",
+      "jmax": "4",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "2s2p_DF.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2s2p_DF.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "hf",
+    "args": "",
+    "stdin": "B,AV,5.\n  1s\n2s(1)2p(1)\nall\ny\ny\nn\nn\n",
+    "log": ""
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "cp",
+    "args": "wfn.out wfn.inp",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "rwfnmchfmcdf",
+    "args": "",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "cp",
+    "args": "rwfn.out rwfn.inp",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1\n1,2\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2s2p_DF"
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "2s2p_DF",
+    "ci": false,
+    "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "rlevels",
+   "vals": {
+    "files": "2s2p_DF.m",
+    "log": "energyDF"
+   }
+  },
+  {
+   "step": "rtablevels",
+   "vals": {
+    "nskip": "0",
+    "files": "energyDF"
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "2s2p_DF",
+    "ci": false,
+    "unique": false,
+    "coupling_files": true,
+    "coupling_backup": false,
+    "coupling_threshold": "0.01",
+    "coupling_levels": "",
+    "log": ""
+   },
+   "group": "odd"
+  },
+  {
+   "step": "coupling",
+   "vals": {
+    "state": "2s2p_DF",
+    "verbose": false,
+    "shells": "3",
+    "threshold": "0",
+    "orbitals": "1s,2s,2p",
+    "use_label": true,
+    "scheme": "LK3",
+    "backup": true
+   },
+   "group": "odd"
+  },
+  {
+   "step": "rlevels",
+   "vals": {
+    "files": "2s2p_DF.m",
+    "log": "energy_LK3"
+   }
+  }
+ ],
+ "reference": [
+  {
+   "file": "2s2p_DF.m",
+   "energies": [
+    -24.1270877674,
+    -24.1270404394,
+    -23.9154061137,
+    -24.1269457258
+   ]
+  }
+ ]
+}

@@ -328,6 +328,9 @@ class ConfigDialog(QDialog):
         if missing:
             html.append(f"<p style='color:#c00000'><b>{T('在 bin 目录和 PATH 中找不到')}:</b> "
                         f"{esc(', '.join(missing))}<br>{T('流程运行到这些程序时会出错。')}</p>")
+            for step in core.STEPS:
+                if step.prog in missing and getattr(step, "source_url", ""):
+                    html.append(f"<p>{esc(T('外部程序 {p}：请从 {url} 安装', p=step.prog, url=step.source_url))}</p>")
         commands = grasp_config.custom_commands(d)
         if commands:
             html.append(f"<p style='color:#a05000'><b>{T('自定义命令')}</b> "

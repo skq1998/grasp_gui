@@ -700,9 +700,55 @@ def manual_accumulate():
     return d
 
 
+def example2_coupling():
+    d = example2()
+    d.id, d.order = "example2_coupling", 19
+    d.title = dict(zh="例 2 的 Coupling：B II 的 LK3 / JK3 标记", en="Example 2 Coupling: B II LK3 / JK3 labels")
+    d.summary = dict(zh="先计算 example2，再由 jj2lsj 写出 Coupling 文件，重耦合并用 LK3 标记列出能级；同时保留 JK3 等方案的文件。需另装 https://github.com/compas/coupling。",
+                     en="Calculate example2, export jj2lsj data for Coupling, recouple and display levels with LK3 labels; JK3 and other schemes remain available. Requires separate installation of https://github.com/compas/coupling.")
+    d.group = "odd"
+    d.add("jj2lsj", "jj2lsj_input_couplings", state="2s2p_DF", ci=False, unique=False, coupling_files=True,
+          coupling_threshold="0.01")
+    d.add("coupling", "coupling_input", state="2s2p_DF", shells="3", threshold="0", orbitals="1s,2s,2p",
+          use_label=True, scheme="LK3", backup=True)
+    d.group = None
+    d.add("rlevels", files="2s2p_DF.m", log="energy_LK3")
+
+    def equivalent(job, actual, expected):
+        if job["step"] == "jj2lsj" and actual == expected + ["n", "n", "1"]:
+            return "current jj2lsj asks whether to write/reuse .lsj.T and for the d-shell convention"
+        return ""
+
+    d.equivalent = equivalent
+    return d
+
+
+def example3_coupling():
+    d = example3()
+    d.id, d.order = "example3_coupling", 20
+    d.title = dict(zh="例 3 的 Coupling：Si VIII 的部分能级标记", en="Example 3 Coupling: partial Si VIII level labels")
+    d.summary = dict(zh="先计算 example3，再按手册选择部分能级运行 Coupling，需另装 https://github.com/compas/coupling。"
+                     "生成 LK3 / JK3 等标记，不自动执行手册中 sed 补全未转换能级的操作，原完整 LSJ 标记备份为 .lsj.lbl_SAVE，当前标记只含所选能级。",
+                     en="Calculate example3, then run Coupling for the levels selected in the manual. Requires separate installation of https://github.com/compas/coupling. "
+                     "Produces LK3 / JK3 labels without the manual's sed repair for untransformed levels; the original complete LSJ labels are saved as .lsj.lbl_SAVE, while the current labels contain only the selected levels.")
+    d.group = "odd"
+    d.add("jj2lsj", "jj2lsj_input_coupling", state="2s22p3_2p5_3", ci=True, unique=False, coupling_files=True,
+          coupling_levels="1: 1\n2: 1-3\n3: 1", coupling_threshold="0.01", coupling_backup=True)
+    d.add("coupling", "coupling_input", state="2s22p3_2p5_3", shells="3", threshold="0",
+          orbitals="1s,2s,2p,3s,3p,3d")
+
+    def equivalent(job, actual, expected):
+        if job["step"] == "jj2lsj" and actual == expected + ["n", "n", "1"]:
+            return "current jj2lsj asks whether to write/reuse .lsj.T and for the d-shell convention"
+        return ""
+
+    d.equivalent = equivalent
+    return d
+
+
 def graspg1():
     """graspgtest/script1/csfg: the same calculation as case 1 with CSFG lists (each rmcdhf run twice, as there)."""
-    d = Demo("graspg1", 20,
+    d = Demo("graspg1", 21,
              dict(zh="GRASPG 示例 1：Mo XXXVIII，与算例 1 相同的计算用 CSFG 完成",
                   en="GRASPG example 1: Mo XXXVIII, the calculation of case 1 with CSFGs"),
              dict(zh="GRASPG 作者的第一个示例 (graspgtest/script1/csfg)，需要装有 GRASPG 的 GRASP。物理内容与算例 1 相同："
@@ -771,7 +817,9 @@ def graspg1():
 
 
 DEMOS = [example1, example2, example3, example4, example5, example8, example9, case1, case4, case2, case3, manual_csfs,
-         manual_zf, manual_tools, manual_asfsplit, manual_accumulate, graspg1]
+         manual_zf, manual_tools, manual_asfsplit, manual_accumulate, example2_coupling, example3_coupling, graspg1]
+
+
 
 
 def stdin_of(job):

@@ -1,0 +1,259 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "example3_coupling",
+ "order": 20,
+ "title": {
+  "zh": "例 3 的 Coupling：Si VIII 的部分能级标记",
+  "en": "Example 3 Coupling: partial Si VIII level labels"
+ },
+ "summary": {
+  "zh": "先计算 example3，再按手册选择部分能级运行 Coupling，需另装 https://github.com/compas/coupling。生成 LK3 / JK3 等标记，不自动执行手册中 sed 补全未转换能级的操作，原完整 LSJ 标记备份为 .lsj.lbl_SAVE，当前标记只含所选能级。",
+  "en": "Calculate example3, then run Coupling for the levels selected in the manual. Requires separate installation of https://github.com/compas/coupling. Produces LK3 / JK3 labels without the manual's sed repair for untransformed levels; the original complete LSJ labels are saved as .lsj.lbl_SAVE, while the current labels contain only the selected levels."
+ },
+ "runtime": {
+  "zh": "约半分钟",
+  "en": "about half a minute"
+ },
+ "jobs": [
+  {
+   "step": "rnucleus",
+   "vals": {
+    "z": "14",
+    "a": "28",
+    "revise": false,
+    "rms": "",
+    "skin": "2.3",
+    "mass": "27.9769271",
+    "spin": "1",
+    "mu": "1",
+    "q": "1"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,i)2s(2,i)2p(3,i)\n1s(2,i)2p(5,i)",
+      "active": "2s,2p",
+      "jmin": "1",
+      "jmax": "5",
+      "nexc": "0"
+     }
+    ],
+    "saveas": "2s22p3_2p5_DF.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2s22p3_2p5_DF.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": false,
+    "wfile": "",
+    "forbs": "*",
+    "method": "3",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-2\n1-4\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "*",
+    "spec": "*",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2s22p3_2p5_DF"
+   }
+  },
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "*",
+    "core": "0",
+    "lists": [
+     {
+      "configs": "1s(2,*)2s(2,*)2p(3,*)\n1s(2,*)2p(5,*)",
+      "active": "3s,3p,3d",
+      "jmin": "1",
+      "jmax": "5",
+      "nexc": "2"
+     }
+    ],
+    "saveas": "2s22p3_2p5_3.c"
+   }
+  },
+  {
+   "step": "rcsfinteract",
+   "vals": {
+    "mr": "2s22p3_2p5_DF.c",
+    "full": "2s22p3_2p5_3.c",
+    "ham": "1",
+    "saveas": "2s22p3_2p5_3.c"
+   }
+  },
+  {
+   "step": "rangular",
+   "vals": {
+    "csf": "2s22p3_2p5_3.c",
+    "zf": false,
+    "zero": "odd2.c"
+   }
+  },
+  {
+   "step": "rwfnestimate",
+   "vals": {
+    "use_file": true,
+    "wfile": "2s22p3_2p5_DF.w",
+    "forbs": "*",
+    "method": "3",
+    "orbs": "*",
+    "delz": "0"
+   }
+  },
+  {
+   "step": "rmcdhf",
+   "vals": {
+    "mem": false,
+    "levels": "1-2\n1-4\n1",
+    "weights": "5",
+    "uweights": "",
+    "vary": "3*",
+    "spec": "",
+    "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
+    "log": "",
+    "save": "2s22p3_2p5_3"
+   }
+  },
+  {
+   "step": "rci",
+   "vals": {
+    "state": "2s22p3_2p5_3",
+    "copyfrom": "",
+    "trans": true,
+    "modfreq": true,
+    "factor": "1.d-6",
+    "vp": true,
+    "nms": false,
+    "sms": false,
+    "se": true,
+    "nqed": "3",
+    "levels": "1-2\n1-4\n1",
+    "zf": false,
+    "zero": "odd2.c",
+    "log": ""
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "2s22p3_2p5_3",
+    "ci": true,
+    "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "rlevels",
+   "vals": {
+    "files": "2s22p3_2p5_3.cm",
+    "log": "energy3_LSJ"
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "cp",
+    "args": "2s22p3_2p5_3.w 2s22p3_2p5_3.bw",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "custom",
+   "vals": {
+    "prog": "cp",
+    "args": "2s22p3_2p5_3.cm 2s22p3_2p5_3.cbm",
+    "stdin": "",
+    "log": ""
+   }
+  },
+  {
+   "step": "rtransition",
+   "vals": {
+    "ci": true,
+    "init": "2s22p3_2p5_3",
+    "final": "2s22p3_2p5_3",
+    "kind": "M1",
+    "m1_diffj": false,
+    "e2_diffj": false,
+    "log": "out_transition"
+   }
+  },
+  {
+   "step": "jj2lsj",
+   "vals": {
+    "state": "2s22p3_2p5_3",
+    "ci": true,
+    "unique": false,
+    "coupling_files": true,
+    "coupling_backup": true,
+    "coupling_threshold": "0.01",
+    "coupling_levels": "1: 1\n2: 1-3\n3: 1",
+    "log": ""
+   },
+   "group": "odd"
+  },
+  {
+   "step": "coupling",
+   "vals": {
+    "state": "2s22p3_2p5_3",
+    "verbose": false,
+    "shells": "3",
+    "threshold": "0",
+    "orbitals": "1s,2s,2p,3s,3p,3d",
+    "use_label": false,
+    "scheme": "LK3",
+    "backup": true
+   },
+   "group": "odd"
+  }
+ ],
+ "reference": [
+  {
+   "file": "2s22p3_2p5_3.cm",
+   "energies": [
+    -262.7906338757,
+    -259.497939898,
+    -263.2797840719,
+    -262.9550555465,
+    -262.7882742325,
+    -259.5241179046,
+    -262.9538205946
+   ]
+  }
+ ]
+}

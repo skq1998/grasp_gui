@@ -162,7 +162,28 @@ program `jj2lsj`; `group`: "odd" / "even"
 | `state` | string | `"odd2"` | 态名称 / State name |
 | `ci` | bool | `false` | 混合系数来自 CI 计算 (.cm) / Mixing coefficients from CI calculation (.cm) — 否则读 .m / otherwise .m is read |
 | `unique` | bool | `true` | 需要唯一标记 (unique labeling) / Unique labeling |
+| `coupling_files` | bool | `false` | 写出 Coupling 需要的文件 / Write files for Coupling *(2.5.0)* |
+| `coupling_backup` | bool | `false` | 生成 Coupling 文件前备份 LSJ 标记 / Back up LSJ labels before writing Coupling files — 备份至 name.lsj.lbl_SAVE；须先运行默认 jj2lsj / Back up to name.lsj.lbl_SAVE; run default jj2lsj first *(2.5.0)* |
+| `coupling_threshold` | string | `"0.001"` | Coupling 输出的成分打印下限 / Composition print cutoff for Coupling output *(2.5.0)* |
+| `coupling_levels` | text | `""` | Coupling 能级选择 / Coupling level selection — 空 = 全部；否则每行：块号: 能级号，如 2: 1-3 / Empty = all; otherwise block: levels per line, e.g. 2: 1-3 *(2.5.0)* |
 | `log` | string | `""` | 输出日志文件 / Output log file |
+
+## `coupling`
+
+program `Coupling`; `group`: "odd" / "even"
+
+> 外部程序 https://github.com/compas/coupling。先在 jj2lsj 勾选写出 Coupling 文件；读取 name.lsj.c、name.lsj.j，输出 name.coupN.*.lbl 和 name.coupN.sum。 / External program https://github.com/compas/coupling. First enable Coupling output in jj2lsj. Reads name.lsj.c/name.lsj.j; writes name.coupN.*.lbl and name.coupN.sum.
+
+| key | type | default | meaning / 含义 |
+|---|---|---|---|
+| `state` | string | `"2s2p_DF"` | 态名称 / State name *(2.5.0)* |
+| `verbose` | bool | `false` | 详细输出 / Detailed output *(2.5.0)* |
+| `shells` | choice | `"3"` | 耦合壳层数 / Number of coupled shells<br>`3` = 三壳层 / Three shells, `2` = 两壳层 / Two shells, `1` = 单壳层 / One shell *(2.5.0)* |
+| `threshold` | string | `"0"` | 成分打印下限 / Composition print cutoff *(2.5.0)* |
+| `orbitals` | string | `"1s,2s,2p"` | 重耦合轨道 / Shells for recoupling — 逗号分隔，最多 12 个 / Comma-separated, at most 12 *(2.5.0)* |
+| `use_label` | bool | `false` | 结束后采用指定方案的标记 / Use the selected scheme labels afterwards *(2.5.0)* |
+| `scheme` | choice | `"LK3"` | 标记方案 / Label scheme<br>`LK3` = LK3, `JK3` = JK3, `LS3` = LS3, `LSJ3` = LSJ3, `cLSJ3` = cLSJ3, `LS` = LS, `JJ` = JJ, `LK` = LK, `JK` = JK, `LScjj` = LScjj, `jj` = jj *(2.5.0)* |
+| `backup` | bool | `true` | 先备份 name.lsj.lbl 为 name.lsj.lbl_LSJ / First back up name.lsj.lbl as name.lsj.lbl_LSJ — 采用方案标记前保存当前 LSJ 结果，不覆盖 .lsj.lbl_SAVE / Save the current LSJ result before adopting scheme labels; preserve .lsj.lbl_SAVE *(2.5.0)* |
 
 ## `rhfs`
 
