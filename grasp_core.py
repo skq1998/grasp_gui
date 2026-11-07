@@ -722,6 +722,8 @@ EN = {
     "最近打开的目录": "Recently opened directories",
     "最近的目录": "Recent directories",
     "最近的工作目录": "Recent working directories",
+    "打开工作目录…": "Open working directory…",
+    "打开其他目录…": "Open another directory…",
     "打开目录…": "Open directory…",
     "关闭": "Close",
     "窗口": "Window",

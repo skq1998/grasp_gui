@@ -25,7 +25,7 @@ import grasp_core as core
 import grasp_mix
 import grasp_workdir as workdir_ops
 from grasp_core import T
-from gui_common import button, fixed_font, hint_label, text_edit
+from gui_common import button, fixed_font, hint_label, recent_menu, text_edit
 
 
 # ---------------------------------------------------------------------------
@@ -1061,6 +1061,9 @@ class CalcPanel(QWidget):
         top.addStretch()
         directory = QPushButton(T("工作目录"))
         menu = QMenu(directory)
+        menu.addAction(T("打开工作目录…")).triggered.connect(self.pick_workdir)
+        menu.addMenu(recent_menu(menu, self.workdirRequested.emit, T("最近的工作目录"), self.pick_workdir))
+        menu.addSeparator()
         menu.addAction(T("用配置更新当前目录…")).triggered.connect(lambda: self.import_config(False, update=True))
         menu.addAction(T("恢复上一次的工作目录记录")).triggered.connect(self.restore_workdir)
         menu.addAction(T("清空工作目录…")).triggered.connect(self.clear_workdir)
@@ -1680,6 +1683,11 @@ class CalcPanel(QWidget):
         if dlg.run_added:
             self.plist.setCurrentRow(plan["append_from"])
             self.run_from_selected()
+
+    def pick_workdir(self):
+        d = QFileDialog.getExistingDirectory(self, "", self.cur_workdir)
+        if d:
+            self.workdirRequested.emit(d)
 
     def restore_workdir(self):
         if QMessageBox.question(self, T("恢复上一次的工作目录记录"),

@@ -90,12 +90,15 @@ def remember_dir(d):
         core.save_config(recent_dirs=[d] + [x for x in old if x != d][:RECENT_MAX - 1])
 
 
-def recent_menu(parent, choose, title=""):
-    """“最近的目录”菜单 (打开时读取)，选中后调用 choose(目录)。"""
+def recent_menu(parent, choose, title="", browse=None):
+    """“最近的目录”菜单 (打开时读取)，选中后调用 choose(目录)；browse 给出时，最上面是“打开其他目录…”。"""
     menu = QMenu(title, parent)
 
     def fill():
         menu.clear()
+        if browse:
+            menu.addAction(T("打开其他目录…")).triggered.connect(browse)
+            menu.addSeparator()
         dirs = recent_dirs()
         for d in dirs:
             menu.addAction(d).triggered.connect(lambda _=False, d=d: choose(d))
@@ -105,12 +108,12 @@ def recent_menu(parent, choose, title=""):
     return menu
 
 
-def recent_button(choose):
+def recent_button(choose, browse=None):
     b = QToolButton()
     b.setText(T("最近"))
     b.setToolTip(T("最近打开的目录"))
     b.setPopupMode(QToolButton.InstantPopup)
-    b.setMenu(recent_menu(b, choose))
+    b.setMenu(recent_menu(b, choose, browse=browse))
     return b
 
 
@@ -281,7 +284,7 @@ class Panel(QWidget):
         self.dir.editingFinished.connect(self.dir_edited)
         row.addWidget(self.dir, 1)
         row.addWidget(button("浏览…", self.pick_dir))
-        row.addWidget(recent_button(self.set_dir))
+        row.addWidget(recent_button(self.set_dir, self.pick_dir))
         self.dir_box.hide()
         top.addWidget(self.dir_box, 1)
         top.addWidget(button("刷新", self.scan))
@@ -377,7 +380,7 @@ class PanelWindow(QMainWindow):
         self.setCentralWidget(panel)
         fm = self.menuBar().addMenu(T("文件"))
         fm.addAction(T("打开目录…")).triggered.connect(panel.pick_dir)
-        fm.addMenu(recent_menu(fm, panel.set_dir, T("最近的目录")))
+        fm.addMenu(recent_menu(fm, panel.set_dir, T("最近的目录"), panel.pick_dir))
         fm.addSeparator()
         fm.addAction(T("关闭")).triggered.connect(self.close)
         remember_dir(panel.dir.text())

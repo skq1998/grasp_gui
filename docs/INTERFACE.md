@@ -21,7 +21,8 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-* **Working directory (工作目录)**: edit + *Browse… (浏览…)* + *Recent (最近)* menu. Changing it saves the session
+* **Working directory (工作目录)**: edit + *Browse… (浏览…)* + *Recent (最近)* menu (its first item, *Open another
+  directory… (打开其他目录…)*, opens a folder dialog). Changing it saves the session
   of the old directory, loads the new one's, and refreshes the viewers. On start the last directory is opened.
 * **Settings (设置)** toggle: collapsed it shows a one-line summary (`GRASP bin: … · serial` / `MPI n processes`);
   expanded: *GRASP bin directory (GRASP bin 目录)* + *Browse…*, *MPI processes (MPI 进程数)*, *mpirun command
@@ -51,7 +52,7 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 
 | Menu | Items |
 |---|---|
-| *File (文件)* | *Import example… (导入示例…)*, *Import configuration file… (导入配置文件…)*, *Export configuration… (导出配置…)* — *Save parameters… (保存参数…)*, *Load parameters… (载入参数…)* — *Export pipeline as shell script… (导出流程为 shell 脚本…)*, *Export Slurm job script… (导出 Slurm 作业脚本…)* — *Recent working directories (最近的工作目录)* — *Quit (退出)* |
+| *File (文件)* | *Import example… (导入示例…)*, *Import configuration file… (导入配置文件…)*, *Export configuration… (导出配置…)* — *Save parameters… (保存参数…)*, *Load parameters… (载入参数…)* — *Export pipeline as shell script… (导出流程为 shell 脚本…)*, *Export Slurm job script… (导出 Slurm 作业脚本…)* — *Open working directory… (打开工作目录…)* (Ctrl+O), *Recent working directories (最近的工作目录)* — *Quit (退出)* |
 | *View (视图)* | *Larger font (放大字体)* Ctrl++ / Ctrl+=, *Smaller font (缩小字体)* Ctrl+−, *Default font size (默认字体大小)* Ctrl+0 — the three tabs, Ctrl+1/2/3. The font size is remembered; changing it rebuilds the interface (parameters, pipeline and output are kept). |
 | *Window (窗口)* | *Open Radial wave functions / Levels in new window (在新窗口中打开…)* |
 | *Language / 语言* | 中文, English (rebuilds the interface; remembered) |
@@ -309,6 +310,8 @@ or its title when no id is present (sanitized as a file name, with a suffix if o
 The import dialog defaults to a new, empty directory. Check *Update current working directory (更新当前工作目录)*
 to use the current directory, or open *Program output → Working directory → Update current directory from
 configuration… (程序输出 → 工作目录 → 用配置更新当前目录…)*. Running directories cannot be updated or cleared.
+The same *Working directory (工作目录)* menu also has *Open working directory… (打开工作目录…)* and *Recent working
+directories (最近的工作目录)* for switching directories.
 The update preview shows a copyable list of added, removed, moved and changed steps (field values before → after),
 with other program-form changes listed separately. Steps are matched by content after filling defaults, so an
 insertion keeps later steps unchanged. Attached files are added when absent, skipped when identical; conflicts show

@@ -392,3 +392,37 @@ def test_level_diagram_box_zoom(qapp):
     QTest.mouseDClick(d, Qt.LeftButton, Qt.NoModifier, QPoint(x, int(top)))
     assert d.y_range() == full and d.history == []
     d.close()
+
+
+def test_open_working_directory_entries(qapp, tmp_path, monkeypatch, no_dialogs):
+    """文件菜单、“最近”菜单和程序输出的“工作目录”菜单都能打开任意目录，不只是最近的目录。"""
+    from PySide6.QtGui import QKeySequence
+    from PySide6.QtWidgets import QFileDialog, QMenu, QPushButton
+
+    def menu(title):
+        return next(m for m in w.findChildren(QMenu) if m.title() == core.T(title))
+
+    (tmp_path / "a").mkdir()
+    w = window(tmp_path / "a")
+    act = next(a for a in menu("文件").actions() if a.text() == core.T("打开工作目录…"))
+    assert act.shortcut() == QKeySequence(QKeySequence.Open)
+    targets = []
+    for name in ("b", "c", "d"):
+        (tmp_path / name).mkdir()
+        targets.append(str(tmp_path / name))
+    chosen = iter(targets)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: next(chosen)))
+    act.trigger()
+    assert w.cur_workdir == targets[0]
+    recent = menu("最近的工作目录")
+    recent.aboutToShow.emit()
+    first = recent.actions()[0]
+    assert first.text() == core.T("打开其他目录…")
+    first.trigger()
+    assert w.cur_workdir == targets[1]
+    button = next(b for b in w.calc.findChildren(QPushButton) if b.text() == core.T("工作目录"))
+    act = next(a for a in button.menu().actions() if a.text() == core.T("打开工作目录…"))
+    act.trigger()
+    assert w.cur_workdir == targets[2]
+    assert w.close()
+    assert no_dialogs == []
