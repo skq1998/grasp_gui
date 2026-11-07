@@ -14,7 +14,7 @@ import shutil
 import struct
 import threading
 
-from PySide6.QtCore import QMarginsF, QPointF, QRect, QRectF, QSize, QSizeF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QMarginsF, QPointF, QRect, QRectF, QSize, QSizeF, Qt, QTimer, Signal
 from PySide6.QtGui import (QColor, QFont, QFontDatabase, QFontMetricsF, QImage, QPainter, QPen, QPolygonF,
                            QTextCursor)
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
@@ -79,7 +79,7 @@ def draw_rich(p, x, baseline, segs):
 
 
 class LevelDiagram(QWidget):
-    """能级图：每个 (文件, J^π) 一列，横线为能级；滚轮缩放、拖动平移、双击复位，点击选中能级。
+    """能级图：每个 (文件, J^π) 一列，横线为能级；滚轮和拖动平移，捏合 (或 Ctrl + 滚轮) 缩放，双击复位，点击选中能级。
     从一个能级拖到另一个能级 (或按住 Shift 点击第二个能级) 选中一对能级，用于计算跃迁。
     按住右键 (或 Ctrl + 左键) 拖出一个框：放大到框内的能量范围；在空白处单击右键或按 Backspace 回到上一个视图。"""
     levelClicked = Signal(object)
@@ -472,13 +472,36 @@ class LevelDiagram(QWidget):
         else:
             super().keyPressEvent(event)
 
-    def wheelEvent(self, event):
+    def zoom(self, py, f):
+        """以屏幕纵坐标 py 处的能量为中心，把纵轴范围乘以 f。"""
         rect = self.plot_rect()
         yr = self.y_range()
-        y = yr[0] + (rect.bottom() - event.position().y()) / rect.height() * (yr[1] - yr[0])
-        f = 0.8 if event.angleDelta().y() > 0 else 1.25
+        y = self.from_py(py, rect, yr)
         self.yr = (y + (yr[0] - y) * f, y + (yr[1] - y) * f)
         self.update()
+
+    def wheelEvent(self, event):
+        """滚轮上下平移；Ctrl + 滚轮缩放 (Windows 等平台的触控板捏合也以这种方式送来)。"""
+        dy = event.angleDelta().y()
+        if event.modifiers() & Qt.ControlModifier:
+            if dy:
+                self.zoom(event.position().y(), 0.8 ** (dy / 120))
+            return
+        rect = self.plot_rect()
+        yr = self.y_range()
+        pixels = event.pixelDelta().y()        # 触控板给出像素位移，鼠标滚轮每格 120，平移 1/10 的范围
+        shift = (pixels / rect.height() if pixels else dy / 120 * 0.1) * (yr[1] - yr[0])
+        if shift:
+            self.yr = (yr[0] + shift, yr[1] + shift)
+            self.update()
+
+    def event(self, event):
+        """触控板捏合 (macOS、Wayland)：缩放。"""
+        if event.type() == QEvent.NativeGesture:
+            if event.gestureType() == Qt.ZoomNativeGesture:
+                self.zoom(event.position().y(), 1 / max(1 + event.value(), 0.1))
+            return True
+        return super().event(event)
 
     def leaveEvent(self, _event):
         self.hover = None
@@ -736,7 +759,7 @@ class LevelPanel(Panel):
         top.addWidget(self.show_links)
         top.addStretch()
         top.addWidget(help_button(T("鼠标停在能级上显示信息，点击查看组成；从一个能级拖到另一个能级 (或按住 Shift 点击) 计算跃迁，"
-                                    "算好的跃迁会画成箭头，右键点箭头可移除；滚轮缩放，拖动空白处平移，双击复位。"
+                                    "算好的跃迁会画成箭头，右键点箭头可移除；滚轮或拖动空白处上下平移，触控板捏合 (或 Ctrl + 滚轮) 缩放，双击复位。"
                                     "按住右键 (或 Ctrl + 左键) 拖出一个框可放大到框内的能量范围，单击右键或按 Backspace "
                                     "回到上一个视图。")))
         lay.addLayout(top)

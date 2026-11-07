@@ -402,7 +402,9 @@ Refresh  Energy unit [eV▾]  Export▾  ☐ Show all computed transitions of th
   (draws them as thin links); *Tips*.
 * **Diagram**: one column per J^π, grouped by file (file name above, J^π labels such as 0⁺ 1⁻); odd parity red, even
   blue; axis *Relative energy (eV) (相对能量)*. Hover a level: tooltip with details. Click: select (orange) and show its
-  composition. Wheel zooms around the mouse, drag on empty space pans, double-click resets. **Box zoom**: drag a box
+  composition. The wheel (or two-finger scrolling on a touchpad) and dragging empty space scroll the energy axis up
+  and down; **pinch** on a touchpad (or Ctrl + wheel) zooms around the pointer; double-click resets. Pinch arrives as
+  a gesture on macOS and Wayland and as Ctrl + wheel on Windows. **Box zoom**: drag a box
   with the right button (or Ctrl + left button) to zoom to its energy range; a right-click without dragging or
   Backspace returns to the previous view (repeatedly), Esc cancels a box being drawn.
   **Drag from one level to another** (or Shift-click a second level) selects a pair and opens the *Transitions* tab.

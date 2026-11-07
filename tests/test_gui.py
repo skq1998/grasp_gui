@@ -275,6 +275,61 @@ def test_progress_label_survives_status_messages(qapp, tmp_path, no_dialogs):
     assert no_dialogs == []
 
 
+def test_level_diagram_wheel_scrolls_and_pinch_zooms(qapp):
+    """滚轮上下平移 (范围不变)；Ctrl + 滚轮和触控板捏合以鼠标处为中心缩放。"""
+    from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from level_panel import PARITY_COLORS, LevelDiagram
+
+    d = LevelDiagram()
+    d.resize(600, 400)
+    levels = [dict(key=("a", i), y=float(y), label="", color=PARITY_COLORS[1], info="")
+              for i, y in enumerate((0, 100, 200, 300))]
+    d.set_columns([dict(file="a", title="a", levels=levels)], "cm⁻¹")
+    d.show()
+    qapp.processEvents()
+    rect, full = d.plot_rect(), d.y_range()
+    pos = QPointF(rect.center())
+
+    def wheel(angle, pixels=0, modifiers=Qt.NoModifier):
+        d.wheelEvent(QWheelEvent(pos, d.mapToGlobal(pos), QPoint(0, pixels), QPoint(0, angle), Qt.NoButton,
+                                 modifiers, Qt.NoScrollPhase, False))
+
+    wheel(120)                                     # 向上滚一格：看更高的能量，范围不变
+    lo, hi = d.y_range()
+    span = full[1] - full[0]
+    assert abs((lo - full[0]) - 0.1 * span) < 1e-6 and abs((hi - lo) - span) < 1e-6
+    wheel(-120)
+    assert all(abs(a - b) < 1e-6 for a, b in zip(d.y_range(), full))
+    wheel(0, pixels=int(rect.height() / 4))       # 触控板双指滑动：按像素平移
+    lo, hi = d.y_range()
+    assert abs((lo - full[0]) - span / 4) < 1e-6
+    d.yr = None
+    centre = d.from_py(pos.y(), rect, full)
+    wheel(120, modifiers=Qt.ControlModifier)      # Ctrl + 滚轮 (Windows 的捏合)：放大
+    lo, hi = d.y_range()
+    assert abs((hi - lo) - 0.8 * span) < 1e-6 and lo < centre < hi
+
+    class Pinch:
+        def type(self):
+            return QEvent.NativeGesture
+
+        def gestureType(self):
+            return Qt.ZoomNativeGesture
+
+        def position(self):
+            return pos
+
+        def value(self):
+            return 0.25
+
+    d.yr = None
+    assert d.event(Pinch())
+    lo, hi = d.y_range()
+    assert abs((hi - lo) - span / 1.25) < 1e-6 and lo < centre < hi
+    d.close()
+
+
 def test_level_diagram_box_zoom(qapp):
     """右键 (或 Ctrl + 左键) 拖出的框放大到其能量范围；单击右键或 Backspace 回到上一个视图，双击复原。"""
     from PySide6.QtCore import QPoint, Qt

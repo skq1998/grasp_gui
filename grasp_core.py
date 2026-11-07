@@ -194,11 +194,12 @@ EN = {
     "Babushkin (长度)": "Babushkin (length)",
     "Coulomb (速度)": "Coulomb (velocity)",
     "GRASP 程序的输出": "Output of the GRASP programs",
-    "鼠标停在能级上显示信息，点击查看组成；从一个能级拖到另一个能级 (或按住 Shift 点击) 计算跃迁，算好的跃迁会画成箭头，右键点箭头可移除；滚轮缩放，拖动空白处平移，双击复位。"
+    "鼠标停在能级上显示信息，点击查看组成；从一个能级拖到另一个能级 (或按住 Shift 点击) 计算跃迁，算好的跃迁会画成箭头，右键点箭头可移除；滚轮或拖动空白处上下平移，触控板捏合 (或 Ctrl + 滚轮) 缩放，双击复位。"
     "按住右键 (或 Ctrl + 左键) 拖出一个框可放大到框内的能量范围，单击右键或按 Backspace 回到上一个视图。":
         "Hover a level for details, click it to see its composition; drag from one level to another (or "
         "Shift-click) to compute the transition, which is then drawn as an arrow (right-click an arrow to remove "
-        "it); the wheel zooms, dragging empty space pans, double-click resets. Drag a box with the right button "
+        "it); the wheel or dragging empty space scrolls up and down, pinching on a touchpad (or Ctrl + wheel) "
+        "zooms, double-click resets. Drag a box with the right button "
         "(or Ctrl + left button) to zoom to its energy range; right-click or Backspace returns to the previous view.",
     "显示选中能级的全部已算跃迁": "Show all computed transitions of the selected level",
     "图上标注的跃迁": "Transitions drawn in the diagram",
