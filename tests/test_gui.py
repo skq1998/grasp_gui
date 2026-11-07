@@ -273,3 +273,42 @@ def test_progress_label_survives_status_messages(qapp, tmp_path, no_dialogs):
     assert w.progress_label.text() == ""
     assert w.close()
     assert no_dialogs == []
+
+
+def test_level_diagram_box_zoom(qapp):
+    """右键 (或 Ctrl + 左键) 拖出的框放大到其能量范围；单击右键或 Backspace 回到上一个视图，双击复原。"""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from level_panel import PARITY_COLORS, LevelDiagram
+
+    d = LevelDiagram()
+    d.resize(600, 400)
+    levels = [dict(key=("a", i), y=float(y), label="", color=PARITY_COLORS[1], info="") for i, y in enumerate((0, 100, 200, 300))]
+    d.set_columns([dict(file="a", title="a", levels=levels)], "cm⁻¹")
+    d.show()
+    qapp.processEvents()
+    rect, full = d.plot_rect(), d.y_range()
+    top, bottom = d.to_py(250, rect, full), d.to_py(150, rect, full)
+    x = int(rect.center().x())
+
+    def drag(button, modifiers, y0, y1):
+        QTest.mousePress(d, button, modifiers, QPoint(x, int(y0)))
+        QTest.mouseMove(d, QPoint(x + 5, int(y1)))
+        QTest.mouseRelease(d, button, modifiers, QPoint(x + 5, int(y1)))
+
+    drag(Qt.RightButton, Qt.NoModifier, top, bottom)
+    lo, hi = d.y_range()
+    assert abs(lo - 150) < 2 and abs(hi - 250) < 2
+    drag(Qt.LeftButton, Qt.ControlModifier, d.to_py(240, d.plot_rect(), d.y_range()),
+         d.to_py(200, d.plot_rect(), d.y_range()))
+    lo, hi = d.y_range()
+    assert abs(lo - 200) < 2 and abs(hi - 240) < 2
+    QTest.keyClick(d, Qt.Key_Backspace)
+    lo, hi = d.y_range()
+    assert abs(lo - 150) < 2 and abs(hi - 250) < 2
+    QTest.mouseClick(d, Qt.RightButton, Qt.NoModifier, QPoint(x, int(top)))     # 单击右键：回到上一个视图
+    assert d.y_range() == full
+    drag(Qt.RightButton, Qt.NoModifier, top, bottom)
+    QTest.mouseDClick(d, Qt.LeftButton, Qt.NoModifier, QPoint(x, int(top)))
+    assert d.y_range() == full and d.history == []
+    d.close()

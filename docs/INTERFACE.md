@@ -333,7 +333,9 @@ Refresh  Energy unit [eV▾]  Export▾  ☐ Show all computed transitions of th
   (draws them as thin links); *Tips*.
 * **Diagram**: one column per J^π, grouped by file (file name above, J^π labels such as 0⁺ 1⁻); odd parity red, even
   blue; axis *Relative energy (eV) (相对能量)*. Hover a level: tooltip with details. Click: select (orange) and show its
-  composition. Wheel zooms around the mouse, drag on empty space pans, double-click resets.
+  composition. Wheel zooms around the mouse, drag on empty space pans, double-click resets. **Box zoom**: drag a box
+  with the right button (or Ctrl + left button) to zoom to its energy range; a right-click without dragging or
+  Backspace returns to the previous view (repeatedly), Esc cancels a box being drawn.
   **Drag from one level to another** (or Shift-click a second level) selects a pair and opens the *Transitions* tab.
   Computed pairs are drawn as arrows from the upper to the lower level, labelled with the wavelength (e.g.
   `283.13 Å`); right-click an arrow to remove it. Arrows are saved in `<workdir>/.grasp_gui/marked.json`.

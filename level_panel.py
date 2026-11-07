@@ -80,7 +80,8 @@ def draw_rich(p, x, baseline, segs):
 
 class LevelDiagram(QWidget):
     """能级图：每个 (文件, J^π) 一列，横线为能级；滚轮缩放、拖动平移、双击复位，点击选中能级。
-    从一个能级拖到另一个能级 (或按住 Shift 点击第二个能级) 选中一对能级，用于计算跃迁。"""
+    从一个能级拖到另一个能级 (或按住 Shift 点击第二个能级) 选中一对能级，用于计算跃迁。
+    按住右键 (或 Ctrl + 左键) 拖出一个框：放大到框内的能量范围；在空白处单击右键或按 Backspace 回到上一个视图。"""
     levelClicked = Signal(object)
     pairSelected = Signal(object, object)
     arrowRemoved = Signal(object, object)
@@ -101,12 +102,16 @@ class LevelDiagram(QWidget):
         self.arrow_segments = []   # [(上能级, 下能级, 起点, 终点)]：绘制时更新，用于右键移除
         self.links = []            # [(能级, 能级, 强度 0..1)]：选中能级的全部已算跃迁 (可选)
         self.centers = {}          # 能级 -> (x, y)，绘制时更新
+        self.box = None            # 框选放大：(起点, 当前点)
+        self.history = []          # 框选放大前的视图 (纵轴范围；None = 自动)，供“回到上一个视图”
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.ClickFocus)      # 接收 Backspace
         self.setMinimumHeight(240)
 
     def set_columns(self, columns, unit):
         self.columns, self.unit = columns, unit
         self.yr = None
+        self.history = []
         self.hover = None
         self.update()
 
@@ -129,6 +134,9 @@ class LevelDiagram(QWidget):
 
     def to_py(self, y, rect, yr):
         return rect.bottom() - (y - yr[0]) / (yr[1] - yr[0]) * rect.height()
+
+    def from_py(self, py, rect, yr):
+        return yr[0] + (rect.bottom() - py) / rect.height() * (yr[1] - yr[0])
 
     def geometry_of(self, rect, widths=None):
         """各列的 (左边界 x, 宽度)：屏幕上所有列等宽；导出时按 widths (各列所需宽度) 的比例分配。"""
@@ -247,6 +255,11 @@ class LevelDiagram(QWidget):
         if not export and self.linking and self.press and self.press[0] in self.centers:
             p.setPen(QPen(SELECTED, 2, Qt.DashLine))
             p.drawLine(QPointF(*self.centers[self.press[0]]), self.linking)
+        if not export and self.box:
+            box = QRectF(*self.box).normalized()
+            p.setPen(QPen(SELECTED, 1, Qt.DashLine))
+            p.setBrush(QColor(47, 108, 223, 40))
+            p.drawRect(box)
         p.restore()
 
     def draw_labels(self, p, rect, yr, col, labels, x):
@@ -362,6 +375,10 @@ class LevelDiagram(QWidget):
         return None
 
     def mouseMoveEvent(self, event):
+        if self.box:
+            self.box = (self.box[0], event.position())
+            self.update()
+            return
         if self.press and not self.drag:
             if self.linking or (event.position() - self.press[1]).manhattanLength() > 6:
                 self.linking = event.position()
@@ -389,12 +406,17 @@ class LevelDiagram(QWidget):
             self.unsetCursor()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.RightButton:          # 右键点标注的箭头：移除
+        if event.button() == Qt.RightButton:          # 右键点标注的箭头：移除；否则开始框选
             hit = self.arrow_at(event.position())
             if hit:
                 self.arrowRemoved.emit(*hit)
+            else:
+                self.box = (event.position(), event.position())
             return
         if event.button() != Qt.LeftButton:
+            return
+        if event.modifiers() & Qt.ControlModifier:
+            self.box = (event.position(), event.position())
             return
         lv = self.level_at(event.position())
         if lv:
@@ -406,6 +428,18 @@ class LevelDiagram(QWidget):
             self.drag = (event.position(), self.y_range())
 
     def mouseReleaseEvent(self, event):
+        if self.box:
+            start, end = self.box
+            self.box = None
+            if abs(end.y() - start.y()) > 6:
+                rect, yr = self.plot_rect(), self.y_range()
+                lo, hi = sorted(self.from_py(py, rect, yr) for py in (start.y(), end.y()))
+                self.history.append(self.yr)
+                self.yr = (lo, hi)
+            elif event.button() == Qt.RightButton:  # 单击右键 (没有拖动)：回到上一个视图
+                self.back()
+            self.update()
+            return
         self.drag = None
         if self.press:
             key = self.press[0]
@@ -420,7 +454,23 @@ class LevelDiagram(QWidget):
 
     def mouseDoubleClickEvent(self, _event):
         self.yr = None
+        self.history = []
         self.update()
+
+    def back(self):
+        """回到框选放大之前的视图。"""
+        if self.history:
+            self.yr = self.history.pop()
+            self.update()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Backspace:
+            self.back()
+        elif event.key() == Qt.Key_Escape and self.box:
+            self.box = None
+            self.update()
+        else:
+            super().keyPressEvent(event)
 
     def wheelEvent(self, event):
         rect = self.plot_rect()
@@ -686,7 +736,9 @@ class LevelPanel(Panel):
         top.addWidget(self.show_links)
         top.addStretch()
         top.addWidget(help_button(T("鼠标停在能级上显示信息，点击查看组成；从一个能级拖到另一个能级 (或按住 Shift 点击) 计算跃迁，"
-                                    "算好的跃迁会画成箭头，右键点箭头可移除；滚轮缩放，拖动空白处平移，双击复位。")))
+                                    "算好的跃迁会画成箭头，右键点箭头可移除；滚轮缩放，拖动空白处平移，双击复位。"
+                                    "按住右键 (或 Ctrl + 左键) 拖出一个框可放大到框内的能量范围，单击右键或按 Backspace "
+                                    "回到上一个视图。")))
         lay.addLayout(top)
 
         split = QSplitter(Qt.Horizontal)
