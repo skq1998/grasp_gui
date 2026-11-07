@@ -1474,7 +1474,7 @@ class CalcPanel(QWidget):
         self.last_run = run_summary(st, titles)
         if not ok:
             self.write("\n*** " + self.last_run + "\n", "err")
-        self.status(self.last_run)
+        self.status("")                     # 结果只显示在常驻标签中，不再另发一条状态栏消息
         self.update_progress()
         grasp_bg.mark_seen(self.cur_workdir)
         self.runFinished.emit(ok)

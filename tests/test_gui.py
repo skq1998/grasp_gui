@@ -286,6 +286,7 @@ def test_failed_step_stays_in_status_bar(qapp, tmp_path, no_dialogs):
     w.calc.run_pipeline()
     spin(qapp, lambda: not w.calc.busy, timeout=30)
     expected = core.T("上次运行在第 {i}/{n} 步 {t} 出错", i=2, n=3, t=w.calc.pipeline[1]["title"])
+    assert expected not in w.statusBar().currentMessage()   # 结果只在常驻标签中显示一处
     w.statusBar().showMessage("other page message")
     w.show_tab("levels")
     qapp.processEvents()
