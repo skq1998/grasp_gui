@@ -143,7 +143,7 @@ def command():
     return [sys.executable, os.path.abspath(__file__)]
 
 
-def launch(workdir, jobs, cfg):
+def launch(workdir, jobs, cfg, started_by=None):
     """在后台启动运行进程。返回 Popen (界面用它回收进程)；目录中已有运行进程时抛出 RuntimeError。"""
     probe = connect(workdir)
     if probe:
@@ -151,7 +151,10 @@ def launch(workdir, jobs, cfg):
         raise RuntimeError(T("此目录已有计算在运行"))
     req = os.path.join(workdir, RUN_REQUEST)
     with open(req, "w", encoding="utf-8") as f:
-        json.dump(dict(jobs=jobs, cfg=cfg, lang=core.LANG), f, ensure_ascii=False)
+        request = dict(jobs=jobs, cfg=cfg, lang=core.LANG)
+        if started_by is not None:
+            request["started_by"] = started_by
+        json.dump(request, f, ensure_ascii=False)
     # 新会话：关闭终端、ssh 断开时不会收到 SIGHUP；输出全部经由通道和 RUN_LOG
     return subprocess.Popen(command() + [workdir], cwd=workdir, env=core.child_env(), stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -162,7 +165,7 @@ def launch(workdir, jobs, cfg):
 # ---------------------------------------------------------------------------
 
 class Server:
-    def __init__(self, workdir, listener, jobs, cfg):
+    def __init__(self, workdir, listener, jobs, cfg, started_by=None):
         self.workdir, self.listener, self.jobs, self.cfg = workdir, listener, jobs, cfg
         self.lock = threading.Lock()
         self.attached = threading.Event()
@@ -173,6 +176,8 @@ class Server:
         self.runner = core.Runner(self.emit)
         self.state = dict(pid=os.getpid(), host=socket.gethostname(), start=time.strftime("%Y-%m-%d %H:%M:%S"),
                           titles=[j.get("title", j.get("prog", "")) for j in jobs], step=0, status="running")
+        if started_by is not None:
+            self.state["started_by"] = started_by
         write_state(workdir, self.state)
 
     def send(self, msg):
@@ -291,7 +296,7 @@ def serve(workdir):
         return 1
     import signal
     core.set_lang(req.get("lang", "zh"))
-    server = Server(workdir, listener, req["jobs"], req["cfg"])
+    server = Server(workdir, listener, req["jobs"], req["cfg"], req.get("started_by"))
     # SIGTERM / SIGHUP (例如用户用 kill 结束运行进程)：按“停止”处理，结束正在运行的程序
     signal.signal(signal.SIGTERM, lambda *_: server.stop())
     signal.signal(signal.SIGHUP, signal.SIG_IGN)

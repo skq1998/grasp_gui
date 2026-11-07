@@ -738,6 +738,7 @@ EN = {
   grasp_gui 文件             按文件内容打开对应的页并只勾选这个文件：
                              混合系数文件 (.m、.cm) → 能级图，径向波函数文件 (.w) → 径向波函数
   grasp_gui check|script|steps|reference …   共享配置的命令行工具 (不打开窗口)，见 grasp_gui check --help
+  grasp_gui mcp …                           MCP stdio 服务 (默认关闭)，见 grasp_gui mcp --help
   选项 --lang zh|en          界面语言
 
 以 grasp_levels 或 grasp_wfn 为名的符号链接直接打开对应的页，例如：
@@ -749,6 +750,7 @@ EN = {
   grasp_gui FILE             open the page for the file's contents with only this file checked:
                              mixing coefficient file (.m, .cm) -> levels, radial wave functions (.w) -> wfn
   grasp_gui check|script|steps|reference …   command-line tools for shared configurations (no window), see grasp_gui check --help
+  grasp_gui mcp …                           MCP stdio service (off by default), see grasp_gui mcp --help
   option --lang zh|en        interface language
 
 A symbolic link named grasp_levels or grasp_wfn opens that page directly, e.g.
@@ -803,6 +805,48 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
         "Note: this machine's systemd setting (KillUserProcesses=yes) ends all processes of this login when it ends (ssh disconnected or logged out), including background runs. See \"Background runs\" in docs/INTERFACE.md for remedies.",
     "能级图中正在进行的跃迁计算会结束。": "Transition calculations in progress in the level diagram will be stopped.",
     "计算正在运行。可以让它在后台继续，以后再打开这个工作目录即可接上并查看结果。": "A run is in progress. It can continue in the background; open this working directory again later to reattach and see the results.",
+    # MCP 与外部修改的记录
+    "MCP 可读取允许目录中的结果、创建和更新方案、启动与停止计算。客户端通过标准输入输出连接，不开放端口。": (
+        "MCP can read results, create and update plans, and start or stop calculations in the allowed "
+        "directory. Clients connect through standard input/output; no port is opened."),
+    "MCP 已关闭": "MCP disabled",
+    "MCP 已关闭。只能由用户本人打开（GUI 的“设置”菜单，或用户自己在终端运行命令）；请告知用户，不要代为执行。": (
+        "MCP is disabled. Only the user may enable it (in the GUI Settings menu or in their own terminal). "
+        "Inform the user; do not run commands on their behalf."),
+    "MCP 已关闭；请由用户运行 grasp_gui mcp --enable 打开": (
+        "MCP is disabled; the user must run grasp_gui mcp --enable to enable it"),
+    "MCP 已打开": "MCP enabled",
+    "MCP 默认关闭；请先由用户运行 grasp_gui mcp --enable": "MCP is off by default; the user must first run grasp_gui mcp --enable",
+    "[此计算由 MCP agent 启动]": "[This calculation was started by an MCP agent]",
+    "保留我的修改": "Keep my changes",
+    "允许 AI agent 通过 MCP 使用本程序": "Allow AI agents via MCP",
+    "图片文件必须使用 PNG、SVG 或 PDF 扩展名": "Image files must have a PNG, SVG or PDF extension",
+    "工作目录记录": "Working-directory record",
+    "工作目录记录已改变": "Working-directory record changed",
+    "工作目录记录已被其他程序修改。请选择载入新记录，或保留并覆盖为当前修改。": (
+        "Another program changed the record. Load the new record, or keep your changes and overwrite it."),
+    "工作目录记录已被其他程序修改，请重新载入": "Another program changed the record; reload it",
+    "已载入外部修改的记录；新增步骤由用户决定是否运行": "Loaded the externally changed record; the user decides whether to run added steps",
+    "必须且只能提供 config 或 example 之一": "Provide exactly one of config or example",
+    "无法保存 MCP 开关": "Cannot save the MCP setting",
+    "无法生成 PNG": "Cannot generate PNG",
+    "无法连接后台运行进程，请检查运行状态和日志": "Cannot connect to the background runner; check its state and log",
+    "此目录没有工作目录记录": "This directory has no working-directory record",
+    "没有可绘制的径向波函数": "No radial wavefunctions to plot",
+    "没有可绘制的能级": "No levels to plot",
+    "没有正在运行的任务": "No task is running",
+    "确定用当前修改覆盖外部记录吗？": "Overwrite the external record with your current changes?",
+    "示例不存在：{name}": "Unknown example: {name}",
+    "程序页不存在：{step}": "Unknown program page: {step}",
+    "结果太大，请减少文件、能级或成分数量": "Result too large; request fewer files, levels or components",
+    "绘图需要 Qt；当前服务器没有图形库": "Plotting requires Qt; this server has no graphics library",
+    "自定义命令默认拒绝；请由用户用 --allow-custom 启动服务": (
+        "Custom commands are refused by default; the user must start the service with --allow-custom"),
+    "覆盖外部记录": "Overwrite external record",
+    "计算在另一台机器上运行，请在那台机器上停止": "The calculation is running on another machine; stop it there",
+    "起始步骤超出流程范围": "Starting step is outside the pipeline",
+    "路径必须位于允许的根目录中": "The path must be inside the allowed root directory",
+    "载入新的记录": "Load new record",
     # 工作目录的配置更新与清理
     "附带输入清单的格式有误": "Invalid attached-input list",
     "附带输入清单已改变，请重新预览": "Attached-input list has changed; preview again",
@@ -1055,13 +1099,24 @@ def write_csv(path, header, rows):
         w.writerows(rows)
 
 
-def save_config(**kw):
+def saved_run_settings():
+    """GUI 与无窗口服务采用相同的运行设置和首次 MPI 默认值。"""
     cfg = load_config()
-    cfg.update(kw)
+    bindir, mpirun = default_bindir(), cfg.get("mpirun", "mpirun")
+    if "np" not in cfg:
+        cfg["np"] = default_mpi_np(bindir, mpirun)
+        save_config(np=cfg["np"])
+    return dict(bindir=bindir, np=int(cfg["np"]), mpirun=mpirun,
+                mpitmp=cfg.get("mpitmp", "tmp_mpi"), nice=cfg.get("nice", True))
+
+
+def save_config(**kw):
+    import grasp_session
     try:
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(cfg, f)
+        with grasp_session.locked(CONFIG_FILE):
+            cfg = load_config()
+            cfg.update(kw)
+            grasp_session.atomic(os.path.realpath(CONFIG_FILE), json.dumps(cfg).encode("utf-8"))
     except OSError:
         pass
 
@@ -2540,13 +2595,11 @@ def load_session(workdir):
 def save_session(workdir, data):
     if not os.path.isdir(workdir):
         return False
-    path = os.path.join(workdir, SESSION_FILE)
+    import grasp_session
     try:
-        with open(path + ".tmp", "w") as f:
-            json.dump(data, f, ensure_ascii=False, indent=1)
-        os.replace(path + ".tmp", path)     # 先写临时文件，避免中断时留下不完整的记录
+        grasp_session.write(workdir, data)
         return True
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 

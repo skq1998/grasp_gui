@@ -18,6 +18,10 @@ if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
 
+if __name__ == "__main__" and sys.argv[1:2] == ["mcp"]:
+    import grasp_mcp
+    sys.exit(grasp_mcp.main(sys.argv[2:]))
+
 if __name__ == "__main__" and sys.argv[1:2] == ["_run"] and len(sys.argv) == 3:
     # 后台运行进程 (见 grasp_bg.py)：不加载 Qt
     import grasp_bg
@@ -253,6 +257,11 @@ class MainWindow(QMainWindow):
             act = vm.addAction(T(title))
             act.setShortcut(QKeySequence(f"Ctrl+{i}"))
             act.triggered.connect(lambda _=False, k=kind: self.show_tab(k))
+        settings_menu = mb.addMenu(T("设置"))
+        self.mcp_action = settings_menu.addAction(T("允许 AI agent 通过 MCP 使用本程序"))
+        self.mcp_action.setCheckable(True)
+        self.mcp_action.setChecked(core.load_config().get("mcp_enabled", False))
+        self.mcp_action.toggled.connect(self.toggle_mcp)
         wm = mb.addMenu(T("窗口"))
         for kind, title in self.TABS[1:]:
             wm.addAction(T("在新窗口中打开{t}", t=T(title))).triggered.connect(
@@ -264,6 +273,36 @@ class MainWindow(QMainWindow):
             act.triggered.connect(lambda _=False, c=code: self.set_language(c))
             group.addAction(act)
             lm.addAction(act)
+
+    def toggle_mcp(self, enabled):
+        core.save_config(mcp_enabled=enabled)
+        actual = core.load_config().get("mcp_enabled", False)
+        if actual != enabled:
+            self.mcp_action.blockSignals(True)
+            self.mcp_action.setChecked(actual)
+            self.mcp_action.blockSignals(False)
+            QMessageBox.warning(self, T("设置"), T("无法保存 MCP 开关"))
+            return
+        if not enabled:
+            self.calc.hide_mcp_origin()
+        if enabled:
+            import grasp_mcp
+            box = QMessageBox(self)
+            box.setWindowTitle(T("允许 AI agent 通过 MCP 使用本程序"))
+            box.setTextFormat(Qt.PlainText)
+            box.setText(grasp_mcp.instructions("~/grasp_calcs"))
+            box.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+            box.exec()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.ActivationChange and self.isActiveWindow() and self.calc:
+            self.mcp_action.blockSignals(True)
+            self.mcp_action.setChecked(core.load_config().get("mcp_enabled", False))
+            self.mcp_action.blockSignals(False)
+            if not self.mcp_action.isChecked():
+                self.calc.hide_mcp_origin()
+            self.calc.check_external()
 
     def restore_layout(self):
         """恢复上次的窗口大小、计算页中参数区 / 输出区以及流程 / 程序输出的分隔位置。"""
@@ -303,7 +342,9 @@ class MainWindow(QMainWindow):
             if ans != QMessageBox.Yes:
                 event.ignore()
                 return
-        self.calc.shutdown(stop)
+        if not self.calc.shutdown(stop):
+            event.ignore()
+            return
         for p in self.panels.values():
             p.shutdown()
         for w in list(gc.PANEL_WINDOWS):
@@ -369,8 +410,10 @@ class MainWindow(QMainWindow):
         self.workdir.setText(new)
         if new == self.cur_workdir:
             return
+        if not self.calc.set_workdir(new):
+            self.workdir.setText(self.cur_workdir)
+            return
         self.cur_workdir = new
-        self.calc.set_workdir(new)
         for p in self.panels.values():
             p.set_dir(new)
         core.save_config(workdir=new)
@@ -432,6 +475,7 @@ USAGE = """用法：
   grasp_gui 文件             按文件内容打开对应的页并只勾选这个文件：
                              混合系数文件 (.m、.cm) → 能级图，径向波函数文件 (.w) → 径向波函数
   grasp_gui check|script|steps|reference …   共享配置的命令行工具 (不打开窗口)，见 grasp_gui check --help
+  grasp_gui mcp …                           MCP stdio 服务 (默认关闭)，见 grasp_gui mcp --help
   选项 --lang zh|en          界面语言
 
 以 grasp_levels 或 grasp_wfn 为名的符号链接直接打开对应的页，例如：

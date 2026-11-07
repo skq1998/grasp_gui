@@ -11,7 +11,7 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 ## Main window / 主窗口
 
 ```
-┌ Menu: File  View  Window  Language ──────────────────────────────────────────┐
+┌ Menu: File  View  Settings  Window  Language ──────────────────────────────────────────┐
 │ Working directory [__________________________] Browse… Recent▾ ▸Settings     │
 │ GRASP bin: /opt/grasp/bin · serial          (summary; ▾Settings expands it)  │
 │ ┌ Calculation ┬ Radial wave functions ┬ Levels ┐          Open in new window │
@@ -55,7 +55,25 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 | *File (文件)* | *Import example… (导入示例…)*, *Import configuration file… (导入配置文件…)*, *Export configuration… (导出配置…)* — *Save parameters… (保存参数…)*, *Load parameters… (载入参数…)* — *Export pipeline as shell script… (导出流程为 shell 脚本…)*, *Export Slurm job script… (导出 Slurm 作业脚本…)* — *Open working directory… (打开工作目录…)* (Ctrl+O), *Recent working directories (最近的工作目录)* — *Quit (退出)* |
 | *View (视图)* | *Larger font (放大字体)* Ctrl++ / Ctrl+=, *Smaller font (缩小字体)* Ctrl+−, *Default font size (默认字体大小)* Ctrl+0 — the three tabs, Ctrl+1/2/3. The font size is remembered; changing it rebuilds the interface (parameters, pipeline and output are kept). |
 | *Window (窗口)* | *Open Radial wave functions / Levels in new window (在新窗口中打开…)* |
+| *Settings (设置)* | *Allow AI agents via MCP (允许 AI agent 通过 MCP 使用本程序)*: checkable, off by default. Enabling shows a selectable explanation and Claude/Codex/Gemini client configurations; disabling rejects subsequent MCP tools, while background runs continue. 设置项默认关闭；勾选后弹出说明和可复制配置，取消后后台计算继续。See [MCP](MCP.md). |
 | *Language / 语言* | 中文, English (rebuilds the interface; remembered) |
+
+### External session changes / 外部记录修改
+
+Before saving and on focus return, the calculation panel checks whether another program changed its
+workdir record. A dialog shows the same change summary as the configuration update preview. **Load new
+record (载入新的记录)** is the default and does not start new steps. **Keep my changes (保留我的修改)**
+requires another confirmation before overwriting. Cancel leaves the record untouched. A write error is
+reported; a read-only viewer can still close, while starting a run requires a saved record.
+
+保存之前和窗口重新获得焦点时，计算页检查工作目录记录。外部修改会显示与更新预览相同的摘要；
+默认载入新记录，新增步骤不自动运行；保留自己的修改须再次确认覆盖。取消不写入。保存失败会提示，
+只读查看仍可关闭；开始计算前必须保存成功。
+
+While MCP is enabled, opening a calculation with `started_by: "mcp"` shows **[This calculation was
+started by an MCP agent] ([此计算由 MCP agent 启动])** in the output, including after completion.
+With MCP disabled, the toggle is the only agent-related interface item.
+MCP 打开时，打开该来源的计算会在输出区显示来源；关闭时不显示 agent 提示，只有菜单开关。
 
 ### Command line / 命令行
 

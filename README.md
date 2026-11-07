@@ -13,6 +13,8 @@ GRASP2018 的图形界面：在表单中填写各程序的参数，界面自动�
 在 [Releases 页面](https://github.com/skq1998/grasp_gui/releases/latest) 下载独立可执行文件 (不需要 Python)：
 桌面电脑用 `grasp_gui-linux-x86_64` (glibc ≥ 2.35)，旧服务器和 `ssh -X` 用 `grasp_gui-legacy-linux-x86_64` (glibc ≥ 2.17)。
 
+[MCP service / MCP 服务](docs/MCP.md)：headless local/SSH access, **off by default / 默认关闭**。
+
 ## Screenshots / 截图
 
 The screenshots show example 4 of the GRASP2018 manual (Fe XV), imported with *File → Import example…* and run

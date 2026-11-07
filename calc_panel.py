@@ -23,6 +23,7 @@ import grasp_bg
 import grasp_config
 import grasp_core as core
 import grasp_mix
+import grasp_session as sessions
 import grasp_workdir as workdir_ops
 from grasp_core import T
 from gui_common import button, fixed_font, hint_label, recent_menu, text_edit
@@ -496,6 +497,35 @@ class ConfigDialog(QDialog):
         return os.path.abspath(os.path.expanduser(self.dir.text().strip()))
 
 
+class SessionChangedDialog(QDialog):
+    """外部记录默认载入，覆盖需要在调用方另行确认。"""
+
+    def __init__(self, parent, text):
+        super().__init__(parent)
+        self.setWindowTitle(T("工作目录记录已改变"))
+        self.resize(850, 560)
+        self.choice = "load"
+        lay = QVBoxLayout(self)
+        label = QLabel(T("工作目录记录已被其他程序修改。请选择载入新记录，或保留并覆盖为当前修改。"))
+        label.setWordWrap(True)
+        lay.addWidget(label)
+        summary = QPlainTextEdit(text)
+        summary.setReadOnly(True)
+        lay.addWidget(summary)
+        bar = QHBoxLayout()
+        load = button("载入新的记录", lambda: self.choose("load"))
+        load.setDefault(True)
+        bar.addWidget(load)
+        bar.addWidget(button("保留我的修改", lambda: self.choose("keep")))
+        bar.addStretch()
+        bar.addWidget(button("取消", self.reject))
+        lay.addLayout(bar)
+
+    def choose(self, choice):
+        self.choice = choice
+        self.accept()
+
+
 class UpdateDialog(QDialog):
     """应用前显示可复制的改动摘要；附带文件冲突逐项选择，默认保留。"""
 
@@ -884,6 +914,8 @@ class CalcPanel(QWidget):
         self.remote = None             # 本目录的计算在另一台机器上运行时：读取其 RUN_LOG 的线程的标记
         self.pipeline = []
         self.session_cleared = False
+        self.session_revision = None
+        self.checking_session = False
         self.busy = False
         self.group = core.GROUPS[0]
         self.groups = {g: core.group_defaults(g) for g in core.GROUPS}
@@ -1121,10 +1153,12 @@ class CalcPanel(QWidget):
 
     def shutdown(self, stop=False):
         """关闭主窗口前：保存本目录的记录；运行中的计算在后台继续，stop 为真时停止它。"""
+        if not self.save_session():
+            return False
         if self.busy and stop:
             self.stop_run()
         self.detach()
-        self.save_session()
+        return True
 
     # ---- 态组 ----
     def group_forms(self):
@@ -1196,8 +1230,9 @@ class CalcPanel(QWidget):
         """切换工作目录：先保存旧目录的记录，再载入新目录的记录。"""
         d = os.path.abspath(d)
         if d == self.cur_workdir:
-            return
-        self.save_session()
+            return True
+        if not self.save_session():
+            return False
         if self.busy:
             self.write("\n" + T("[原目录 {d} 的计算在后台继续；再次打开该目录即可接上]", d=self.cur_workdir) + "\n", "info")
         self.detach()
@@ -1205,11 +1240,16 @@ class CalcPanel(QWidget):
         self.session_cleared = False
         self.last_run = ""
         self.open_workdir(d)
+        return True
 
     def open_workdir(self, d):
         if not os.path.isdir(d):
             return
-        data = core.load_session(d)
+        try:
+            data, self.session_revision = sessions.read(d)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("工作目录记录"), str(e))
+            return
         if data:
             self.session_cleared = False
             self.apply(data)
@@ -1218,13 +1258,64 @@ class CalcPanel(QWidget):
             self.status(T("此目录还没有记录，沿用当前参数"))
         self.show_background(d)
 
-    def save_session(self):
-        if self.session_cleared:
-            return
+    def check_external(self):
+        if self.checking_session or self.session_cleared:
+            return "unchanged"
+        self.checking_session = True
+        try:
+            data, revision = sessions.read(self.cur_workdir)
+            if revision == self.session_revision:
+                return "unchanged"
+            local = self.collect()
+            dlg = SessionChangedDialog(self, workdir_ops.compare(local, data or {})["text"])
+            if dlg.exec() != QDialog.Accepted:
+                return "cancel"
+            if dlg.choice == "load":
+                self.session_revision = revision
+                self.apply(data or dict(steps={s.key: s.defaults() for s in core.STEPS}, groups={}, pipeline=[]))
+                self.filesChanged.emit()
+                self.status(T("已载入外部修改的记录；新增步骤由用户决定是否运行"))
+                return "loaded"
+            if QMessageBox.question(self, T("覆盖外部记录"),
+                    T("确定用当前修改覆盖外部记录吗？"), QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No) != QMessageBox.Yes:
+                return "cancel"
+            self._save_record(revision)
+            return "saved"
+        except sessions.Conflict as e:
+            QMessageBox.warning(self, T("工作目录记录"), str(e))
+            return "cancel"
+        except (OSError, ValueError, KeyError) as e:
+            QMessageBox.warning(self, T("工作目录记录"), str(e))
+            return "unavailable"
+        finally:
+            self.checking_session = False
+
+    def _save_record(self, expected):
         data = self.collect()
-        for key in ("workdir", "bindir"):     # 与目录无关的设置不放进目录记录
+        for key in ("workdir", "bindir"):
             data.pop(key)
-        core.save_session(self.cur_workdir, data)
+        self.session_revision = sessions.write(self.cur_workdir, data, expected)
+
+    def save_session(self, require_saved=False):
+        if self.session_cleared:
+            return True
+        action = self.check_external()
+        if action == "cancel":
+            return False
+        if action == "unavailable":
+            return not require_saved
+        if action in ("loaded", "saved"):
+            return True
+        try:
+            self._save_record(self.session_revision)
+        except sessions.Conflict as e:
+            QMessageBox.warning(self, T("工作目录记录"), str(e))
+            return False
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("工作目录记录"), str(e))
+            return not require_saved
+        return True
 
     # ---- 输出 ----
     def poll(self):
@@ -1233,6 +1324,8 @@ class CalcPanel(QWidget):
         try:
             while True:
                 s, tag = self.q.get_nowait()
+                if s == T("[此计算由 MCP agent 启动]") + "\n" and not core.load_config().get("mcp_enabled", False):
+                    continue
                 if tag in ("done", "step"):
                     if segs:                       # 先显示此前的输出
                         self.q_segments(segs)
@@ -1303,8 +1396,11 @@ class CalcPanel(QWidget):
             return
         cfg = dict(self.run.values(), cwd=self.cur_workdir)
         self.session_cleared = False
+        if self.check_external() not in ("unchanged", "saved"):
+            return
         self.run.save()
-        self.save_session()
+        if not self.save_session(require_saved=True):
+            return
         self.detach()                      # 不再读取另一台机器上的计算的输出
         try:
             proc = grasp_bg.launch(self.cur_workdir, jobs, cfg)
@@ -1383,21 +1479,36 @@ class CalcPanel(QWidget):
         grasp_bg.mark_seen(self.cur_workdir)
         self.runFinished.emit(ok)
 
+    def hide_mcp_origin(self):
+        """关闭开关后移去来源提示，保留已有计算输出及其格式。"""
+        self.poll()
+        for text in ("[此计算由 MCP agent 启动]", core.EN["[此计算由 MCP agent 启动]"]):
+            cursor = self.out.document().find(text)
+            while not cursor.isNull():
+                cursor.select(QTextCursor.BlockUnderCursor)
+                cursor.removeSelectedText()
+                cursor.deleteChar()
+                cursor = self.out.document().find(text)
+
     def show_background(self, d):
         """打开目录时：有计算在运行就接上；上次在后台结束的计算 (尚未看过结果) 显示其输出的末尾和结果。"""
         st = grasp_bg.status(d)
         if not st:
             return
+        origin = (T("[此计算由 MCP agent 启动]") + "\n"
+                  if st.get("started_by") == "mcp" and core.load_config().get("mcp_enabled", False) else "")
         when = T("开始于 {t}", t=st.get("start", "?"))
         if st["status"] == "running" and not st["remote"]:
             sock = grasp_bg.connect(d, timeout=2)
             if sock:
                 self.out.clear()
+                self.write(origin, "info")
                 self.write(T("[接上后台运行的计算，{w}]", w=when) + "\n", "info")
                 self.attach(sock, st.get("titles", []))
                 return
             st["status"] = "lost"
         if st["status"] == "running":
+            self.write(origin, "info")
             self.write("\n" + T("[此目录的计算正在 {h} 上运行，{w}；以下输出读自 {f}]", h=st.get("host", "?"), w=when,
                                  f=grasp_bg.RUN_LOG) + "\n", "info")
             self.remote = token = object()
@@ -1408,8 +1519,10 @@ class CalcPanel(QWidget):
         self.last_run = run_summary(st, st.get("titles", []))
         self.update_progress()
         if st.get("seen"):
+            self.write(origin, "info")
             return
         self.out.clear()
+        self.write(origin, "info")
         self.write(T("[上次在后台运行的计算，{w}，结束于 {e}]", w=when, e=st.get("end", "?")) + "\n", "info")
         self.write(grasp_bg.log_tail(d))
         i, titles = st.get("step", 0), st.get("titles", [])
@@ -1592,6 +1705,7 @@ class CalcPanel(QWidget):
             d = os.path.abspath(str(data["workdir"]))
             if d != self.cur_workdir:
                 self.cur_workdir = d
+                _, self.session_revision = sessions.read(d)
                 self.workdirRequested.emit(d)       # 主窗口更新工作目录一栏 (不再载入该目录的记录)
         self.slurm.update(data.get("slurm", {}))
         steps = data.get("steps", {})
@@ -1659,12 +1773,15 @@ class CalcPanel(QWidget):
         self.status(T("已导入“{t}”到 {p}；点“▶ 运行全部”开始计算", t=grasp_config.text(cfg, "title"), p=path))
 
     def update_workdir(self, cfg):
+        if self.check_external() == "cancel":
+            return
         try:
             plan = workdir_ops.prepare_update(self.cur_workdir, cfg, self.collect())
             dlg = UpdateDialog(self, plan)
             if dlg.exec() != QDialog.Accepted:
                 return
             data = workdir_ops.apply_update(plan, dlg.overwrite())
+            _, self.session_revision = sessions.read(self.cur_workdir)
         except (OSError, ValueError, KeyError) as e:
             QMessageBox.warning(self, T("更新当前工作目录"), str(e))
             return
@@ -1690,11 +1807,14 @@ class CalcPanel(QWidget):
             self.workdirRequested.emit(d)
 
     def restore_workdir(self):
+        if self.check_external() == "cancel":
+            return
         if QMessageBox.question(self, T("恢复上一次的工作目录记录"),
                                T("只恢复流程和参数，计算结果与附带文件不变。当前记录也会备份；连续恢复两次会回到恢复前的状态。确定恢复吗？")) != QMessageBox.Yes:
             return
         try:
             data = workdir_ops.restore(self.cur_workdir)
+            _, self.session_revision = sessions.read(self.cur_workdir)
         except (OSError, ValueError) as e:
             QMessageBox.warning(self, T("恢复上一次的工作目录记录"), str(e))
             return
@@ -1703,6 +1823,8 @@ class CalcPanel(QWidget):
         self.status(T("已恢复上一次的工作目录记录"))
 
     def clear_workdir(self):
+        if self.check_external() == "cancel":
+            return
         started = False
         try:
             root = workdir_ops.safe_root(self.cur_workdir, allow_untracked=True)

@@ -241,13 +241,7 @@ class RunSettings(QWidget):
 
 def saved_settings():
     """没有主窗口时的运行设置：主窗口保存的 GRASP bin 目录和 MPI 设置。"""
-    cfg = core.load_config()
-    bindir, mpirun = core.default_bindir(), cfg.get("mpirun", "mpirun")
-    if "np" not in cfg:
-        cfg["np"] = core.default_mpi_np(bindir, mpirun)
-        core.save_config(np=cfg["np"])
-    return dict(bindir=bindir, np=int(cfg["np"]), mpirun=mpirun,
-                mpitmp=cfg.get("mpitmp", "tmp_mpi"), nice=cfg.get("nice", True))
+    return core.saved_run_settings()
 
 
 # ---------------------------------------------------------------------------

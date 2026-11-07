@@ -12,6 +12,7 @@ import tempfile
 import grasp_bg as bg
 import grasp_config as config
 import grasp_core as core
+import grasp_session as sessions
 from grasp_core import T
 
 BACKUPS = 5
@@ -245,6 +246,11 @@ def prepare_update(workdir, cfg, current=None):
 
 
 def apply_update(plan, overwrite=()):
+    with sessions.locked(plan["root"]):
+        return _apply_update(plan, overwrite)
+
+
+def _apply_update(plan, overwrite=()):
     root = plan["root"]
     idle(root)
     try:
@@ -312,6 +318,11 @@ def apply_update(plan, overwrite=()):
 
 
 def restore(workdir):
+    with sessions.locked(workdir):
+        return _restore(workdir)
+
+
+def _restore(workdir):
     idle(workdir)
     choices = backups(workdir)
     if not choices:
@@ -424,6 +435,11 @@ def _remove(fd, name):
 
 
 def clear(plan, selected, confirmation=None):
+    with sessions.locked(plan["root"]):
+        return _clear(plan, selected, confirmation)
+
+
+def _clear(plan, selected, confirmation=None):
     root = safe_root(plan["root"], plan["allow_untracked"])
     if plan["all_files"] and confirmation != os.path.basename(root):
         raise ValueError(T("请输入目录名确认：{name}", name=os.path.basename(root)))
