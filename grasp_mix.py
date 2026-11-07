@@ -16,6 +16,9 @@ import array
 import os
 import re
 import struct
+import sys
+
+import grasp_index as index
 
 HARTREE_CM = 219474.6313632     # 1 a.u. 能量 = 219474.63 cm⁻¹
 HARTREE_EV = 27.211386245988
@@ -39,7 +42,15 @@ class Level:
         return sorted(comps, key=lambda t: -t[1] * t[1])
 
     def leading(self):
+        if hasattr(self, "_leading"):
+            return self._leading
         return max(range(len(self.coeffs)), key=lambda i: abs(self.coeffs[i])) + 1
+
+    def top_components(self, limit, min_weight=0.0):
+        """界面只需前 limit 项；完整 components() 的语义不变。"""
+        if hasattr(self, "_top") and (limit <= len(self._top) or len(self.coeffs) <= len(self._top)):
+            return [(i, c) for i, c in self._top[:limit] if c * c >= min_weight]
+        return self.components(min_weight)[:limit]
 
 
 class Block:
@@ -58,56 +69,71 @@ class Block:
         return f"{self.J}{'+' if self.parity > 0 else '-'}"
 
 
-def _records(data):
-    pos = 0
-    while pos < len(data):
-        size, = struct.unpack_from("<i", data, pos)
-        end = pos + 4 + size
-        if size < 0 or end + 4 > len(data) or struct.unpack_from("<i", data, end)[0] != size:
-            raise ValueError("not a Fortran unformatted file")
-        yield data[pos + 4:end]
-        pos = end + 4
+class Coefficients:
+    """按能级访问系数；迭代分块读取，单个索引只读一个 double。"""
+
+    def __init__(self, saved, rec, offset, count):
+        self.saved, self.rec, self.offset, self.count = saved, rec, offset, count
+
+    def __len__(self):
+        return self.count
+
+    def __iter__(self):
+        index.unchanged(self.saved)
+        with open(self.saved[0], "rb") as f:
+            for values in index.doubles(f, self.rec, self.offset, self.count):
+                yield from values
+        index.unchanged(self.saved)
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            return array.array("d", (self[j] for j in range(*i.indices(self.count))))
+        i = i + self.count if i < 0 else i
+        if not 0 <= i < self.count:
+            raise IndexError(i)
+        index.unchanged(self.saved)
+        with open(self.saved[0], "rb") as f:
+            return struct.unpack("<d", b"".join(index.chunks(f, self.rec, self.offset + i * 8, 8)))[0]
 
 
 class Blocks(list):
-    """read_mix 的结果：[Block]；partial 为真时文件尚未写完 (只含完整的块)。"""
+    """open_mix / read_mix 的结果：[Block]；partial 为真时文件尚未写完 (只含完整的块)。"""
     partial = False
 
 
-def read_mix(path):
-    """读取混合系数文件，返回 [Block]；各 Block.levels 为 [Level]。
+def open_mix(path, summary=False, workers=None, cancel=None, progress=None, k=index.TOP_K):
+    """只读元数据，系数按需访问；summary 额外准备并缓存前 k 项。
+    尚未写完的文件只取完整的块，并把结果的 partial 设为真；文件头不完整时抛出 ValueError。"""
+    data = (index.prepare_mix(path, k, workers, cancel, progress) if summary else index.mix_index(path, cancel))
+    blocks = Blocks()
+    blocks.partial = bool(data.get("partial"))
+    for meta in data["blocks"]:
+        b = Block(meta["nb"], meta["ncf"], meta["twoj1"], meta["parity"])
+        for i in range(meta["nev"]):
+            coeffs = Coefficients(data["stamp"], meta["records"][-1], i * b.ncf * 8, b.ncf)
+            lv = Level(b, meta["ids"][i], meta["energies"][i], coeffs)
+            if data.get("top_k", 0):
+                lv._top = meta["top"][i]
+                lv._leading = meta["leading"][i]
+                value = next((c for pos, c in lv._top if pos == lv._leading), None)
+                lv._leading_coeff = value if value is not None else lv.coeffs[lv._leading - 1]
+            b.levels.append(lv)
+        blocks.append(b)
+    return blocks
 
-    逐块写出、尚未写完的文件 (如 GRASPG 的 rci_block_csfg 正在计算时；rlevels_csfg 也能读) 只取完整的块，
-    并把结果的 partial 设为真；文件头不完整时抛出 ValueError。"""
-    with open(path, "rb") as f:
-        recs = _records(f.read())
-        try:
-            if next(recs)[:6] != b"G92MIX":
-                raise ValueError("not a GRASP mixing coefficient file (G92MIX)")
-            nelec, ncftot, nw, nvectot, nvecsiz, nblock = struct.unpack("<6i", next(recs)[:24])
-        except StopIteration:
-            raise ValueError("truncated mixing coefficient file") from None
-        blocks = Blocks()
-        try:
-            for _ in range(nblock):
-                nb, ncf, nev, twoj1, parity = struct.unpack("<5i", next(recs)[:20])
-                block = Block(nb, ncf, twoj1, parity)
-                if nev > 0:
-                    ivec = struct.unpack(f"<{nev}i", next(recs)[:4 * nev])
-                    e = struct.unpack(f"<{nev + 1}d", next(recs)[:8 * (nev + 1)])
-                    vec = array.array("d")
-                    vec.frombytes(next(recs)[:8 * ncf * nev])
-                    for k in range(nev):
-                        block.levels.append(Level(block, ivec[k], e[0] + e[k + 1], vec[k * ncf:(k + 1) * ncf]))
-                blocks.append(block)
-        except (StopIteration, ValueError, struct.error):
-            blocks.partial = True
+
+def read_mix(path):
+    """完整读取的兼容接口；逐能级分块读取，不再保留整个原文件的副本。"""
+    blocks = open_mix(path)
+    for b in blocks:
+        for lv in b.levels:
+            lv.coeffs = array.array("d", lv.coeffs)
     return blocks
 
 
 def mix_symmetries(path):
     """混合系数文件中各块的 (2J, 宇称)，按块的顺序。"""
-    return [(b.twoj1 - 1, b.parity) for b in read_mix(path)]
+    return [(b.twoj1 - 1, b.parity) for b in open_mix(path)]
 
 
 def _record(body):
@@ -116,74 +142,139 @@ def _record(body):
 
 
 def write_mix_subset(src, dst, keep):
-    """只保留 (2J, 宇称) 在 keep 中的块，写出新的混合系数文件；块号重新从 1 编起，
-    文件头中的 CSF 总数、能级总数、混合系数总数 (Σ ncf·nev) 和块数随之更新。"""
-    with open(src, "rb") as f:
-        recs = list(_records(f.read()))
-    nelec, ncftot, nw, nvectot, nvecsiz, nblock = struct.unpack("<6i", recs[1][:24])
-    blocks, i = [], 2
-    for _ in range(nblock):
-        nb, ncf, nev, twoj1, parity = struct.unpack("<5i", recs[i][:20])
-        n = 4 if nev > 0 else 1
-        if (twoj1 - 1, parity) in keep:
-            blocks.append((ncf, nev, recs[i:i + n]))
-        i += n
-    out = [recs[0], struct.pack("<6i", nelec, sum(b[0] for b in blocks), nw, sum(b[1] for b in blocks),
-                                sum(b[0] * b[1] for b in blocks), len(blocks)) + recs[1][24:]]
-    for nb, (_, _, rs) in enumerate(blocks, 1):
-        out.append(struct.pack("<i", nb) + rs[0][4:])
-        out += rs[1:]
-    with open(dst, "wb") as f:
-        f.write(b"".join(_record(r) for r in out))
-    return len(blocks)
+    """重写总计数和块号；所选记录按原始字节流复制，支持续记录。"""
+    if os.path.realpath(src) == os.path.realpath(dst) or (os.path.exists(dst) and os.path.samefile(src, dst)):
+        raise ValueError("source and destination must differ")
+    data = index.mix_index(src)
+    selected = [b for b in data["blocks"] if (b["twoj1"] - 1, b["parity"]) in keep]
+    counts = list(data["header"])
+    counts[1] = sum(b["ncf"] for b in selected)
+    counts[3] = sum(b["nev"] for b in selected)
+    counts[4] = sum(b["ncf"] * b["nev"] for b in selected)
+    counts[5] = len(selected)
+    with open(src, "rb") as source, open(dst, "wb") as out:
+        out.write(_record(index.body(source, data["records"][0])))
+        header = index.body(source, data["records"][1])
+        out.write(_record(struct.pack("<6i", *counts) + header[24:]))
+        for nb, b in enumerate(selected, 1):
+            rs = b["records"]
+            header = index.body(source, rs[0])
+            out.write(_record(struct.pack("<i", nb) + header[4:]))
+            for rec in rs[1:]:
+                source.seek(rec["start"])
+                remaining = rec["end"] - rec["start"]
+                while remaining:
+                    raw = source.read(min(index.CHUNK, remaining))
+                    if not raw:
+                        raise ValueError("truncated mixing coefficient file")
+                    out.write(raw)
+                    remaining -= len(raw)
+    index.unchanged(data["stamp"])
+    return len(selected)
 
 
 def write_csf_subset(src, dst, positions):
-    """只保留 CSF 文件中第 positions 个块 (从 0 开始，与混合系数文件的块顺序一致)，块之间仍以 " *" 分隔。"""
-    with open(src) as f:
-        lines = f.read().splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.startswith("CSF(s):")) + 1
-    blocks, cur = [], []
-    for ln in lines[start:]:
-        if ln.strip() == "*":
-            blocks.append(cur)
-            cur = []
-        else:
-            cur.append(ln)
-    blocks.append(cur)
-    kept = [blocks[i] for i in sorted(positions)]
-    body = []
-    for k, b in enumerate(kept):
-        if k:
-            body.append(" *")
-        body += b
-    with open(dst, "w") as f:
-        f.write("\n".join(lines[:start] + body) + "\n")
+    """按索引跳到所选块，流式复制并保留旧写法的换行和分隔符。"""
+    if os.path.realpath(src) == os.path.realpath(dst) or (os.path.exists(dst) and os.path.samefile(src, dst)):
+        raise ValueError("source and destination must differ")
+    data = index.csf_index(src)
+    kept = [data["blocks"][i] for i in sorted(positions)]
+    with open(src, "rb") as source, open(dst, "w") as out:
+        for line in source:
+            text = line.decode("utf-8").rstrip("\r\n")
+            out.write(text + "\n")
+            if text.startswith("CSF(s):"):
+                break
+        for i, b in enumerate(kept):
+            if i:
+                out.write(" *\n")
+            source.seek(b["start"])
+            while source.tell() < b["end"]:
+                line = source.readline()
+                if not line:
+                    raise ValueError("truncated CSF file")
+                out.write(line.decode("utf-8").rstrip("\r\n") + "\n")
+    index.unchanged(data["stamp"])
+
+
+class CsfBlock:
+    """通过稀疏偏移查找三行 CSF；只缓存最近的一小部分。"""
+
+    def __init__(self, saved, meta):
+        import base64
+        from collections import OrderedDict
+
+        self.saved, self.meta = saved, meta
+        self.offsets = array.array("Q")
+        self.offsets.frombytes(base64.b64decode(meta["offsets"], validate=True))
+        if sys.byteorder != "little":
+            self.offsets.byteswap()
+        self.cache = OrderedDict()
+
+    def __len__(self):
+        return self.meta["ncf"]
+
+    def __iter__(self):
+        index.unchanged(self.saved)
+        with open(self.saved[0], "rb") as f:
+            f.seek(self.meta["start"])
+            for _ in range(len(self)):
+                raw = f.readline()
+                while raw and not raw.strip():
+                    raw = f.readline()
+                yield parse_csf(raw, f.readline(), f.readline())
+        index.unchanged(self.saved)
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            return [self[j] for j in range(*i.indices(len(self)))]
+        i = i + len(self) if i < 0 else i
+        return self.read_many([i])[i]
+
+    def read_many(self, positions, cancel=None):
+        """合并同一检查点内的请求，跳过未显示 CSF 的正则解析。"""
+        index.unchanged(self.saved)
+        out, groups = {}, {}
+        for i in positions:
+            if not 0 <= i < len(self):
+                raise IndexError(i)
+            if i in self.cache:
+                out[i] = self.cache[i]
+                self.cache.move_to_end(i)
+            else:
+                groups.setdefault(i // index.STRIDE, set()).add(i)
+        with open(self.saved[0], "rb") as f:
+            for group, wanted in sorted(groups.items()):
+                index.checkpoint(cancel)
+                f.seek(self.offsets[group])
+                for i in range(group * index.STRIDE, max(wanted) + 1):
+                    raw = f.readline()
+                    while raw and not raw.strip():
+                        raw = f.readline()
+                    a, b = f.readline(), f.readline()
+                    if i in wanted:
+                        out[i] = parse_csf(raw, a, b)
+                        self.cache[i] = out[i]
+                        if len(self.cache) > 1024:
+                            self.cache.popitem(last=False)
+        index.unchanged(self.saved)
+        return out
+
+
+def open_csfs(path, cancel=None, progress=None):
+    data = index.csf_index(path, cancel, progress)
+    return [CsfBlock(data["stamp"], b) for b in data["blocks"]]
+
+
+def parse_csf(raw, a, b):
+    orbitals = re.sub(r"\s*\(\s*", "(", raw.decode("utf-8").strip())
+    orbitals = re.sub(r"\s*\)\s*", ") ", orbitals).strip()
+    return orbitals, " ".join(a.decode("utf-8").split() + b.decode("utf-8").split())
 
 
 def read_csfs(path):
-    """读取 CSF 文件，返回各块的 CSF 列表 [[(组态, 耦合)]]，与混合系数文件的块一一对应。"""
-    with open(path) as f:
-        lines = f.read().splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.startswith("CSF(s):")) + 1
-    blocks, current, i = [], [], start
-    while i < len(lines):
-        if lines[i].strip() == "*":
-            blocks.append(current)
-            current = []
-            i += 1
-            continue
-        if not lines[i].strip():
-            i += 1
-            continue
-        orbitals = re.sub(r"\s*\(\s*", "(", lines[i].strip())
-        orbitals = re.sub(r"\s*\)\s*", ") ", orbitals).strip()
-        coupling = " ".join((lines[i + 1].split() if i + 1 < len(lines) else []) +
-                            (lines[i + 2].split() if i + 2 < len(lines) else []))
-        current.append((orbitals, coupling))
-        i += 3
-    blocks.append(current)
-    return blocks
+    """完整读取的兼容接口；界面用 open_csfs 按需读取。"""
+    return [list(b) for b in open_csfs(path)]
 
 
 LEVEL_RE = re.compile(r"^\s*(\d+)\s+(\d+(?:/2)?)\s+([+-])\s+(-?\d+\.\d+)\s+([\d.]+)%")
@@ -215,7 +306,7 @@ _sig_cache = {}            # 路径 -> (mtime, 特征)
 
 def _cached(path, fn):
     try:
-        mtime = os.path.getmtime(path)
+        mtime = index.stamp(path)
     except OSError:
         return None
     hit = _sig_cache.get((path, fn))
@@ -250,55 +341,28 @@ def is_csf_file(path):
 
 
 def _mix_signature(path):
-    """(轨道数, ((CSF 数, J, 宇称), ...))，只读文件头和各块的块头。"""
-    with open(path, "rb") as f:
-        recs = _records(f.read())
-    next(recs)
-    nelec, ncftot, nw, nvectot, nvecsiz, nblock = struct.unpack("<6i", next(recs)[:24])
-    blocks = []
-    for _ in range(nblock):
-        nb, ncf, nev, twoj1, parity = struct.unpack("<5i", next(recs)[:20])
-        b = Block(nb, ncf, twoj1, parity)
-        blocks.append((ncf, b.J, "+" if parity > 0 else "-"))
-        if nev > 0:
-            next(recs), next(recs), next(recs)
-    return nw, tuple(blocks)
+    data = index.mix_index(path)
+    blocks = [Block(b["nb"], b["ncf"], b["twoj1"], b["parity"]) for b in data["blocks"]]
+    return data["header"][2], tuple((b.ncf, b.J, "+" if b.parity > 0 else "-") for b in blocks)
 
 
 JP_RE = re.compile(r"(\d+(?:/2)?)([+-])$")
 
 
-def _csf_signature(path):
-    """(轨道数, ((CSF 数, J, 宇称), ...))：轨道数为核心和外层轨道之和，J^π 取自每块第一个 CSF 的第 3 行。"""
-    with open(path) as f:
-        lines = f.read().splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.startswith("CSF(s):"))
-    nw = sum(len(ln.split()) for ln in lines[:start] if not ln.rstrip().endswith(":"))
-    # 与 read_csfs 一样每个 CSF 占 3 行 (第 2 行可能是空行)
-    lines = lines[start + 1:] + ["*"]
-    blocks, ncf, jp, i = [], 0, None, 0
-    while i < len(lines):
-        if lines[i].strip() == "*":
-            if ncf:
-                blocks.append((ncf, *(jp.groups() if jp else ("?", "?"))))
-            ncf, jp = 0, None
-            i += 1
-        elif not lines[i].strip():
-            i += 1
-        else:
-            if not ncf:
-                jp = JP_RE.search(lines[i + 2].strip()) if i + 2 < len(lines) else None
-            ncf += 1
-            i += 3
-    return nw, tuple(blocks)
+def _csf_signature(path, cancel=None, progress=None):
+    data = index.csf_index(path, cancel, progress)
+    return data["nw"], tuple((b["ncf"], *b["jp"]) for b in data["blocks"] if b["ncf"])
 
 
 def csf_orbitals(path):
     """CSF 文件用到的全部轨道 (核心和外层)，如 ["1s", "2s", "2p-", "2p"]。"""
     with open(path) as f:
-        lines = f.read().splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.startswith("CSF(s):"))
-    return [t for ln in lines[:start] if not ln.rstrip().endswith(":") for t in ln.split()]
+        lines = []
+        for line in f:
+            if line.startswith("CSF(s):"):
+                break
+            lines.append(line)
+    return [t for ln in lines if not ln.rstrip().endswith(":") for t in ln.split()]
 
 
 def mix_signature(path):
@@ -309,7 +373,7 @@ def csf_signature(path):
     return _cached(path, _csf_signature)
 
 
-def find_csf_for(mix_path):
+def find_csf_for(mix_path, cancel=None, progress=None):
     """找与混合系数文件对应的 CSF 文件：特征 (轨道数、各块的 CSF 数与 J^π) 必须一致。
     先试同名的 .c，再试 rcsf.inp / rcsf.out，最后在目录中所有 CSF 文件里找 (新的优先)。"""
     sig = mix_signature(mix_path)
@@ -324,11 +388,16 @@ def find_csf_for(mix_path):
         others = []
     seen = set()
     for p in first + others:
+        index.checkpoint(cancel)
         if p in seen or not os.path.isfile(p):
             continue
         seen.add(p)
-        if is_csf_file(p) and csf_signature(p) == sig:
-            return p
+        if is_csf_file(p):
+            try:
+                if _csf_signature(p, cancel, progress) == sig:
+                    return p
+            except (OSError, ValueError, StopIteration, struct.error, UnicodeDecodeError, IndexError):
+                continue
     return None
 
 
@@ -500,3 +569,40 @@ def find_mix_files(directory):
     files = [n for n in names if not is_biorthogonal(n) and os.path.isfile(os.path.join(directory, n))
              and is_mix_file(os.path.join(directory, n))]
     return sorted(files, key=natural_key)
+
+
+def load_result_files(paths, limit, directory=None, cancel=None, progress=None):
+    """在协调线程完成索引、配对和主要标签，返回前核对源文件未改变。"""
+    data = {}
+    if directory or paths:
+        index.clean_cache(directory or os.path.dirname(paths[0]))
+    for path in paths:
+        index.checkpoint(cancel)
+        try:
+            saved = index.stamp(path)
+            blocks = open_mix(path, summary=True, cancel=cancel, progress=progress, k=limit)
+            csf_path = find_csf_for(path, cancel, progress)
+            csfs, csf_saved = None, None
+            if csf_path:
+                csf_saved = index.stamp(csf_path)
+                csfs = open_csfs(csf_path, cancel, progress)
+            lsj_path, lsj = find_lsj_for(path, blocks)
+            for b in blocks:
+                leads = csfs[b.nb - 1].read_many([lv.leading() - 1 for lv in b.levels], cancel) if csfs else {}
+                for lv in b.levels:
+                    index.checkpoint(cancel)
+                    lv._leading_csf = leads[lv.leading() - 1] if csfs else ("", "")
+            index.unchanged(saved)
+            if csf_saved:
+                index.unchanged(csf_saved)
+            data[path] = blocks, csfs, csf_path, lsj, lsj_path
+        except (OSError, ValueError, StopIteration, struct.error, IndexError) as e:
+            data[path] = e
+    return data
+
+
+def load_composition(lv, csfs, limit, cancel=None, progress=None):
+    """只解析当前能级实际可能显示的 CSF，阈值切换无需重新读取。"""
+    comps = lv.top_components(limit)
+    names = csfs[lv.block.nb - 1].read_many([i - 1 for i, c in comps], cancel) if csfs else {}
+    return [(i, c, *names.get(i - 1, ("", ""))) for i, c in comps]

@@ -880,7 +880,7 @@ def reference(d, roots):
         if not path:
             print(f"  {d.id}: no reference result {name}")
             continue
-        blocks = grasp_mix.read_mix(path)
+        blocks = grasp_mix.open_mix(path)
         out.append(dict(file=os.path.basename(name), energies=[round(lv.energy, 10) for b in blocks for lv in b.levels]))
     return out
 

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QVBoxLayout, QWidget)
 
 import grasp_core as core
+import grasp_index as index
 import grasp_mix as mix
 import grasp_trans as tr
 from grasp_core import T
@@ -33,6 +34,9 @@ from wfn_panel import fmt, nice_ticks
 # (下拉框中的名称 (用时再翻译), 表头和坐标轴中的简写, 1 a.u. 折合多少, 显示格式)；第一个为默认单位
 UNITS = [("eV", "eV", mix.HARTREE_EV, "{:.5f}"), ("cm⁻¹", "cm⁻¹", mix.HARTREE_CM, "{:.2f}"),
          ("原子单位 (Hartree)", "a.u.", 1.0, "{:.8f}")]
+
+
+from grasp_mix import load_result_files as read_level_files, load_composition as read_composition
 
 
 class NumItem(QTableWidgetItem):
@@ -719,6 +723,13 @@ class LevelPanel(Panel):
         super().__init__()
         self.settings = settings   # 返回运行设置 (bindir, np, mpirun, mpitmp, nice) 的函数
         self.cache = {}            # 路径 -> (mtime, 数据)
+        self.reader = index.ReadWorker()
+        self.read_generation = 0
+        self.read_stamp = None
+        self.read_data = {}
+        self.compositions = {}
+        self.composition_token = None
+        self.loading = False
         self.levels = {}           # key -> (文件标签, 路径, Level)
         self.key_by_id = {}        # (绝对路径, 2J, 宇称, 序号) -> key
         self.current = None
@@ -841,6 +852,8 @@ class LevelPanel(Panel):
     def scan(self):
         """列出混合系数文件；默认勾选 CI 结果 (.cm)，没有时勾选最新的 .m (保留已勾选的)。"""
         d = self.dir.text()
+        # 重新扫描也要重新配对：可能只有 CSF / LSJ 候选发生变化。
+        self.read_stamp = None
         checked = {self.files.item(i).data(Qt.UserRole) for i in range(self.files.count())
                    if self.files.item(i).checkState() == Qt.Checked}
         paths = [os.path.join(d, n) for n in mix.find_mix_files(d)]
@@ -862,7 +875,7 @@ class LevelPanel(Panel):
 
     def cached(self, path, reader):
         try:
-            mtime = os.path.getmtime(path)
+            mtime = index.stamp(path)
         except OSError as e:
             return e
         hit = self.cache.get((path, reader))
@@ -878,15 +891,7 @@ class LevelPanel(Panel):
     def load(self, path):
         """(blocks, csfs, CSF 文件, {(nb, pos): LSJ}, LSJ 文件)；没有对应文件时为 None / {}。
         CSF 列表和 LSJ 结果按内容配对，不依赖文件名。读不了混合系数文件时返回异常。"""
-        blocks = self.cached(path, mix.read_mix)
-        if isinstance(blocks, Exception):
-            return blocks
-        csf_path = mix.find_csf_for(path)
-        csfs = self.cached(csf_path, mix.read_csfs) if csf_path else None
-        if isinstance(csfs, Exception):
-            csfs, csf_path = None, None
-        lsj_path, lsj = mix.find_lsj_for(path, blocks)
-        return blocks, csfs, csf_path, lsj, lsj_path
+        return self.read_data.get(path)
 
     # ---- 能级图与能级列表 ----
     def unit_info(self):
@@ -899,6 +904,26 @@ class LevelPanel(Panel):
         self.redraw()
 
     def redraw(self, *_):
+        paths = [self.files.item(i).data(Qt.UserRole) for i in range(self.files.count())
+                 if self.files.item(i).checkState() == Qt.Checked]
+        saved = []
+        for path in paths:
+            try:
+                saved.append(index.stamp(path))
+            except OSError:
+                saved.append([path, None, None])
+        stamp = self.dir.text(), saved
+        if stamp != self.read_stamp:
+            self.read_stamp = stamp
+            self.read_generation += 1
+            self.read_data = {}
+            self.compositions = {}
+            self.composition_token = None
+            self.loading = bool(paths)
+            self.reader.submit(("load", self.read_generation), read_level_files, paths, self.MAX_ROWS, self.dir.text())
+        self.render_levels()
+
+    def render_levels(self):
         unit_label, factor, efmt = self.unit_info()
         data = []
         for i in range(self.files.count()):
@@ -907,6 +932,8 @@ class LevelPanel(Panel):
                 continue
             path = it.data(Qt.UserRole)
             res = self.load(path)
+            if res is None:
+                continue
             if isinstance(res, Exception):
                 it.setForeground(QColor("#c00"))
                 it.setToolTip(T("无法读取：{e}", e=res))
@@ -961,8 +988,9 @@ class LevelPanel(Panel):
             c, w, label = max(lsj[1], key=lambda t: t[1])
             return label, 100 * w
         i = lv.leading()
-        c = lv.coeffs[i - 1]
-        label = csfs[lv.block.nb - 1][i - 1][0] if csfs else f"CSF {i}"
+        c = lv._leading_coeff if hasattr(lv, "_leading_coeff") else lv.coeffs[i - 1]
+        label = lv._leading_csf[0] if csfs and hasattr(lv, "_leading_csf") else (
+            csfs[lv.block.nb - 1][i - 1][0] if csfs else f"CSF {i}")
         return label, 100 * c * c
 
     def fill_levels(self, rows, unit_label, efmt):
@@ -982,6 +1010,9 @@ class LevelPanel(Panel):
 
     # ---- 组成 ----
     def select(self, key):
+        if self.composition_token and self.composition_token[2] != key:
+            self.reader.cancel.set()
+            self.composition_token = None
         self.current = key
         self.diagram.selected = key
         self.diagram.links = self.links_of(key)
@@ -1005,19 +1036,24 @@ class LevelPanel(Panel):
         self.title.setText(f"<b>{fname}</b> &nbsp; J<sup>π</sup> = {self.jp(lv.block)} &nbsp; #{lv.pos} &nbsp; "
                            f"{efmt.format((lv.energy - e0) * factor)} {unit_label} &nbsp; ({lv.energy:.9f} a.u.)")
         wmin = self.min_w.value() / 100
-        comps = lv.components(wmin)
-        shown = comps[:self.MAX_ROWS]
+        if self.current not in self.compositions:
+            token = ("composition", self.read_generation, self.current)
+            if self.composition_token != token:
+                self.composition_token = token
+                self.reader.submit(token, read_composition, lv, csfs, self.MAX_ROWS)
+            self.summary.setText(T("正在读取组成…"))
+            return
+        shown = [(i, c, orb, coup) for i, c, orb, coup in self.compositions[self.current] if c * c >= wmin]
         t = self.jj_table
         t.setRowCount(len(shown))
         names = csfs[lv.block.nb - 1] if csfs else None
-        for r, (i, c) in enumerate(shown):
+        for r, (i, c, orb, coup) in enumerate(shown):
             w = item(f"{100 * c * c:.3f} %", align=Qt.AlignRight | Qt.AlignVCenter)
             w.setData(Qt.UserRole, c * c)
-            orb, coup = names[i - 1] if names else ("", "")
             for col, it in enumerate([item(r + 1), item(i), NumItem(f"{c:+.6f}", c), w, item(orb), item(coup)]):
                 t.setItem(r, col, it)
         t.resizeColumnsToContents()
-        total = sum(c * c for _, c in shown)
+        total = sum(c * c for _, c, _, _ in shown)
         msg = T("显示 {n} / {m} 个 CSF，权重之和 {w:.3f} %", n=len(shown), m=len(lv.coeffs), w=100 * total)
         if names:
             msg += "  " + T("组态取自 {f}", f=os.path.basename(csf_path))
@@ -1136,7 +1172,7 @@ class LevelPanel(Panel):
         if lsj and lsj[1]:
             lsj_label = max(lsj[1], key=lambda t: t[1])[2]
             config, term = mix.parse_lsj_label(lsj_label)
-        jj = csfs[lv.block.nb - 1][lv.leading() - 1][0] if csfs else ""
+        jj = lv._leading_csf[0] if csfs else ""
         if config is None and jj:
             config = mix.nonrel_config(jj)
         # LSJ 标记和 CSF 中不含核心轨道，补上后再按规则缩写 (如 1s2.2s2.2p6 -> [Ne])
@@ -1660,6 +1696,31 @@ class LevelPanel(Panel):
                          args=(jobs, cfg, lambda ok: self.q.put((ok, "done")))).start()
 
     def poll(self):
+        try:
+            while True:
+                kind, token, result = self.reader.events.get_nowait()
+                if token[1] != self.read_generation:
+                    continue
+                if token[0] == "composition" and (token != self.composition_token or token[2] != self.current):
+                    continue
+                if kind == "progress":
+                    path, fraction = result
+                    self.status(T("正在读取 {f}… {p}%", f=os.path.basename(path), p=int(100 * fraction)))
+                elif kind == "error":
+                    self.loading = False
+                    self.status(T("无法读取：{e}", e=result))
+                    if token[0] == "composition" and token == self.composition_token:
+                        self.summary.setText(T("无法读取：{e}", e=result))
+                elif token[0] == "load":
+                    self.loading = False
+                    self.read_data = result
+                    self.render_levels()
+                    self.status(T("读入完成"))
+                elif token == self.composition_token:
+                    self.compositions = {token[2]: result}
+                    self.show_composition()
+        except queue.Empty:
+            pass
         text = []
         try:
             while True:
@@ -1697,5 +1758,8 @@ class LevelPanel(Panel):
         return bool(self.running)
 
     def shutdown(self):
+        self.timer.stop()
+        self.read_generation += 1
+        self.reader.close()
         if self.running:
             self.runner.kill()

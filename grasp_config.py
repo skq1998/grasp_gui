@@ -332,7 +332,7 @@ def read_text_file(path):
 def reference_energies(path):
     """混合系数文件中各能级的能量 (Hartree)，作为参考结果。"""
     import grasp_mix
-    return [round(lv.energy, 10) for b in grasp_mix.read_mix(path) for lv in b.levels]
+    return [round(lv.energy, 10) for b in grasp_mix.open_mix(path) for lv in b.levels]
 
 
 def export(pipeline, meta, files=(), references=()):

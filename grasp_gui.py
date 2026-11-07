@@ -13,6 +13,11 @@ GRASP 图形界面 (Qt / PySide6)。主窗口上方是工作目录和运行设�
 import os
 import sys
 
+if __name__ == "__main__":
+    # PyInstaller 的分析子进程必须在命令分派和 Qt 导入之前进入 multiprocessing。
+    import multiprocessing
+    multiprocessing.freeze_support()
+
 if __name__ == "__main__" and sys.argv[1:2] == ["_run"] and len(sys.argv) == 3:
     # 后台运行进程 (见 grasp_bg.py)：不加载 Qt
     import grasp_bg

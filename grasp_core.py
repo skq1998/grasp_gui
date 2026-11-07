@@ -301,6 +301,9 @@ EN = {
     "此目录中没有径向波函数文件": "No radial wave function files in this directory",
     "{f} 不是 GRASP 径向波函数文件": "{f} is not a GRASP radial wave function file",
     "无法读取：{e}": "Cannot read: {e}",
+    "正在读取 {f}… {p}%": "Reading {f}… {p}%",
+    "正在读取组成…": "Reading composition…",
+    "读入完成": "Loading complete",
     "… 另有 {n} 条": "… {n} more",
     # 能级与组成查看器
     "原子单位 (Hartree)": "atomic units (Hartree)",
@@ -1386,8 +1389,8 @@ def zero_first_fields(default_zero):
 
 def csf_blocks(path):
     """CSF 列表各块的 (CSF 数, J 和宇称，如 3/2-)。"""
-    import grasp_mix
-    return [(len(b), b[0][1].split()[-1] if b and b[0][1].split() else "") for b in grasp_mix.read_csfs(path)]
+    import grasp_index
+    return [(b["ncf"], b["label"]) for b in grasp_index.csf_index(path)["blocks"]]
 
 
 def expand_iccut(stdin, cwd, strict=False):

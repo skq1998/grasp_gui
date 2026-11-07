@@ -385,6 +385,24 @@ Clipboard output is limited to 4 MiB; file output and both input routes allow 32
 
 ## Levels tab / 能级图页
 
+Large mixing and CSF files are indexed in the background. The status bar shows *Reading … (正在读取 …)*
+and progress; changing the directory or file selection cancels obsolete work. Tabs and controls remain usable.
+The composition pane briefly shows *Reading composition… (正在读取组成…)* when the selected level's CSFs are read.
+Only the displayed components are parsed; changing the weight threshold reuses the same data. Small mixing files
+are analyzed serially to avoid process startup delays; larger files can use up to four local analysis processes.
+
+Indexes and leading-component summaries are cached in `<workdir>/.grasp_gui/index/`. For a read-only directory,
+the cache falls back to `~/.cache/grasp_gui/index/<directory hash>/` (`$XDG_CACHE_HOME` if set). If neither location
+is writable, viewing still works without a disk cache. A changed source invalidates its cache; damaged caches
+are rebuilt, and entries for deleted sources are removed on the next directory scan. These caches contain no
+copies of the full calculation files and can be deleted to reclaim space.
+
+中文：大型混合系数和 CSF 文件在后台建立索引，状态栏显示读取进度；切换文件或目录会取消旧请求，界面保持响应。
+选中能级时只解析所需的 CSF，阈值改变时复用已读数据。小混合文件串行分析，避免启动进程池的延迟；大文件至多用四个本地分析进程。
+索引和主要成分摘要保存在工作目录的 `.grasp_gui/index/`；
+只读目录改用用户的 `~/.cache/grasp_gui/index/<目录哈希>/`，两处都不可写时仍可查看，但不保留磁盘缓存。
+源文件变化时缓存失效，损坏时重建，源文件删除后在下次扫描清理；缓存不含完整结果文件的副本，可直接删除。
+
 ```
 Refresh  Energy unit [eV▾]  Export▾  ☐ Show all computed transitions of the selected level        Tips
 ┌ Mixing coefficient files ? ┐┌ level diagram          ┐┌ odd4.cm J^π = 1⁻ #2 43.79 eV (… a.u.)      ┐
