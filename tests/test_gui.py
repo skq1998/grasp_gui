@@ -292,8 +292,8 @@ def test_level_diagram_wheel_scrolls_and_pinch_zooms(qapp):
     pos = QPointF(rect.center())
 
     def wheel(angle, pixels=0, modifiers=Qt.NoModifier):
-        d.wheelEvent(QWheelEvent(pos, d.mapToGlobal(pos), QPoint(0, pixels), QPoint(0, angle), Qt.NoButton,
-                                 modifiers, Qt.NoScrollPhase, False))
+        d.wheelEvent(QWheelEvent(pos, QPointF(d.mapToGlobal(pos.toPoint())), QPoint(0, pixels), QPoint(0, angle),
+                                 Qt.NoButton, modifiers, Qt.NoScrollPhase, False))
 
     wheel(120)                                     # 向上滚一格：看更高的能量，范围不变
     lo, hi = d.y_range()
