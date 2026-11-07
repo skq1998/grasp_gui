@@ -160,6 +160,7 @@ class RunSettings(QWidget):
         self.nice_check.setChecked(cfg["nice"])
         mpi_hint = T("进程数 > 1 时 rangular / rmcdhf / rci / rbiotransform / rtransition 改用 *_mpi 版本；"
                      "rangular 与 rmcdhf 须使用相同的进程数和 MPI_TMP。")
+        mpi_hint += "\n" + T("默认按物理核数；超线程对 GRASP 帮助不大。")
         for w in [QLabel(T("MPI 进程数")), self.np_spin, QLabel(T("mpirun 命令")), self.mpirun_edit,
                   QLabel("MPI_TMP"), self.mpitmp_edit, self.nice_check]:
             w.setToolTip(mpi_hint)
@@ -238,7 +239,11 @@ class RunSettings(QWidget):
 def saved_settings():
     """没有主窗口时的运行设置：主窗口保存的 GRASP bin 目录和 MPI 设置。"""
     cfg = core.load_config()
-    return dict(bindir=core.default_bindir(), np=int(cfg.get("np", 1)), mpirun=cfg.get("mpirun", "mpirun"),
+    bindir, mpirun = core.default_bindir(), cfg.get("mpirun", "mpirun")
+    if "np" not in cfg:
+        cfg["np"] = core.default_mpi_np(bindir, mpirun)
+        core.save_config(np=cfg["np"])
+    return dict(bindir=bindir, np=int(cfg["np"]), mpirun=mpirun,
                 mpitmp=cfg.get("mpitmp", "tmp_mpi"), nice=cfg.get("nice", True))
 
 

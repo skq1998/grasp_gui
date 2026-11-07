@@ -27,7 +27,13 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
   expanded: *GRASP bin directory (GRASP bin 目录)* + *Browse…*, *MPI processes (MPI 进程数)*, *mpirun command
   (mpirun 命令)*, *MPI_TMP*, *Lower priority of calculations (nice) (降低计算进程优先级)*. With more than one process
   `rangular`, `rmcdhf`, `rci`, `rbiotransform`, `rtransition` run as `mpirun -np N <prog>_mpi`. The collapsed state
-  is remembered.
+  is remembered. For a new user, the process count defaults to `min(physical cores, 4)` when the configured
+  MPI launcher and the MPI versions of rangular, rmcdhf, rci, rbiotransform and rtransition can be found
+  through the normal GRASP bin/PATH lookup;
+  otherwise it defaults to 1. Physical cores come from Linux CPU topology or macOS `hw.physicalcpu`, with
+  a fallback of half the logical cores (at least 1). The initial value is saved immediately. Existing saved
+  counts are retained; changing the bin directory or launcher never recalculates them. The input maximum
+  remains the logical core count. Its tooltip explains that hyperthreading offers little benefit for GRASP.
 * **GRASP bin lookup**: `$GRASP_BINDIR` → last used → directory of `rmcdhf` on `PATH` → `../bin` of the program.
 * **Tabs (标签页)**: *Calculation (计算)*, *Radial wave functions (径向波函数)*, *Levels (能级图)*; bold labels.
   The viewer tabs show the working directory and refresh after a run finishes. *Open in new window (在新窗口中打开)*
@@ -331,7 +337,9 @@ levels come from the same file — and which multipoles: E1, or M2 when E1 is fo
 same parity; J = 0 → 0 is refused). Buttons, in two rows: *Compute (selected J) (计算跃迁 (所选 J))* — only the J^π symmetries of
 the two levels (the GUI writes `.c`/`.cm` files with just those blocks), with the main window's process count;
 *Compute all J (MPI) (计算全部 J (MPI))* — all transitions between the two files (lifetimes, branching ratios) with
-the MPI programs and *Processes (进程数)* next to it; *Stop*; *Export ▾*: transitions of the current level (CSV),
+the MPI programs and *Processes (进程数)* next to it (first use: the same physical-core/MPI availability rule as the main window,
+saved independently as `tr_np`; existing values are retained, and its maximum remains four times the logical
+core count); *Stop*; *Export ▾*: transitions of the current level (CSV),
 all computed transitions between the two files (CSV), *GRASP transition file (for rtabtrans1 / rtabtrans2)*
 (`even4.odd4.ct`).
 

@@ -39,6 +39,49 @@ def program_path(bindir, prog):
     return None
 
 
+def physical_cpu_count():
+    """核数供计算默认值和数据分析共用；缺少拓扑时保守地按逻辑核数的一半估计。"""
+    try:
+        if sys.platform.startswith("linux"):
+            with open("/proc/cpuinfo", encoding="ascii") as stream:
+                blocks = re.split(r"\n\s*\n", stream.read().strip())
+            cores = set()
+            for block in blocks:
+                pairs = (line.partition(":") for line in block.splitlines())
+                info = {key.strip(): value.strip() for key, sep, value in pairs if sep}
+                if "processor" not in info:
+                    continue
+                package, core = info.get("physical id", ""), info.get("core id", "")
+                if not package.isdigit() or not core.isdigit():
+                    raise ValueError("incomplete CPU topology")
+                cores.add((int(package), int(core)))
+            if cores:
+                return len(cores)
+        elif sys.platform == "darwin":
+            count = int(subprocess.check_output(["sysctl", "-n", "hw.physicalcpu"], text=True,
+                                                stderr=subprocess.DEVNULL, timeout=2).strip())
+            if count > 0:
+                return count
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # 拓扑不可读不会阻止启动；此估计只决定未保存过的默认值。
+        pass
+    return max(1, (os.cpu_count() or 1) // 2)
+
+
+def default_mpi_np(bindir, mpirun):
+    """仅在启动器和常用 MPI 程序均可找到时默认并行，不启动外部计算来探测。"""
+    try:
+        launcher = shlex.split(mpirun or "mpirun")
+    except ValueError:
+        return 1
+    if not launcher or not shutil.which(launcher[0]):
+        return 1
+    programs = ("rangular_mpi", "rmcdhf_mpi", "rci_mpi", "rbiotransform_mpi", "rtransition_mpi")
+    if not all(program_path(bindir, prog) for prog in programs):
+        return 1
+    return min(physical_cpu_count(), 4)
+
+
 # 输出窗口只保留最后这么多行（完整输出可写入日志文件），避免大量输出拖慢界面
 MAX_OUT_LINES = 5000
 
@@ -129,6 +172,8 @@ EN = {
     "计算两个文件中全部 J^π 之间的跃迁 (用于寿命、分支比)，用 MPI 并行":
         "All J^π symmetries of both files (for lifetimes and branching ratios), in parallel with MPI",
     "计算全部 J 时的 MPI 进程数": "Number of MPI processes when computing all J",
+    "默认按物理核数；超线程对 GRASP 帮助不大。":
+        "Defaults use physical cores; hyperthreading offers little benefit for GRASP.",
     "进程数": "Processes",
     "需要计算 {k}。": "{k} to be computed.",
     "“所选 J”只算 {j} 这些对称性之间的跃迁；“全部 J”算两个文件中所有能级之间的跃迁，用于寿命和分支比。":
