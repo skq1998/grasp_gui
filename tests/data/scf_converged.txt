@@ -1,0 +1,16 @@
+RMCDHF output excerpts: compas/grasp 9006157 scf.f90:292-295,
+improv.f90:173-185, newco.f90:127; normal STOPTIME completion.
+ Iteration number   1
+Subshell    Energy    Method   P0    consistency  Norm-1  factor  JP MTP INV NNP
+  1s    2.3722308D+00  1  9.243D+00  7.63D-02  5.30D-02 0.000   280   351  0  0
+Level  1    Energy = -7.340641323900D+00    Weight = 1.00000D+00
+Weighted average energy of these levels = -7.3406413239D+00
+ Iteration number   2
+  1s    2.3722308D+00  1  9.243D+00  7.63D-04  5.30D-04 0.000   280   351  0  0
+Level  1    Energy = -7.440641323900D+00    Weight = 1.00000D+00
+Weighted average energy of these levels = -7.4406413239D+00
+ Iteration number   3
+  1s    2.3722308D+00  1  9.243D+00  7.63D-08  5.30D-08 0.000   280   351  0  0
+Level  1    Energy = -7.440641324000D+00    Weight = 1.00000D+00
+Weighted average energy of these levels = -7.4406413240D+00
+ RMCDHF: Execution complete.

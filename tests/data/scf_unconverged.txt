@@ -1,0 +1,5 @@
+RMCDHF output excerpts: compas/grasp 9006157 scf.f90:235,292.
+ Iteration number   1
+Weighted average energy of these levels = -7.3406413239D+00
+ Maximum iterations in SCF Exceeded.
+ RMCDHF: Execution complete.

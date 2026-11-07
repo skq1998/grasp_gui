@@ -24,6 +24,7 @@ import grasp_config
 import grasp_core as core
 import grasp_mix
 import grasp_session as sessions
+import grasp_summary as summary
 import grasp_workdir as workdir_ops
 from grasp_core import T
 from gui_common import button, fixed_font, hint_label, recent_menu, text_edit
@@ -705,12 +706,13 @@ class ClearDialog(QDialog):
 class ExportDialog(QDialog):
     """把当前目录的流程导出为共享配置：填写说明，选择参考结果和附带文件。"""
 
-    def __init__(self, parent, workdir, pipeline, clipboard=False):
+    def __init__(self, parent, workdir, pipeline, clipboard=False, with_summary=False):
         super().__init__(parent)
         self.setWindowTitle(T("导出配置"))
         self.resize(820, 680)
         self.workdir, self.pipeline = workdir, pipeline
         self.to_clipboard, self.cfg = clipboard, None
+        self.with_summary = with_summary
         lay = QVBoxLayout(self)
         note = QLabel(T("配置保存当前流程中各步的参数，不含计算结果，也不含 GRASP bin 目录、MPI 进程数等与机器有关的设置。"
                         "别人导入后可以从头重复这个计算。"))
@@ -760,12 +762,13 @@ class ExportDialog(QDialog):
         lay.addWidget(self.notes)
         bar = QHBoxLayout()
         bar.addStretch()
-        copy = button("复制到剪贴板", lambda: self.accept(True))
+        copy = button("预览结果摘要…" if with_summary else "复制到剪贴板", lambda: self.accept(True))
         copy.setDefault(clipboard)
         bar.addWidget(copy)
-        ok = button("保存为文件…", self.accept)
-        ok.setDefault(not clipboard)
-        bar.addWidget(ok)
+        if not with_summary:
+            ok = button("保存为文件…", self.accept)
+            ok.setDefault(not clipboard)
+            bar.addWidget(ok)
         bar.addWidget(button("取消", self.reject))
         lay.addLayout(bar)
         self.show_notes()
@@ -815,7 +818,7 @@ class ExportDialog(QDialog):
             QMessageBox.warning(self, T("导出配置"), T("配置太大，无法复制到剪贴板；请保存为文件。"))
             return
         self.cfg, self.to_clipboard = cfg, clipboard
-        if clipboard:
+        if clipboard and not self.with_summary:
             QGuiApplication.clipboard().setText(content)
         core.save_config(config_author=self.author.text().strip())
         super().accept()
@@ -916,6 +919,8 @@ class CalcPanel(QWidget):
         self.session_cleared = False
         self.session_revision = None
         self.checking_session = False
+        self.summary_runs = {}
+        self.summary_record = None
         self.busy = False
         self.group = core.GROUPS[0]
         self.groups = {g: core.group_defaults(g) for g in core.GROUPS}
@@ -1041,6 +1046,9 @@ class CalcPanel(QWidget):
         lay.addWidget(self.nav)
         bar = QHBoxLayout()
         bar.addWidget(button("预览输入", self.preview))
+        check = button("检查输入文件", self.check_inputs)
+        check.setToolTip(T("检查流程中从选中开始的步骤；流程为空时检查当前表单。"))
+        bar.addWidget(check)
         bar.addWidget(button("▶ 运行当前程序", self.run_current))
         bar.addWidget(button("加入流程 ↓", self.add_to_pipeline))
         bar.addStretch()
@@ -1063,6 +1071,7 @@ class CalcPanel(QWidget):
         menu.addAction(T("导出脚本…")).triggered.connect(self.export_script)
         menu.addAction(T("导出 Slurm 作业脚本…")).triggered.connect(self.export_slurm)
         menu.addAction(T("复制配置到剪贴板…")).triggered.connect(lambda: self.export_config(True))
+        menu.addAction(T("复制配置和结果摘要（给 agent）")).triggered.connect(lambda: self.export_config(True, True))
         export.setMenu(menu)
         pl.addWidget(ButtonColumn([[button("▶ 运行全部", self.run_pipeline), button("▶ 从选中开始", self.run_from_selected)],
                                    [button("编辑", self.edit_job), button("更新所选", self.update_job),
@@ -1377,6 +1386,22 @@ class CalcPanel(QWidget):
             self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
             self.show_preview()
 
+    def check_inputs(self):
+        jobs = self.pipeline[self.selected() or 0:] if self.pipeline else [self.current_job()]
+        if not all(jobs) or not self.check_dirs():
+            return
+        try:
+            result = summary.check_files(self.cur_workdir, jobs, run=self.run.values(),
+                                         offset=summary.locate(self.pipeline, jobs) or 0)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("检查输入文件"), str(e))
+            return
+        text = summary.check_text(result) if result["missing"] else T("没有发现缺失的输入文件。")
+        if not result["missing"] and result["skipped"]:
+            text += "\n" + "\n".join(T("第 {n} 步 {p}：{why}", n=r["step"], p=r["program"], why=r["reason"])
+                                       for r in result["skipped"])
+        QMessageBox.information(self, T("检查输入文件"), text)
+
     def check_dirs(self):
         if not os.path.isdir(self.cur_workdir):
             QMessageBox.critical(self, T("错误"), T("工作目录不存在：{d}", d=self.cur_workdir))
@@ -1401,6 +1426,18 @@ class CalcPanel(QWidget):
         self.run.save()
         if not self.save_session(require_saved=True):
             return
+        first = summary.locate(self.pipeline, jobs)
+        try:
+            checked = summary.check_files(self.cur_workdir, jobs, run=cfg, offset=first or 0)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("检查输入文件"), str(e))
+            return
+        if checked["missing"] and QMessageBox.question(
+                self, T("缺少输入文件"), summary.check_text(checked) + "\n\n" + T("仍然运行吗？"),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        if checked["skipped"]:
+            self.write(T("[文件检查：{n} 个步骤未声明依赖，需人工核查]", n=len(checked["skipped"])) + "\n", "info")
         self.detach()                      # 不再读取另一台机器上的计算的输出
         try:
             proc = grasp_bg.launch(self.cur_workdir, jobs, cfg)
@@ -1412,6 +1449,13 @@ class CalcPanel(QWidget):
         if sock is None:
             QMessageBox.warning(self, T("运行"), T("无法启动后台运行进程"))
             return
+        if first is not None:
+            state = grasp_bg.status(self.cur_workdir) or dict(status="running", step=0)
+            self.summary_record = dict(first=first, keys=[summary.job_key(j) for j in jobs], state=state,
+                                       basis=T("本次会话记录；按步骤参数指纹对应"))
+            records = self.summary_runs.setdefault(self.cur_workdir, [])
+            records.append(self.summary_record)
+            del records[:-50]
         self.attach(sock, [j["title"] for j in jobs])
 
     # ---- 后台运行 (grasp_bg)：计算由独立的运行进程执行，本页只是查看者 ----
@@ -1442,6 +1486,7 @@ class CalcPanel(QWidget):
         sock, self.client = self.client, None
         self.remote = None
         self.busy = False
+        self.summary_record = None
         if sock:
             try:
                 sock.close()
@@ -1460,12 +1505,16 @@ class CalcPanel(QWidget):
                                                       h=st.get("host", "?"), p=st.get("pid", "?")))
 
     def show_step(self, _i):
+        if self.summary_record is not None:
+            self.summary_record["state"]["step"] = _i
         self.update_progress()              # 进度只显示在常驻标签中，不再另发一条状态栏消息
 
     def finished(self, result):
         if not self.busy:
             return
         titles = self.titles
+        if self.summary_record is not None:
+            self.summary_record["state"] = dict(grasp_bg.status(self.cur_workdir) or {}, status=result)
         self.detach()
         ok = result == "ok"
         if result == "lost":
@@ -1852,15 +1901,22 @@ class CalcPanel(QWidget):
             self.session_cleared = True
         self.filesChanged.emit()
 
-    def export_config(self, clipboard=False):
+    def export_config(self, clipboard=False, with_summary=False):
         """把当前流程导出为共享配置文件。"""
         if not self.need_pipeline():
             return
         self.flush_group()
-        dlg = ExportDialog(self, self.cur_workdir, self.pipeline, clipboard)
+        dlg = ExportDialog(self, self.cur_workdir, self.pipeline, clipboard, with_summary)
         if dlg.exec() != QDialog.Accepted:
             return
         cfg = dlg.cfg
+        if with_summary:
+            from summary_panel import SummaryDialog
+            preview = SummaryDialog(self, self.cur_workdir, cfg, self.pipeline,
+                                    self.summary_runs.get(self.cur_workdir, []))
+            if preview.exec() == QDialog.Accepted:
+                self.status(T("已复制配置和结果摘要"))
+            return
         if dlg.to_clipboard:
             self.status(T("已复制配置到剪贴板 ({n} 步)", n=len(cfg["jobs"])))
             return

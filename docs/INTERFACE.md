@@ -225,6 +225,26 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   *Clear (清空)*, *Export ▾ (导出)*: shell script / Slurm job script. Steps imported as commands have no form and
   cannot be edited. The buttons stand in one column, grouped (run; edit / update / show; move; remove / clear;
   export); when the pane is too low for one column they rearrange into two.
+  *Export* also offers **Copy configuration and results summary (for an agent) (复制配置和结果摘要（给 agent）)**.
+  It uses the configuration export dialog for metadata, reference results and attached inputs, then opens a
+  separate preview. Select sections and 1–200 levels per symmetry block (default 5); reading is performed
+  in the background. The Markdown/JSON text is capped at 200 KiB. If needed, leading components and earlier
+  results are omitted with an explicit list; if the remaining content still cannot fit, reduce the selection
+  or export the complete configuration separately. Copying happens only after accepting the preview; cancel
+  preserves the clipboard.
+  “复制配置和结果摘要”先选配置的说明、参考结果及附带输入，再预览、勾选摘要部分。每块默认前 5 个能级
+  (可选 1–200)，后台读取；超出 200 KiB 先省主要成分、再省较早结果并列明。仍放不下时需减少内容，
+  完整配置可单独导出。取消预览不改剪贴板。
+* **Check input files (检查输入文件)**, next to *Preview input*: checks the pipeline from the selected step
+  (or the current form if there is no pipeline). Starting a run also checks its selected steps, including
+  *Update and run added steps*. Existing files and files declared as produced by earlier selected steps are
+  accepted. Fixed intermediates and file copies are considered in order; `rsave` moves `rmix.out`, so it is
+  unavailable afterwards. The angular-file check uses the same `.30` sentinel convention as the existing
+  runner, including each MPI rank; it is not an integrity or physics check. Custom/undeclared steps are
+  marked unchecked; a non-modal notice in program output reports their count on run. Missing files produce a step/filename report with similar names; **Run anyway (仍然运行吗？)**
+  defaults to No. A complete check is silent on run; the manual button shows the report.
+  “检查输入文件”检查从选中开始的流程；流程为空时检查当前表单。运行前也检查，包括更新后运行新增步骤。
+  未声明依赖的步骤标为无法检查；缺失时列步骤、文件及相近文件名，默认取消，可选仍然运行。
 * **Input preview (输入预览)**: when the lower area is at least 1300 pixels wide it is a column of its own between the
   pipeline and the program output (the three widths are remembered); when narrower it is a tab next to *Pipeline*.
   It shows the command, the here-document with the program's stdin and the file actions, e.g.

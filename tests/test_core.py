@@ -17,7 +17,8 @@ SOURCES = sorted(glob.glob(os.path.join(ROOT, "*.py")))
 CJK = re.compile(r"[一-鿿]")
 # 不能导入 Qt 的模块：命令行工具和后台运行进程在没有图形库的服务器上也要能用
 STDLIB_ONLY = ["grasp_core", "grasp_config", "grasp_bg", "grasp_wfn", "grasp_mix", "grasp_trans",
-               "grasp_index", "grasp_workdir", "grasp_session", "grasp_service", "grasp_mcp", "grasp_render"]
+               "grasp_index", "grasp_workdir", "grasp_session", "grasp_service", "grasp_mcp", "grasp_render",
+               "grasp_summary"]
 
 
 def t_literals():

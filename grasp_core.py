@@ -809,6 +809,60 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
         "Note: this machine's systemd setting (KillUserProcesses=yes) ends all processes of this login when it ends (ssh disconnected or logged out), including background runs. See \"Background runs\" in docs/INTERFACE.md for remedies.",
     "能级图中正在进行的跃迁计算会结束。": "Transition calculations in progress in the level diagram will be stopped.",
     "计算正在运行。可以让它在后台继续，以后再打开这个工作目录即可接上并查看结果。": "A run is in progress. It can continue in the background; open this working directory again later to reattach and see the results.",
+    # 逐层计算的摘要和文件检查
+    "检查流程中从选中开始的步骤；流程为空时检查当前表单。":
+        "Check the pipeline from the selected step, or the current form if the pipeline is empty.",
+    "[文件检查：{n} 个步骤未声明依赖，需人工核查]":
+        "[File check: {n} steps have undeclared dependencies; check them manually]",
+    "此步仍在运行，收敛尚无法确定": "This step is still running; convergence is not yet determined",
+    "（未指定文件）": "(no file specified)",
+    "当前完整配置": "Complete current configuration",
+    "各步运行状态": "Step run status",
+    "SCF 收敛情况": "SCF convergence",
+    "各态的 CSF 数": "CSF counts by state",
+    "能级与主要成分": "Levels and leading components",
+    "能级随层的变化": "Energy changes between layers",
+    "复制配置和结果摘要（给 agent）": "Copy configuration and results summary (for an agent)",
+    "预览结果摘要…": "Preview results summary…",
+    "检查输入文件": "Check input files",
+    "未声明文件依赖，无法检查": "File dependencies are undeclared; cannot check",
+    "以下输入文件尚不存在，且未找到所选起点之后的已声明前序输出：": (
+        "These input files are missing, with no declared preceding outputs after the selected "
+        "start:"),
+    "第 {n} 步 {p}：缺少 {f}；未找到已声明的前序输出，请核对文件名、运行起点或未检查的步骤。": (
+        "Step {n}, {p}: missing {f}; no declared preceding output. Check the filename, start or unchecked steps."),
+    "相近文件名：{names}": "Similar filenames: {names}",
+    "第 {n} 步 {p}：{why}": "Step {n}, {p}: {why}",
+    "没有可对应的运行记录": "No matching run record",
+    "最近后台运行状态；按唯一连续标题序列对应，未保存参数指纹": (
+        "Latest background state; matched by a unique title sequence, without saved parameter "
+        "fingerprints"),
+    "本次会话记录；按步骤参数指纹对应": "Current GUI session record; matched by step parameter fingerprints",
+    "无日志，无法判断": "No log; cannot determine convergence",
+    "该日志由后续步骤复用，无法判断此步的收敛情况": "A later step reuses this log; cannot determine convergence for this step",
+    "每块能级数须为 1–200": "Levels per block must be between 1 and 200",
+    "请至少选择一个摘要部分": "Select at least one summary section",
+    "配置和结果摘要": "Configuration and results summary",
+    "运行成功仅指流程结束；收敛按日志判断；层间按 J、宇称和序号对应，不保证物理态身份相同；同名输出只保留最后写入。": (
+        "Run success means the pipeline ended. Convergence is assessed from logs. Layers match by J, "
+        "parity and index, without guaranteeing the same physical state. Reused outputs retain only the "
+        "last write."),
+    "为满足大小上限，省略主要成分": "Leading components omitted to meet the size limit",
+    "为满足大小上限，省略较早或未关联的结果": "Earlier or unassociated results omitted to meet the size limit",
+    "摘要仍超过 {n} KB，请减少每块能级数或取消部分内容；完整配置可单独导出。": (
+        "Summary still exceeds {n} KB. Request fewer levels or deselect sections; export the complete "
+        "configuration separately."),
+    "先预览并选择包含的部分。默认每个对称块前 5 个能级，文本最多 200 KB；结果读取在后台进行。": (
+        "Preview and choose sections. Defaults to the first 5 levels per symmetry block, up to 200 KB; "
+        "results load in the background."),
+    "每个对称块的能级数": "Levels per symmetry block",
+    "正在读取结果…": "Reading results…",
+    "无法生成摘要": "Cannot generate summary",
+    "摘要大小：{n} KB": "Summary size: {n} KB",
+    "没有发现缺失的输入文件。": "No missing input files found.",
+    "缺少输入文件": "Missing input files",
+    "仍然运行吗？": "Run anyway?",
+    "已复制配置和结果摘要": "Configuration and results summary copied",
     # MCP 与外部修改的记录
     "MCP 可读取允许目录中的结果、创建和更新方案、启动与停止计算。客户端通过标准输入输出连接，不开放端口。": (
         "MCP can read results, create and update plans, and start or stop calculations in the allowed "
@@ -1258,6 +1312,20 @@ class Step:
         """检查表单参数；不合法时由程序页抛出 ValueError。"""
         pass
 
+    def inputs(self, v, run=None):
+        """返回运行所需文件；None 表示尚未声明，供预检明确标为未知。"""
+        return None
+
+    def outputs(self, v, run=None):
+        return None
+
+    def removes(self, v):
+        return []
+
+    def result_files(self, v):
+        """结果按流程关联层次，不从文件名的数字猜层序。"""
+        return []
+
     def stdin(self, v):
         return ""
 
@@ -1320,6 +1388,12 @@ class RNucleus(Step):
                 lines += [v["rms"], v["skin"]]
         return answers(lines + [v["mass"], v["spin"], v["mu"], v["q"]])
 
+    def inputs(self, v, run=None):
+        return []
+
+    def outputs(self, v, run=None):
+        return ["isodata"]
+
 
 class RcsfGenerate(Step):
     key = name = prog = "rcsfgenerate"
@@ -1355,6 +1429,12 @@ class RcsfGenerate(Step):
         s = v["saveas"].strip()
         return f"rcsfgenerate -> {s}" if s else "rcsfgenerate"
 
+    def inputs(self, v, run=None):
+        return []
+
+    def outputs(self, v, run=None):
+        return ["rcsf.out"]
+
 
 class RcsfInteract(Step):
     key = name = prog = "rcsfinteract"
@@ -1386,6 +1466,12 @@ class RcsfInteract(Step):
         s = v["saveas"].strip()
         return f"rcsfinteract -> {s}" if s else "rcsfinteract"
 
+    def inputs(self, v, run=None):
+        return ["rcsfmr.inp", "rcsf.inp"]
+
+    def outputs(self, v, run=None):
+        return ["rcsf.out"]
+
 
 class RcsfSplit(Step):
     key = name = prog = "rcsfsplit"
@@ -1405,6 +1491,12 @@ class RcsfSplit(Step):
 
     def title(self, v):
         return f"rcsfsplit {v['state']}"
+
+    def inputs(self, v, run=None):
+        return [v["state"].strip() + ".c"]
+
+    def outputs(self, v, run=None):
+        return [v["state"].strip() + row.rsplit(None, 1)[1] + ".c" for row in nonblank_lines(v["splits"])]
 
 
 # 零阶 / 一阶划分 (rcsfzerofirst 把零阶空间的 CSF 排在各块最前面)：rangular、rci 的非默认设置按块询问 ICCUT，
@@ -1486,6 +1578,7 @@ def expand_iccut(stdin, cwd, strict=False):
     return "\n".join(out)
 
 
+
 class RcsfZeroFirst(Step):
     key = name = prog = "rcsfzerofirst"
     fields = [
@@ -1513,6 +1606,20 @@ class RcsfZeroFirst(Step):
         s = v["saveas"].strip()
         return f"rcsfzerofirst -> {s}" if s else "rcsfzerofirst"
 
+    def inputs(self, v, run=None):
+        return [v["zero"].strip(), v["full"].strip()]
+
+    def outputs(self, v, run=None):
+        return ["rcsf.out"]
+
+
+def angular_files(run=None):
+    run = run or {}
+    count = int(run.get("np", 1))
+    if count <= 1:
+        return ["mcp.30"]
+    return [os.path.join(run.get("mpitmp", "tmp_mpi"), f"{i:03d}", f"mcp{i:03d}.30") for i in range(count)]
+
 
 class RAngular(Step):
     key = name = prog = "rangular"
@@ -1534,6 +1641,12 @@ class RAngular(Step):
     def title(self, v):
         s = v["csf"].strip()
         return f"rangular ({s})" if s else "rangular"
+
+    def inputs(self, v, run=None):
+        return ["rcsf.inp"] + ([v["zero"].strip()] if v.get("zf") else [])
+
+    def outputs(self, v, run=None):
+        return angular_files(run)
 
 
 class RWfnEstimate(Step):
@@ -1562,6 +1675,12 @@ class RWfnEstimate(Step):
         if v["method"] == "4":              # 方法 4 在轨道列表之后询问 Z 的增加量
             lines.append(v["delz"])
         return answers(lines)
+
+    def inputs(self, v, run=None):
+        return ["isodata", "rcsf.inp"] + ([v["wfile"].strip() or "rwfn.out"] if v["use_file"] else [])
+
+    def outputs(self, v, run=None):
+        return ["rwfn.inp"]
 
 
 class RMcdhf(Step):
@@ -1622,6 +1741,20 @@ class RMcdhf(Step):
         s = v["save"].strip()
         return f"{self.program(v)} -> {s}" if s else self.program(v)
 
+    def inputs(self, v, run=None):
+        return ["isodata", "rcsf.inp", "rwfn.inp"] + angular_files(run)
+
+    def outputs(self, v, run=None):
+        state = v["save"].strip()
+        return ["rwfn.out", "rmix.out"] + ([state + ext for ext in (".c", ".w", ".m")] if state else [])
+
+    def removes(self, v):
+        # rsave 移动混合系数文件，不能将 rmix.out 留作后续步骤的现成输入。
+        return ["rmix.out"] if v["save"].strip() else []
+
+    def result_files(self, v):
+        return [v["save"].strip() + ".m"] if v["save"].strip() else ["rmix.out"]
+
 
 class RSave(Step):
     key = name = prog = "rsave"
@@ -1635,6 +1768,18 @@ class RSave(Step):
 
     def title(self, v):
         return f"rsave {v['state']}"
+
+    def inputs(self, v, run=None):
+        return ["rcsf.inp", "rwfn.out", "rmix.out"]
+
+    def outputs(self, v, run=None):
+        return [v["state"].strip() + ext for ext in (".c", ".w", ".m")]
+
+    def removes(self, v):
+        return ["rmix.out"]
+
+    def result_files(self, v):
+        return [v["state"].strip() + ".m"]
 
 
 class RCi(Step):
@@ -1684,6 +1829,16 @@ class RCi(Step):
 
     def title(self, v):
         return f"rci {v['state']}"
+
+    def inputs(self, v, run=None):
+        return ["isodata"] + [v["state"].strip() + ext for ext in (".c", ".w")] + (
+            [v["zero"].strip()] if v.get("zf") else [])
+
+    def outputs(self, v, run=None):
+        return [v["state"].strip() + ".cm"]
+
+    def result_files(self, v):
+        return self.outputs(v)
 
 
 class Jj2lsj(Step):
@@ -1740,6 +1895,13 @@ class Jj2lsj(Step):
             state = v["state"].strip()
             return [("cp", state + ".lsj.lbl", state + ".lsj.lbl_SAVE")]
         return []
+
+    def inputs(self, v, run=None):
+        return [v["state"].strip() + ext for ext in (".c", ".cm" if v["ci"] else ".m")]
+
+    def outputs(self, v, run=None):
+        return [v["state"].strip() + ext for ext in (
+            (".lsj.lbl", ".lsj.c", ".lsj.j") if v.get("coupling_files") else (".lsj.lbl",))]
 
 
 class Coupling(Step):
@@ -1818,6 +1980,14 @@ class RHfs(Step):
 
     def title(self, v):
         return f"rhfs {v['state']}"
+
+    def inputs(self, v, run=None):
+        return ["isodata"] + [v["state"].strip() + ext for ext in (
+            ".c", ".w", ".cm" if v["ci"] else ".m")] + (
+            [v["state"].strip() + ".lsj.lbl"] if v["lsj"] else [])
+
+    def outputs(self, v, run=None):
+        return [v["state"].strip() + (".ch" if v["ci"] else ".h")]
 
 
 class RHfsZeeman95(Step):
@@ -1911,6 +2081,14 @@ def tool_fraction(value):
             raise ValueError
     except ValueError:
         raise ValueError(T("截断值必须是 0 到 1 之间的数")) from None
+
+    def inputs(self, v, run=None):
+        return ["isodata"] + [v["state"].strip() + ext for ext in (
+            ".c", ".w", ".cm" if v["ci"] else ".m")]
+
+    def outputs(self, v, run=None):
+        return [v["state"].strip() + (".ci" if v["ci"] else ".i")]
+
 
 
 class RMixExtract(Step):
@@ -2093,6 +2271,14 @@ class RBioTransform(Step):
         self.validate(v)
         return answers(["y", yn(v["ci"]), v["init"], v["final"], "y"])
 
+    def inputs(self, v, run=None):
+        return ["isodata"] + [v[key].strip() + ext for key in ("init", "final")
+                              for ext in (".c", ".w", ".cm" if v["ci"] else ".m")]
+
+    def outputs(self, v, run=None):
+        return [v[key].strip() + ext for key in ("init", "final")
+                for ext in (".bw", ".cbm" if v["ci"] else ".bm")]
+
 
 class RTransition(Step):
     key = name = prog = "rtransition"
@@ -2124,6 +2310,13 @@ class RTransition(Step):
             elif k == "E2":
                 lines.append(yn(v["e2_diffj"]))
         return answers(lines)
+
+    def inputs(self, v, run=None):
+        return ["isodata"] + [v[key].strip() + ext for key in ("init", "final")
+                              for ext in (".c", ".bw", ".cbm" if v["ci"] else ".bm")]
+
+    def outputs(self, v, run=None):
+        return [v["init"].strip() + "." + v["final"].strip() + (".ct" if v["ci"] else ".t")]
 
 
 class Custom(Step):
