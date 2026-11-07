@@ -24,6 +24,7 @@ GRASP2018 的图形界面：填写参数后自动生成各程序的交互输入�
 | v2.3.1 | 见标签 `v2.3.1` | 修正：很快结束的计算 (如单独运行 rnucleus) 不再报告“无法启动后台运行进程”；自动测试与 CI，参与开发的规则 (`AGENTS.md`) |
 | v2.3.2 | 见标签 `v2.3.2` | 只装有 `jj2lsj_2025` (Makefile 编译的 GRASP、GRASPG) 时自动改用它；“停止”恰好在程序启动时到达也能结束程序 |
 | v2.4.0 | 见标签 `v2.4.0` | rmcdhf 可修改 NSIC；手册算例 case2、case3 (各取一个 Z) 与正文例 manual_csfs、manual_zf，手册算例清单；流程中的步骤可载回表单修改；第一组程序页改名为“准备”；能级图右栏可收得更窄 |
+| v2.5.0 | 见标签 `v2.5.0` | 新程序页 rmixextract、rmixaccumulate、rtabhfs、rasfsplit、外部程序 Coupling (及 jj2lsj 的 Coupling 输出)、rhfszeeman95，手册工具示例与 example2/3 的 Coupling 示例；默认 MPI 进程数按物理核数；计算页下方自适应布局；常驻的运行进度；能级图框选放大 |
 
 ## 开发经过
 
@@ -414,6 +415,7 @@ Coupling 是独立外部程序：`COUPLING_BINDIR=/path/to/coupling/bin GRASP_BI
   - v2.3.1：修正很快结束的计算接不上后台运行进程的问题；自动测试、CI 和参与开发的规则 (其他 agent 通过 PR 参与开发)。
   - v2.3.2：`jj2lsj_2025` 的自动替代；停止与程序启动同时发生时的修正。
   - v2.4.0：rmcdhf 的 NSIC (见第 18 节)；手册算例补齐 (case2、case3、manual_csfs、manual_zf，清单见 `MANUAL_EXAMPLES.md`)；流程步骤的“编辑 / 更新所选”。
+  - v2.5.0：工具程序页 (#13)、Coupling (#14)、rhfszeeman95 (#28，见第 19 节)；默认 MPI 进程数 (#23)；计算页下方布局、运行进度标签、能级图框选放大。
 - **legacy**：旧系统版 (见第 13 节)，与 main 一起发布。
 - **V3** (分支 `v3`)：支持 GRASP 的扩展和再开发版本。基础工作：把各程序的输入规则（`grasp_core.py` 中的字段和提问顺序）按
   “程序包 / 版本”区分 (共享配置的 `package` 字段已为此预留)，按 bin 目录中的程序识别可用的扩展，并识别它们特有的程序和文件格式。
