@@ -217,7 +217,10 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   (`grasp_gui _run`); the tab shows its output live and *■ Stop* stops it. A permanent label at the right of the
   status bar shows *Running: step i/n title, this step h:mm:ss (运行中：第 i/n 步 …，本步 …)*, updated every second,
   plus *last output … ago (最后输出于 … 前)* when the programs have printed nothing for a minute or more (GRASP may be
-  silent for hours in a long calculation). Messages of other tabs and menu hints do not replace it.
+  silent for hours in a long calculation). Messages of other tabs and menu hints do not replace it. The step is
+  shown only there (no second status message). After the run the label keeps the result of the directory's last run,
+  e.g. *Last run failed at step 3/7 rmcdhf (ended …) (上次运行在第 3/7 步 … 出错)*, also after reopening the
+  directory; a failed or stopped run also ends the output with this line.
   * Quitting while a run is in progress asks *Continue in background (后台继续)* (default) / *Stop the run and quit
     (停止计算并退出)* / *Cancel (取消)*; without a run the program quits without asking. If the window disappears
     unexpectedly (ssh disconnected, crash), the run continues in the background.

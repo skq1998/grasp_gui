@@ -173,6 +173,18 @@ def elapsed(seconds):
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}" if m else f"{sec} s"
 
 
+def run_summary(st, titles):
+    """上次运行的结果，如“上次运行在第 3/7 步 rmcdhf 出错 (结束于 …)”：停下来的是哪一步，不必翻日志。"""
+    i, n = st.get("step", 0), len(titles)
+    title = titles[i] if 0 <= i < n else "?"
+    end = st.get("end") or time.strftime("%Y-%m-%d %H:%M:%S")
+    text = {"ok": T("上次运行完成：共 {n} 步", n=n),
+            "stopped": T("上次运行在第 {i}/{n} 步 {t} 停止", i=i + 1, n=n, t=title),
+            "failed": T("上次运行在第 {i}/{n} 步 {t} 出错", i=i + 1, n=n, t=title)}.get(
+        st.get("status"), T("上次运行意外结束于第 {i}/{n} 步 {t}", i=i + 1, n=n, t=title))
+    return text + T(" (结束于 {e})", e=end)
+
+
 class ButtonColumn(QWidget):
     """按组排列的按钮：高度放得下时排成一列 (组间留空)，放不下时排成两列，面板变矮时不会被按钮撑住。"""
     GAP = 8
@@ -868,6 +880,7 @@ class CalcPanel(QWidget):
         self.q = queue.Queue()
         self.client = None             # 与后台运行进程的连接 (见 grasp_bg)；连着时 busy
         self.titles = []               # 正在运行的各步标题
+        self.last_run = ""             # 本目录上次运行的结果 (结束后留在状态栏的常驻标签中)
         self.remote = None             # 本目录的计算在另一台机器上运行时：读取其 RUN_LOG 的线程的标记
         self.pipeline = []
         self.session_cleared = False
@@ -901,7 +914,7 @@ class CalcPanel(QWidget):
         """运行中：当前步骤、本步已运行的时间和最后一次输出距今的时间 (每秒更新)。
         放在常驻标签中，切换标签页或菜单提示不会把它清掉；GRASP 长时间没有输出时也能看出计算仍在进行。"""
         if not self.busy:
-            self.progress.emit("")
+            self.progress.emit(self.last_run)
             return
         st = grasp_bg.status(self.cur_workdir) or {}
         i, n = st.get("step", 0), len(self.titles)
@@ -1187,6 +1200,7 @@ class CalcPanel(QWidget):
         self.detach()
         self.cur_workdir = d
         self.session_cleared = False
+        self.last_run = ""
         self.open_workdir(d)
 
     def open_workdir(self, d):
@@ -1346,18 +1360,23 @@ class CalcPanel(QWidget):
             QMessageBox.information(self, T("停止"), T("计算在 {h} 上运行 (进程 {p})，只能在那台机器上停止。",
                                                       h=st.get("host", "?"), p=st.get("pid", "?")))
 
-    def show_step(self, i):
-        if self.busy and 0 <= i < len(self.titles):
-            self.status(T("运行中：第 {i}/{n} 步 {t}", i=i + 1, n=len(self.titles), t=self.titles[i]))
+    def show_step(self, _i):
+        self.update_progress()              # 进度只显示在常驻标签中，不再另发一条状态栏消息
 
     def finished(self, result):
         if not self.busy:
             return
+        titles = self.titles
         self.detach()
         ok = result == "ok"
         if result == "lost":
             self.write("\n" + T("*** 后台运行进程意外结束") + "\n", "err")
-        self.status(T("完成") if ok else T("失败 / 已停止 — 详见输出"))
+        st = dict(grasp_bg.status(self.cur_workdir) or {}, status=result)
+        self.last_run = run_summary(st, titles)
+        if not ok:
+            self.write("\n*** " + self.last_run + "\n", "err")
+        self.status(self.last_run)
+        self.update_progress()
         grasp_bg.mark_seen(self.cur_workdir)
         self.runFinished.emit(ok)
 
@@ -1383,6 +1402,8 @@ class CalcPanel(QWidget):
             self.titles = st.get("titles", [])
             threading.Thread(target=self.tail_remote, args=(d, token), daemon=True).start()
             return
+        self.last_run = run_summary(st, st.get("titles", []))
+        self.update_progress()
         if st.get("seen"):
             return
         self.out.clear()

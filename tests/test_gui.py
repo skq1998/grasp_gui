@@ -268,9 +268,34 @@ def test_progress_label_survives_status_messages(qapp, tmp_path, no_dialogs):
     os.utime(log, (old, old))
     w.calc.update_progress()
     assert "2:0" in w.progress_label.text()        # 最后输出于 2:05 前
+    assert "sh" not in w.statusBar().currentMessage()   # 进度只在常驻标签中显示一处
     spin(qapp, lambda: not w.calc.busy, timeout=30)
     w.calc.update_progress()
-    assert w.progress_label.text() == ""
+    assert core.T("上次运行完成：共 {n} 步", n=1) in w.progress_label.text()
+    assert w.close()
+    assert no_dialogs == []
+
+
+def test_failed_step_stays_in_status_bar(qapp, tmp_path, no_dialogs):
+    """运行出错后，常驻标签和输出末尾写明停在第几步；切换页面、重新打开目录后仍然显示。"""
+    jobs = [dict(step="custom", vals=dict(prog="sh", args=f"-c '{c}'", stdin="", log=""))
+            for c in ("echo one", "echo two; exit 3", "echo three")]
+    cfg, _ = config.check(dict(format=config.FORMAT, version=2, jobs=jobs))
+    config.install(cfg, str(tmp_path / "wd"))
+    w = window(tmp_path / "wd")
+    w.calc.run_pipeline()
+    spin(qapp, lambda: not w.calc.busy, timeout=30)
+    expected = core.T("上次运行在第 {i}/{n} 步 {t} 出错", i=2, n=3, t=w.calc.pipeline[1]["title"])
+    w.statusBar().showMessage("other page message")
+    w.show_tab("levels")
+    qapp.processEvents()
+    assert expected in w.progress_label.text()
+    assert expected in w.calc.out.toPlainText()
+    assert w.close()
+    w = window(tmp_path / "wd")                        # 重新打开：从运行状态文件恢复
+    qapp.processEvents()
+    w.calc.update_progress()
+    assert expected in w.progress_label.text()
     assert w.close()
     assert no_dialogs == []
 
