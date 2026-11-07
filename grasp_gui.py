@@ -190,6 +190,7 @@ class MainWindow(QMainWindow):
             self.statusBar().addPermanentWidget(self.progress_label)
             self.calc.progress.connect(self.progress_label.setText)
             self.calc.runFinished.connect(self.refresh_panels)
+            self.calc.filesChanged.connect(self.refresh_panels)
             self.calc.workdirRequested.connect(self.change_workdir)
         else:
             self.calc.run = self.run

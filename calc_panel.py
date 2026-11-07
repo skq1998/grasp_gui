@@ -5,6 +5,7 @@
 
 import codecs
 import datetime
+import difflib
 import json
 import os
 import queue
@@ -13,7 +14,7 @@ import threading
 import time
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
                                QPushButton, QScrollArea, QSplitter, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
@@ -22,6 +23,7 @@ import grasp_bg
 import grasp_config
 import grasp_core as core
 import grasp_mix
+import grasp_workdir as workdir_ops
 from grasp_core import T
 from gui_common import button, fixed_font, hint_label, text_edit
 
@@ -293,14 +295,15 @@ def esc(s):
 
 
 class ConfigDialog(QDialog):
-    """选择一个配置 (手册算例或打开的配置文件)，导入到一个空目录。
-    entries：[dict(cfg, warnings, path)]，path 为 None 表示随程序提供的示例。"""
+    """选择一个配置，默认导入空目录，也可预览后更新当前目录。
+    entries：[dict(cfg, warnings, path)]；剪贴板条目另带 clipboard=True，按外部配置确认。"""
 
-    def __init__(self, parent, entries, bindir):
+    def __init__(self, parent, entries, bindir, current_dir=None):
         super().__init__(parent)
         self.setWindowTitle(T("导入配置"))
         self.resize(960, 620)
         self.entries, self.bindir = list(entries), bindir
+        self.current_dir, self.new_target = current_dir, ""
         lay = QVBoxLayout(self)
         note = QLabel(T("配置只包含各程序的参数和计算流程 (以及少量附带的输入文件)，不含计算结果。导入到一个空目录后，"
                         "点“▶ 运行全部”即可从头计算；各程序页显示该程序在流程中最后一次使用的参数。"))
@@ -315,25 +318,34 @@ class ConfigDialog(QDialog):
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.list.setSpacing(2)
         ll.addWidget(self.list)
-        ll.addWidget(button("打开配置文件…", self.open_file))
+        source_buttons = QHBoxLayout()
+        source_buttons.addWidget(button("打开配置文件…", self.open_file))
+        source_buttons.addWidget(button("从剪贴板读入", self.open_clipboard))
+        ll.addLayout(source_buttons)
         split.addWidget(left)
         self.info = QTextBrowser()
         split.addWidget(self.info)
         split.setStretchFactor(1, 2)
         split.setSizes([300, 640])
         lay.addWidget(split, 1)
+        self.update = QCheckBox(T("更新当前工作目录"))
+        self.update.setEnabled(current_dir is not None)
+        self.update.toggled.connect(self.update_mode)
+        lay.addWidget(self.update)
         row = QHBoxLayout()
         row.addWidget(QLabel(T("导入到目录")))
         self.dir = QLineEdit()
         self.dir.textEdited.connect(lambda: setattr(self, "dir_edited", True))
         row.addWidget(self.dir, 1)
-        row.addWidget(button("浏览…", self.pick))
+        self.browse = button("浏览…", self.pick)
+        row.addWidget(self.browse)
         lay.addLayout(row)
         bar = QHBoxLayout()
         bar.addStretch()
-        ok = button("导入", self.accept)
-        ok.setDefault(True)
-        bar.addWidget(ok)
+        self.ok = button("导入", self.accept)
+        self.ok.setDefault(True)
+        self.ok.setEnabled(bool(self.entries))
+        bar.addWidget(self.ok)
         bar.addWidget(button("取消", self.reject))
         lay.addLayout(bar)
         self.dir_edited = False
@@ -345,7 +357,8 @@ class ConfigDialog(QDialog):
 
     def add_item(self, e):
         title = grasp_config.text(e["cfg"], "title") or os.path.basename(e["path"] or "")
-        self.list.addItem(title if e["path"] is None else f"{title}\n({os.path.basename(e['path'])})")
+        source = T("剪贴板") if e.get("clipboard") else os.path.basename(e["path"] or "")
+        self.list.addItem(title if e["path"] is None and not e.get("clipboard") else f"{title}\n({source})")
 
     def open_file(self, path=None):
         if not path:
@@ -358,24 +371,40 @@ class ConfigDialog(QDialog):
         except grasp_config.ConfigError as e:
             QMessageBox.warning(self, T("导入配置"), str(e))
             return False
-        self.entries.insert(0, dict(cfg=cfg, warnings=warnings, path=os.path.abspath(path)))
+        self.add_entry(dict(cfg=cfg, warnings=warnings, path=os.path.abspath(path)))
+        return True
+
+    def open_clipboard(self):
+        content = QGuiApplication.clipboard().text()
+        try:
+            cfg, warnings = grasp_config.loads(content)
+        except grasp_config.ConfigError as e:
+            preview = repr(content.strip()[:80])
+            QMessageBox.warning(self, T("导入配置"), T("无法读取剪贴板：{e}\n内容开头：{text}", e=e, text=preview))
+            return False
+        self.add_entry(dict(cfg=cfg, warnings=warnings, path=None, clipboard=True))
+        return True
+
+    def add_entry(self, entry):
+        self.entries.insert(0, entry)
         self.list.clear()
         for e in self.entries:
             self.add_item(e)
         self.dir_edited = False
         self.list.setCurrentRow(0)
-        return True
 
     def entry(self):
         return self.entries[max(self.list.currentRow(), 0)]
 
     def show_entry(self, row):
+        self.ok.setEnabled(row >= 0)
         if row < 0:
             return
         e = self.entries[row]
         d = e["cfg"]
         html = [f"<h3>{esc(grasp_config.text(d, 'title') or T('(无标题)'))}</h3>"]
-        source = T("随程序提供的示例") if e["path"] is None else esc(e["path"])
+        source = T("剪贴板") if e.get("clipboard") else (
+            T("随程序提供的示例") if e["path"] is None else esc(e["path"]))
         html.append(f"<p style='color:gray'>{source}</p>")
         if grasp_config.text(d, "summary"):
             html.append(f"<p>{esc(grasp_config.text(d, 'summary'))}</p>")
@@ -414,21 +443,36 @@ class ConfigDialog(QDialog):
                             + (f", {T('最低')} {min(en):.8f} Eh" if en else "") + "</li>")
             html.append("</ul>")
         self.info.setHtml("".join(html))
-        if not self.dir_edited:
-            if e["path"] is None:
+        if not self.dir_edited and not self.update.isChecked():
+            if e.get("clipboard"):
+                name = str(d.get("id") or grasp_config.text(d, "title") or "clipboard")
+                stem = re.sub(r"[^\w.-]+", "_", name).strip("._") or "clipboard"
+                self.dir.setText(free_dir(os.path.join(CALC_ROOT, stem)))
+            elif e["path"] is None:
                 self.dir.setText(free_dir(os.path.join(DEMO_ROOT, d.get("id") or "demo")))
             else:
                 stem = os.path.basename(e["path"]).split(".")[0] or "calc"
                 self.dir.setText(free_dir(os.path.join(CALC_ROOT, stem)))
 
     def accept(self):
+        if not self.entries:
+            return
         e = self.entry()
         commands = grasp_config.custom_commands(e["cfg"])
-        if e["path"] is not None and commands and QMessageBox.question(
+        if (e["path"] is not None or e.get("clipboard")) and commands and QMessageBox.question(
                 self, T("导入配置"), T("这个配置含有 {n} 条自定义命令 (见右侧)，运行流程时会执行它们。确定导入吗？",
                                       n=len(commands))) != QMessageBox.Yes:
             return
         super().accept()
+
+    def update_mode(self, enabled):
+        if enabled:
+            self.new_target = self.dir.text()
+            self.dir.setText(self.current_dir or "")
+        else:
+            self.dir.setText(self.new_target)
+        self.dir.setReadOnly(enabled)
+        self.browse.setEnabled(not enabled)
 
     def pick(self):
         d = QFileDialog.getExistingDirectory(self, "", os.path.dirname(self.dir.text()) or os.path.expanduser("~"))
@@ -440,14 +484,191 @@ class ConfigDialog(QDialog):
         return os.path.abspath(os.path.expanduser(self.dir.text().strip()))
 
 
+class UpdateDialog(QDialog):
+    """应用前显示可复制的改动摘要；附带文件冲突逐项选择，默认保留。"""
+
+    def __init__(self, parent, plan):
+        super().__init__(parent)
+        self.plan, self.run_added = plan, False
+        self.setWindowTitle(T("更新当前工作目录"))
+        self.resize(940, 760)
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel(plan["root"]))
+        self.summary = QPlainTextEdit(plan["text"])
+        self.summary.setReadOnly(True)
+        lay.addWidget(self.summary, 2)
+        copy = button("复制摘要", self.copy_summary)
+        lay.addWidget(copy, alignment=Qt.AlignLeft)
+        lay.addWidget(QLabel(T("附带文件：冲突默认保留原文件，勾选才覆盖")))
+        self.files = QListWidget()
+        labels = {"new": T("新增"), "same": T("内容相同"), "conflict": T("冲突（默认保留）")}
+        for item in plan["files"]:
+            row = QListWidgetItem(f"{item['name']} — {labels[item['kind']]}")
+            row.setData(Qt.UserRole, item)
+            if item["kind"] == "conflict":
+                row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+                row.setCheckState(Qt.Unchecked)
+            self.files.addItem(row)
+        lay.addWidget(self.files)
+        self.diff = QPlainTextEdit()
+        self.diff.setReadOnly(True)
+        lay.addWidget(self.diff)
+        self.files.currentRowChanged.connect(self.show_diff)
+        self.files.setCurrentRow(0)
+        bar = QHBoxLayout()
+        self.added = button("更新并运行新增的步骤", lambda: self.accept_update(True))
+        self.added.setVisible(plan["append_from"] is not None)
+        self.added.setToolTip(T("覆盖已有输入时请先更新，再核对需要重算的步骤"))
+        bar.addWidget(self.added)
+        self.files.itemChanged.connect(self.overwrite_changed)
+        bar.addStretch()
+        bar.addWidget(button("只更新", lambda: self.accept_update(False)))
+        bar.addWidget(button("取消", self.reject))
+        lay.addLayout(bar)
+
+    def copy_summary(self):
+        self.summary.selectAll()
+        self.summary.copy()
+
+    def show_diff(self, row):
+        if row < 0:
+            self.diff.clear()
+            return
+        item = self.plan["files"][row]
+        before = (item["previous"] or "").splitlines()
+        after = item["text"].splitlines()
+        self.diff.setPlainText("\n".join(difflib.unified_diff(before, after, fromfile=T("原文件"),
+                                                          tofile=T("新配置"), lineterm="")))
+
+    def overwrite(self):
+        return {self.files.item(i).data(Qt.UserRole)["name"] for i in range(self.files.count())
+                if self.files.item(i).checkState() == Qt.Checked}
+
+    def overwrite_changed(self):
+        self.added.setEnabled(not self.overwrite())
+
+    def accept_update(self, run):
+        if run and self.overwrite():
+            return
+        self.run_added = run
+        self.accept()
+
+
+def file_size(size):
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}"
+        size /= 1024
+
+
+class ClearDialog(QDialog):
+    """永久删除前列出候选和保留项；全部删除需要再次输入目录名。"""
+
+    def __init__(self, parent, workdir, allow_untracked=False):
+        super().__init__(parent)
+        self.workdir, self.allow_untracked = workdir, allow_untracked
+        self.setWindowTitle(T("清空工作目录"))
+        self.resize(850, 680)
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel(os.path.realpath(workdir)))
+        warning = QLabel(T("永久删除，不能恢复。选中的子目录及其中的内容将一并删除；符号链接只删除链接本身。"))
+        warning.setWordWrap(True)
+        lay.addWidget(warning)
+        self.all_files = QCheckBox(T("全部删除（默认只删除计算结果）"))
+        lay.addWidget(self.all_files)
+        self.note = QLabel(T("输入清单未知，未自动勾选普通文件；请选择要删除的计算结果。"))
+        self.note.setWordWrap(True)
+        lay.addWidget(self.note)
+        split = QSplitter()
+        self.files = QListWidget()
+        self.kept = QListWidget()
+        split.addWidget(self.files)
+        split.addWidget(self.kept)
+        lay.addWidget(QLabel(T("左侧：可删除项目（可取消勾选）；右侧：保留项目")))
+        selection = QHBoxLayout()
+        self.select_all = button("全选", lambda: self.select_files(True))
+        self.select_none = button("全不选", lambda: self.select_files(False))
+        selection.addWidget(self.select_all)
+        selection.addWidget(self.select_none)
+        selection.addStretch()
+        lay.addLayout(selection)
+        lay.addWidget(split, 1)
+        self.total = QLabel()
+        lay.addWidget(self.total)
+        lay.addWidget(QLabel(T("全部删除时请输入目录名：{name}", name=os.path.basename(os.path.realpath(workdir)))))
+        self.confirmation = QLineEdit()
+        self.confirmation.textChanged.connect(self.count_changed)
+        lay.addWidget(self.confirmation)
+        bar = QHBoxLayout()
+        bar.addStretch()
+        self.ok = button("永久删除所选项目", self.accept)
+        bar.addWidget(self.ok)
+        bar.addWidget(button("取消", self.reject))
+        lay.addLayout(bar)
+        self.files.itemChanged.connect(self.count_changed)
+        self.all_files.toggled.connect(self.refresh)
+        self.refresh()
+
+    def refresh(self):
+        try:
+            self.plan = workdir_ops.prepare_clear(self.workdir, self.all_files.isChecked(), self.allow_untracked)
+        except (OSError, ValueError) as e:
+            self.plan = None
+            QMessageBox.warning(self, T("清空工作目录"), str(e))
+            self.ok.setEnabled(False)
+            self.reject()
+            return
+        self.note.setVisible(self.plan["unknown_inputs"])
+        self.files.blockSignals(True)
+        self.files.clear()
+        for item in self.plan["entries"]:
+            row = QListWidgetItem(f"{item['name']} — {item['count']} / {file_size(item['size'])}")
+            row.setData(Qt.UserRole, item)
+            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+            row.setCheckState(Qt.Checked if item["checked"] else Qt.Unchecked)
+            self.files.addItem(row)
+        self.files.blockSignals(False)
+        self.kept.clear()
+        self.kept.addItems([item["name"] for item in self.plan["kept"]])
+        self.confirmation.setEnabled(self.all_files.isChecked())
+        self.count_changed()
+
+    def select_files(self, selected):
+        self.files.blockSignals(True)
+        for i in range(self.files.count()):
+            self.files.item(i).setCheckState(Qt.Checked if selected else Qt.Unchecked)
+        self.files.blockSignals(False)
+        self.count_changed()
+
+    def selected_names(self):
+        return {self.files.item(i).data(Qt.UserRole)["name"] for i in range(self.files.count())
+                if self.files.item(i).checkState() == Qt.Checked}
+
+    def count_changed(self):
+        if self.plan is None:
+            self.ok.setEnabled(False)
+            return
+        selected = self.selected_names()
+        count = sum(item["count"] for item in self.plan["entries"] if item["name"] in selected)
+        size = sum(item["size"] for item in self.plan["entries"] if item["name"] in selected)
+        self.total.setText(T("将删除 {n} 项，共 {size}", n=count, size=file_size(size)))
+        confirmed = self.confirmation.text() == os.path.basename(self.plan["root"])
+        self.ok.setEnabled(bool(selected) and (not self.all_files.isChecked() or confirmed))
+
+    def accept(self):
+        if self.ok.isEnabled():
+            super().accept()
+
+
 class ExportDialog(QDialog):
     """把当前目录的流程导出为共享配置：填写说明，选择参考结果和附带文件。"""
 
-    def __init__(self, parent, workdir, pipeline):
+    def __init__(self, parent, workdir, pipeline, clipboard=False):
         super().__init__(parent)
         self.setWindowTitle(T("导出配置"))
         self.resize(820, 680)
         self.workdir, self.pipeline = workdir, pipeline
+        self.to_clipboard, self.cfg = clipboard, None
         lay = QVBoxLayout(self)
         note = QLabel(T("配置保存当前流程中各步的参数，不含计算结果，也不含 GRASP bin 目录、MPI 进程数等与机器有关的设置。"
                         "别人导入后可以从头重复这个计算。"))
@@ -497,8 +718,11 @@ class ExportDialog(QDialog):
         lay.addWidget(self.notes)
         bar = QHBoxLayout()
         bar.addStretch()
-        ok = button("导出…", self.accept)
-        ok.setDefault(True)
+        copy = button("复制到剪贴板", lambda: self.accept(True))
+        copy.setDefault(clipboard)
+        bar.addWidget(copy)
+        ok = button("保存为文件…", self.accept)
+        ok.setDefault(not clipboard)
         bar.addWidget(ok)
         bar.addWidget(button("取消", self.reject))
         lay.addLayout(bar)
@@ -535,10 +759,22 @@ class ExportDialog(QDialog):
         return [os.path.join(self.workdir, self.refs.item(i).text()) for i in range(self.refs.count())
                 if self.refs.item(i).checkState() == Qt.Checked]
 
-    def accept(self):
+    def accept(self, clipboard=False):
         if not self.title.text().strip():
             QMessageBox.information(self, T("导出配置"), T("请填写标题。"))
             return
+        try:
+            cfg = grasp_config.export(self.pipeline, self.meta(), self.file_paths(), self.reference_paths())
+            content = grasp_config.dumps(cfg)
+        except (grasp_config.ConfigError, OSError, ValueError) as e:
+            QMessageBox.warning(self, T("导出配置"), str(e))
+            return
+        if clipboard and len(content.encode("utf-8")) > grasp_config.MAX_CLIPBOARD:
+            QMessageBox.warning(self, T("导出配置"), T("配置太大，无法复制到剪贴板；请保存为文件。"))
+            return
+        self.cfg, self.to_clipboard = cfg, clipboard
+        if clipboard:
+            QGuiApplication.clipboard().setText(content)
         core.save_config(config_author=self.author.text().strip())
         super().accept()
 
@@ -621,6 +857,7 @@ class CalcPanel(QWidget):
     参数和流程按工作目录保存在 core.SESSION_FILE 中。"""
     message = Signal(str)                  # 状态栏消息
     progress = Signal(str)                 # 运行进度 (状态栏右侧的常驻标签；空字符串 = 没有运行)
+    filesChanged = Signal()                # 更新目录内容后刷新查看器
     runFinished = Signal(bool)             # 一次运行结束 (查看器据此刷新)
     workdirRequested = Signal(str)         # 需要切换工作目录 (导入示例、载入参数)
 
@@ -633,6 +870,7 @@ class CalcPanel(QWidget):
         self.titles = []               # 正在运行的各步标题
         self.remote = None             # 本目录的计算在另一台机器上运行时：读取其 RUN_LOG 的线程的标记
         self.pipeline = []
+        self.session_cleared = False
         self.busy = False
         self.group = core.GROUPS[0]
         self.groups = {g: core.group_defaults(g) for g in core.GROUPS}
@@ -779,6 +1017,7 @@ class CalcPanel(QWidget):
         menu = QMenu(export)
         menu.addAction(T("导出脚本…")).triggered.connect(self.export_script)
         menu.addAction(T("导出 Slurm 作业脚本…")).triggered.connect(self.export_slurm)
+        menu.addAction(T("复制配置到剪贴板…")).triggered.connect(lambda: self.export_config(True))
         export.setMenu(menu)
         pl.addWidget(ButtonColumn([[button("▶ 运行全部", self.run_pipeline), button("▶ 从选中开始", self.run_from_selected)],
                                    [button("编辑", self.edit_job), button("更新所选", self.update_job),
@@ -807,6 +1046,13 @@ class CalcPanel(QWidget):
         top.addWidget(QLabel(T("程序输出")))
         top.addWidget(hint_label(T("（只显示最后 {n} 行，完整输出请设置日志文件）", n=core.MAX_OUT_LINES)))
         top.addStretch()
+        directory = QPushButton(T("工作目录"))
+        menu = QMenu(directory)
+        menu.addAction(T("用配置更新当前目录…")).triggered.connect(lambda: self.import_config(False, update=True))
+        menu.addAction(T("恢复上一次的工作目录记录")).triggered.connect(self.restore_workdir)
+        menu.addAction(T("清空工作目录…")).triggered.connect(self.clear_workdir)
+        directory.setMenu(menu)
+        top.addWidget(directory)
         top.addWidget(button("查看文件", self.list_files))
         top.addWidget(button("清屏", lambda: self.out.clear()))
         ol.addLayout(top)
@@ -940,6 +1186,7 @@ class CalcPanel(QWidget):
             self.write("\n" + T("[原目录 {d} 的计算在后台继续；再次打开该目录即可接上]", d=self.cur_workdir) + "\n", "info")
         self.detach()
         self.cur_workdir = d
+        self.session_cleared = False
         self.open_workdir(d)
 
     def open_workdir(self, d):
@@ -947,6 +1194,7 @@ class CalcPanel(QWidget):
             return
         data = core.load_session(d)
         if data:
+            self.session_cleared = False
             self.apply(data)
             self.status(T("已载入此目录上次的记录") + f"  ({os.path.join(d, core.SESSION_FILE)})")
         else:
@@ -954,6 +1202,8 @@ class CalcPanel(QWidget):
         self.show_background(d)
 
     def save_session(self):
+        if self.session_cleared:
+            return
         data = self.collect()
         for key in ("workdir", "bindir"):     # 与目录无关的设置不放进目录记录
             data.pop(key)
@@ -1035,6 +1285,7 @@ class CalcPanel(QWidget):
                                     h=st.get("host", "?"), t=st.get("start", "?"))) != QMessageBox.Yes:
             return
         cfg = dict(self.run.values(), cwd=self.cur_workdir)
+        self.session_cleared = False
         self.run.save()
         self.save_session()
         self.detach()                      # 不再读取另一台机器上的计算的输出
@@ -1175,6 +1426,7 @@ class CalcPanel(QWidget):
             self.start([job])
 
     def add_to_pipeline(self):
+        self.session_cleared = False
         job = self.current_job()
         if job:
             if job["step"] in core.GROUP_STEPS:
@@ -1310,6 +1562,7 @@ class CalcPanel(QWidget):
                     pipeline=self.pipeline, tab=self.nav.currentWidget().step.key, package=self.package)
 
     def apply(self, data):
+        self.session_cleared = False
         self.run.apply(data)
         if "workdir" in data:
             d = os.path.abspath(str(data["workdir"]))
@@ -1350,7 +1603,7 @@ class CalcPanel(QWidget):
     def import_file(self):
         self.import_config(examples=False)
 
-    def import_config(self, examples, path=None):
+    def import_config(self, examples, path=None, update=False):
         """导入共享配置：examples 为真时列出随程序提供的手册算例，否则先选择一个配置文件。"""
         if self.busy:
             QMessageBox.information(self, T("运行中"), T("已有任务在运行，请等待或先停止。"))
@@ -1359,35 +1612,106 @@ class CalcPanel(QWidget):
         if examples and not entries:
             QMessageBox.warning(self, T("导入示例"), T("找不到示例文件 ({p})", p=grasp_config.DEMO_DIR))
             return
-        dlg = ConfigDialog(self, entries, self.run.bindir())
-        if not examples and not dlg.open_file(path):
+        dlg = ConfigDialog(self, entries, self.run.bindir(), self.cur_workdir)
+        dlg.update.setChecked(update)
+        if not examples and path and not dlg.open_file(path):
             return
         if dlg.exec() != QDialog.Accepted:
             return
         cfg, path = dlg.entry()["cfg"], dlg.target()
+        if dlg.update.isChecked():
+            self.update_workdir(cfg)
+            return
         try:
             grasp_config.install(cfg, path)
         except OSError as e:
             QMessageBox.warning(self, T("导入配置"), str(e))
             return
+        self.session_cleared = False
         if path == self.cur_workdir:
             self.open_workdir(path)
         else:
             self.workdirRequested.emit(path)
         self.status(T("已导入“{t}”到 {p}；点“▶ 运行全部”开始计算", t=grasp_config.text(cfg, "title"), p=path))
 
-    def export_config(self):
+    def update_workdir(self, cfg):
+        try:
+            plan = workdir_ops.prepare_update(self.cur_workdir, cfg, self.collect())
+            dlg = UpdateDialog(self, plan)
+            if dlg.exec() != QDialog.Accepted:
+                return
+            data = workdir_ops.apply_update(plan, dlg.overwrite())
+        except (OSError, ValueError, KeyError) as e:
+            QMessageBox.warning(self, T("更新当前工作目录"), str(e))
+            return
+        self.session_cleared = False
+        self.apply(data)
+        first = 0 if dlg.overwrite() else plan["first"]
+        if first is not None:
+            self.plist.setCurrentRow(first)
+            self.status(T("已更新当前目录；建议从第 {n} 步开始核对和重算", n=first + 1))
+        else:
+            self.status(T("已更新当前目录；原有结果文件保留"))
+        self.filesChanged.emit()
+        if plan.get("warnings"):
+            QMessageBox.warning(self, T("更新当前工作目录"),
+                                T("更新已完成，但临时备份清理失败：{e}", e="\n".join(plan["warnings"])))
+        if dlg.run_added:
+            self.plist.setCurrentRow(plan["append_from"])
+            self.run_from_selected()
+
+    def restore_workdir(self):
+        if QMessageBox.question(self, T("恢复上一次的工作目录记录"),
+                               T("只恢复流程和参数，计算结果与附带文件不变。当前记录也会备份；连续恢复两次会回到恢复前的状态。确定恢复吗？")) != QMessageBox.Yes:
+            return
+        try:
+            data = workdir_ops.restore(self.cur_workdir)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("恢复上一次的工作目录记录"), str(e))
+            return
+        self.session_cleared = False
+        self.apply(data)
+        self.status(T("已恢复上一次的工作目录记录"))
+
+    def clear_workdir(self):
+        started = False
+        try:
+            root = workdir_ops.safe_root(self.cur_workdir, allow_untracked=True)
+            tracked = os.path.isfile(os.path.join(root, core.SESSION_FILE)) and not os.path.islink(
+                os.path.join(root, core.SESSION_FILE))
+            if not tracked and QMessageBox.question(self, T("清空工作目录"),
+                    T("此目录没有工作目录记录。仍要查看并选择待删除内容吗？")) != QMessageBox.Yes:
+                return
+            dlg = ClearDialog(self, root, not tracked)
+            if dlg.plan is None:
+                return
+            if dlg.exec() != QDialog.Accepted:
+                return
+            started = True
+            workdir_ops.clear(dlg.plan, dlg.selected_names(), dlg.confirmation.text())
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("清空工作目录"),
+                                T("清理未完成，部分项目可能已删除：{e}", e=str(e)))
+            if not started:
+                return
+        else:
+            self.status(T("已永久删除所选项目"))
+        if not os.path.exists(os.path.join(root, core.SESSION_FILE)):
+            self.apply(dict(pipeline=[], steps={s.key: s.defaults() for s in core.STEPS}, groups={}))
+            self.session_cleared = True
+        self.filesChanged.emit()
+
+    def export_config(self, clipboard=False):
         """把当前流程导出为共享配置文件。"""
         if not self.need_pipeline():
             return
         self.flush_group()
-        dlg = ExportDialog(self, self.cur_workdir, self.pipeline)
+        dlg = ExportDialog(self, self.cur_workdir, self.pipeline, clipboard)
         if dlg.exec() != QDialog.Accepted:
             return
-        try:
-            cfg = grasp_config.export(self.pipeline, dlg.meta(), dlg.file_paths(), dlg.reference_paths())
-        except (grasp_config.ConfigError, OSError, ValueError) as e:
-            QMessageBox.warning(self, T("导出配置"), str(e))
+        cfg = dlg.cfg
+        if dlg.to_clipboard:
+            self.status(T("已复制配置到剪贴板 ({n} 步)", n=len(cfg["jobs"])))
             return
         name = re.sub(r"[^\w.-]+", "_", cfg["title"]).strip("_") or "config"
         path, _ = QFileDialog.getSaveFileName(self, T("导出配置"), os.path.join(self.cur_workdir, name + ".json"),

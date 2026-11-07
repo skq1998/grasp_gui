@@ -107,3 +107,34 @@ def test_cli_exit_codes(tmp_path, capsys):
     assert config.cli(["steps"]) == 0
     out = capsys.readouterr().out
     assert all(f"`{s.key}`" in out for s in core.STEPS)
+
+
+
+def test_import_persists_only_valid_input_names(tmp_path):
+    cfg, _ = config.load(os.path.join(DEMOS, "example1.json"))
+    cfg["files"] = [dict(name="extra.in", text="preserve this input")]
+    config.install(cfg, str(tmp_path))
+    assert json.loads((tmp_path / config.INPUTS_FILE).read_text()) == ["extra.in"]
+    assert config.load_inputs(tmp_path) == {"extra.in"}
+    assert core.load_session(tmp_path) == json.loads(json.dumps(config.session(cfg)))
+    original = (tmp_path / config.INPUTS_FILE).read_bytes()
+    with pytest.raises(config.ConfigError):
+        config.save_inputs(tmp_path, ["../outside"])
+    assert (tmp_path / config.INPUTS_FILE).read_bytes() == original
+
+
+@pytest.mark.parametrize("content", ["{}", "null", "[1]", json.dumps(["../outside"]), json.dumps([".hidden"]), "not JSON"])
+def test_invalid_input_manifest_is_refused(tmp_path, content):
+    (tmp_path / config.INPUTS_FILE).write_text(content)
+    with pytest.raises(config.ConfigError, match="输入清单"):
+        config.load_inputs(tmp_path)
+
+
+def test_input_manifest_missing_or_link(tmp_path):
+    assert config.load_inputs(tmp_path) is None
+    outside = tmp_path / "outside"
+    outside.write_text(json.dumps(["input"]))
+    (tmp_path / config.INPUTS_FILE).symlink_to(outside)
+    with pytest.raises(OSError):
+        config.load_inputs(tmp_path)
+    assert json.loads(outside.read_text()) == ["input"]

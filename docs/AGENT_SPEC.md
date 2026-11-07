@@ -5,6 +5,9 @@ This is the minimal set of rules for a program or AI agent that runs GRASP2018 a
 (*File → Import configuration file…*), sees every step as a filled-in form, can rerun the pipeline and compare the
 results with the energies the agent obtained.
 
+An agent can also provide the configuration as JSON text (plain or in a Markdown code block); the user can
+choose *From clipboard* in the import dialog. agent 也可直接给出配置文本，用户在导入对话框中从剪贴板读入。
+
 本文是最简规范：让运行 GRASP2018 的脚本或 AI agent 同时给出与本程序匹配的[配置文件](CONFIG_FORMAT.md)。操作者用
 “文件 → 导入配置文件…”导入后，每一步都显示为填好的表单，可以逐步核对参数、重新计算，并与 agent 给出的能量对照。
 

@@ -18,6 +18,9 @@ fields of every program tab are listed in [STEPS.md](STEPS.md).
 
 A UTF-8 JSON object. Current version: **2**.
 
+File and clipboard input share a 32 MiB UTF-8 text limit, including any Markdown wrapper; attached-file limits
+below still apply. 文件与剪贴板共用 32 MiB 的 UTF-8 文本上限（含 Markdown 包裹）；附带文件仍遵守下述限制。
+
 ```json
 {
   "format": "grasp-gui-config",
@@ -83,12 +86,15 @@ A UTF-8 JSON object. Current version: **2**.
    compatibility warnings and — highlighted — every **custom command** (custom tab steps and stored commands).
    These can run any program; a configuration from a file with custom commands must be confirmed explicitly.
 3. The configuration is imported into an empty directory: attached files are written and the pipeline and forms
-   are stored as the session of that directory (`.grasp_gui.json`). *▶ Run all* computes it from scratch.
+   are stored as the session of that directory (`.grasp_gui.json`). A separate `.grasp_gui_inputs.json` stores only
+   validated attached-input basenames for results-only cleanup, including after restarting. This local list is not
+   part of the shared configuration or session format. *▶ Run all* computes it from scratch.
 
 1. 读取并转换为当前版本；格式、版本、程序包、程序页或附带文件不合法时拒绝导入。
 2. 导入对话框显示说明、所需的程序 (找不到的标出)、附带文件、兼容性提示，并醒目地列出全部**自定义命令** (“自定义”程序页和
    原样保存的命令)；这些命令可以运行任意程序，文件中的配置含有自定义命令时需要用户确认。
-3. 导入到空目录：写入附带文件，流程和表单参数作为该目录的记录保存；点“▶ 运行全部”即可从头计算。
+3. 导入到空目录：写入附带文件，流程和表单参数作为该目录的记录保存；另将附带输入基名写入 `.grasp_gui_inputs.json`，
+   供重启后的只删结果操作保留输入。该本地清单不改变共享配置或工作目录记录的格式。点“▶ 运行全部”即可从头计算。
 
 ## Export / 导出
 
