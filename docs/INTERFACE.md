@@ -86,9 +86,9 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 │  description of the program                                             │
 │  form fields (label, editor, hint)                                      │
 ├ Preview input · ▶ Run this program · Add to pipeline ↓ ········ ■ Stop ─┤
-│ ┌ Pipeline ┬ Input preview ┐ │ Program output (last 5000 lines) List files Clear │
-│ │ 1. rnucleus   ▶Run all ▶Run from selected │  dark terminal-style output         │
-│ │ 2. …          Move up / Move down / Edit / Update selected / Show / Remove / …  │
+│ ┌ Pipeline ┐            │ Input preview      │ Program output  List files Clear │
+│ │ 1. rnucleus  ▶Run all  │ rmcdhf <<'EOF'     │  dark terminal-style output      │
+│ │ 2. …         Edit …    │ …                  │                                  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -204,8 +204,11 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   form, switching to its program tab and state group), *Update selected (更新所选)* (replaces the selected step by
   the current form; it must be the same program), *Show (查看)* (input preview of the step), *Remove (删除)*,
   *Clear (清空)*, *Export ▾ (导出)*: shell script / Slurm job script. Steps imported as commands have no form and
-  cannot be edited.
-* **Input preview (输入预览)**: the command, the here-document with the program's stdin and the file actions, e.g.
+  cannot be edited. The buttons stand in one column, grouped (run; edit / update / show; move; remove / clear;
+  export); when the pane is too low for one column they rearrange into two.
+* **Input preview (输入预览)**: when the lower area is at least 1300 pixels wide it is a column of its own between the
+  pipeline and the program output (the three widths are remembered); when narrower it is a tab next to *Pipeline*.
+  It shows the command, the here-document with the program's stdin and the file actions, e.g.
   `rmcdhf <<'EOF' … EOF` followed by `rsave odd4`.
 * **Program output (程序输出)**: dark terminal-style pane, last 5000 lines (set a log file in the form for the full
   output); *List files (查看文件)*, *Clear (清屏)*. Errors in red, step headers in blue.

@@ -12,7 +12,7 @@ import re
 import threading
 import time
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
@@ -161,6 +161,58 @@ class StepForm(QScrollArea):
 
     def job(self):
         return self.step.job(self.values())
+
+
+class ButtonColumn(QWidget):
+    """按组排列的按钮：高度放得下时排成一列 (组间留空)，放不下时排成两列，面板变矮时不会被按钮撑住。"""
+    GAP = 8
+
+    def __init__(self, groups):
+        super().__init__()
+        self.groups = groups
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setVerticalSpacing(3)
+        self.columns = 0
+        self.arrange(1)
+
+    def one_column_height(self):
+        buttons = [b for g in self.groups for b in g]
+        return (sum(b.sizeHint().height() for b in buttons) + 3 * (len(buttons) - 1)
+                + self.GAP * (len(self.groups) - 1))
+
+    def arrange(self, columns):
+        if columns == self.columns:
+            return
+        self.columns = columns
+        while self.grid.count():
+            self.grid.takeAt(0)
+        for r in range(self.grid.rowCount()):
+            self.grid.setRowMinimumHeight(r, 0)
+            self.grid.setRowStretch(r, 0)
+        row = 0
+        if columns == 1:
+            for k, group in enumerate(self.groups):
+                if k:
+                    self.grid.setRowMinimumHeight(row, self.GAP - 3)
+                    row += 1
+                for b in group:
+                    self.grid.addWidget(b, row, 0)
+                    row += 1
+        else:
+            for i, b in enumerate(b for g in self.groups for b in g):
+                self.grid.addWidget(b, i // 2, i % 2)
+            row = (sum(len(g) for g in self.groups) + 1) // 2
+        self.grid.setRowStretch(row, 1)
+
+    def minimumSizeHint(self):
+        size = super().minimumSizeHint()
+        size.setHeight(0)           # 高度不足时改为两列，不由按钮撑高面板
+        return size
+
+    def resizeEvent(self, event):
+        self.arrange(1 if event.size().height() >= self.one_column_height() else 2)
+        super().resizeEvent(event)
 
 
 # ---------------------------------------------------------------------------
@@ -688,28 +740,32 @@ class CalcPanel(QWidget):
         pl = QHBoxLayout(pw)
         self.plist = QListWidget()
         self.plist.itemDoubleClicked.connect(self.show_job)
-        pl.addWidget(self.plist)
-        # 按钮排成两列，面板不会因为按钮多而被撑高
-        btns = QGridLayout()
+        pl.addWidget(self.plist, 1)
+        # 按钮按用途分组；高度够时排成一列，不够时自动排成两列
         export = QPushButton(T("导出"))         # 带菜单的按钮会自动显示下拉箭头
         menu = QMenu(export)
         menu.addAction(T("导出脚本…")).triggered.connect(self.export_script)
         menu.addAction(T("导出 Slurm 作业脚本…")).triggered.connect(self.export_slurm)
         export.setMenu(menu)
-        for i, b in enumerate([button("▶ 运行全部", self.run_pipeline), button("▶ 从选中开始", self.run_from_selected),
-                               button("上移", lambda: self.move(-1)), button("下移", lambda: self.move(1)),
-                               button("编辑", self.edit_job), button("更新所选", self.update_job),
-                               button("查看", self.show_job), button("删除", self.remove_job),
-                               button("清空", self.clear_pipeline), export]):
-            btns.addWidget(b, i // 2, i % 2)
-        btns.setRowStretch(5, 1)
-        pl.addLayout(btns)
+        pl.addWidget(ButtonColumn([[button("▶ 运行全部", self.run_pipeline), button("▶ 从选中开始", self.run_from_selected)],
+                                   [button("编辑", self.edit_job), button("更新所选", self.update_job),
+                                    button("查看", self.show_job)],
+                                   [button("上移", lambda: self.move(-1)), button("下移", lambda: self.move(1))],
+                                   [button("删除", self.remove_job), button("清空", self.clear_pipeline)],
+                                   [export]]))
         self.btabs.addTab(pw, T("流程"))
 
         self.prev = QPlainTextEdit()
         self.prev.setFont(fixed_font())
         self.btabs.addTab(self.prev, T("输入预览"))
         split.addWidget(self.btabs)
+        # 下方足够宽时，输入预览单独成一栏，与流程、程序输出并列 (见 set_preview_column)
+        self.pbox = QWidget()
+        pv = QVBoxLayout(self.pbox)
+        pv.setContentsMargins(0, 0, 0, 0)
+        pv.addWidget(QLabel(T("输入预览")))
+        self.pbox.hide()
+        split.addWidget(self.pbox)
 
         ow = QWidget()
         ol = QVBoxLayout(ow)
@@ -730,9 +786,43 @@ class CalcPanel(QWidget):
         ol.addWidget(self.out)
         split.addWidget(ow)
         split.setStretchFactor(0, 1)
-        split.setStretchFactor(1, 2)
+        split.setStretchFactor(1, 1)
+        split.setStretchFactor(2, 2)
+        self.bsplit = split
+        self.preview_column = False
+        split.installEventFilter(self)
         self.refresh_list()
         return split
+
+    PREVIEW_COLUMN_WIDTH = 1300     # 下方区域至少这么宽时，输入预览单独成一栏
+
+    def eventFilter(self, obj, event):
+        if obj is getattr(self, "bsplit", None) and event.type() == QEvent.Resize:
+            self.set_preview_column(event.size().width() >= self.PREVIEW_COLUMN_WIDTH)
+        return super().eventFilter(obj, event)
+
+    def set_preview_column(self, wide):
+        """宽时输入预览在流程和程序输出之间单独成一栏；窄时回到流程旁的标签页。"""
+        if wide == self.preview_column:
+            return
+        self.preview_column = wide
+        if wide:
+            self.btabs.removeTab(self.btabs.indexOf(self.prev))
+            self.pbox.layout().addWidget(self.prev)
+            self.prev.show()
+            self.pbox.show()
+            sizes = self.bsplit.sizes()
+            if not sizes[1]:                    # 第一次展开：三栏约为 1 : 1 : 1.5
+                total = sum(sizes)
+                self.bsplit.setSizes([total * 2 // 7, total * 2 // 7, total - total * 4 // 7])
+        else:
+            self.pbox.hide()
+            self.btabs.addTab(self.prev, T("输入预览"))
+
+    def show_preview(self):
+        """显示输入预览：并列时它本来就可见，否则切换到它的标签页。"""
+        if not self.preview_column:
+            self.btabs.setCurrentWidget(self.prev)
 
     def shutdown(self, stop=False):
         """关闭主窗口前：保存本目录的记录；运行中的计算在后台继续，stop 为真时停止它。"""
@@ -892,7 +982,7 @@ class CalcPanel(QWidget):
         job = self.current_job()
         if job:
             self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
-            self.btabs.setCurrentIndex(1)
+            self.show_preview()
 
     def check_dirs(self):
         if not os.path.isdir(self.cur_workdir):
@@ -1073,7 +1163,7 @@ class CalcPanel(QWidget):
         i = self.selected()
         if i is not None:
             self.prev.setPlainText(core.describe(self.pipeline[i], self.run.mpi_prefix()) + "\n")
-            self.btabs.setCurrentIndex(1)
+            self.show_preview()
 
     def move(self, d):
         i = self.selected()

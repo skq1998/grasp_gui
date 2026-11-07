@@ -218,3 +218,31 @@ def test_field_enabled_by(qapp, checked):
     form.put["enabled"](checked)
     assert value.isEnabled() == checked
     form.close()
+
+
+def test_preview_column_and_buttons_adapt(qapp, tmp_path, no_dialogs):
+    """下方足够宽时输入预览单独成一栏，变窄时回到标签页；按钮高度不够时排成两列。"""
+    from calc_panel import ButtonColumn
+
+    w = window(tmp_path)
+    c = w.calc
+    w.resize(1900, 950)
+    w.show()
+    qapp.processEvents()
+    assert c.preview_column and c.btabs.count() == 1 and c.pbox.isVisible()
+    c.show_preview()
+    w.resize(1100, 950)
+    qapp.processEvents()
+    assert not c.preview_column and c.btabs.count() == 2
+    c.show_preview()
+    assert c.btabs.currentWidget() is c.prev
+    c.btabs.setCurrentIndex(0)              # 流程页可见时按钮才随高度重排
+    buttons = c.findChild(ButtonColumn)
+    c.split.setSizes([800, 150])
+    qapp.processEvents()
+    assert buttons.columns == 2
+    c.split.setSizes([150, 800])
+    qapp.processEvents()
+    assert buttons.columns == 1
+    assert w.close()
+    assert no_dialogs == []

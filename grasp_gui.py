@@ -253,12 +253,14 @@ class MainWindow(QMainWindow):
             lm.addAction(act)
 
     def restore_layout(self):
-        """恢复上次的窗口大小和计算页中参数区 / 输出区的分隔位置。"""
+        """恢复上次的窗口大小、计算页中参数区 / 输出区以及流程 / 程序输出的分隔位置。"""
         cfg = core.load_config()
         if cfg.get("geometry"):
             self.restoreGeometry(QByteArray.fromBase64(cfg["geometry"].encode()))
         if cfg.get("split"):
             self.calc.split.setSizes(cfg["split"])
+        if len(cfg.get("bsplit") or []) == self.calc.bsplit.count():
+            self.calc.bsplit.setSizes(cfg["bsplit"])
 
     def closeEvent(self, event):
         panels = list(self.panels.values()) + [w.panel for w in gc.PANEL_WINDOWS]
@@ -295,7 +297,7 @@ class MainWindow(QMainWindow):
             w.close()
         self.run.save()
         core.save_config(geometry=bytes(self.saveGeometry().toBase64()).decode(), split=self.calc.split.sizes(),
-                         main_tab=self.current_tab())
+                         bsplit=self.calc.bsplit.sizes(), main_tab=self.current_tab())
         event.accept()
 
     # ---- 标签页 ----
