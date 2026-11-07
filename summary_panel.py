@@ -1,12 +1,13 @@
-"""结果摘要的后台读取、勾选与复制预览。"""
+"""结果摘要的后台读取、勾选、复制与保存 (能级图页)。"""
 
 import copy
+import os
 import queue
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
-                               QSpinBox, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit,
+                               QPushButton, QSpinBox, QVBoxLayout)
 
 import grasp_index as index
 import grasp_summary as summary
@@ -16,8 +17,9 @@ from gui_common import fixed_font
 
 class SummaryDialog(QDialog):
     def __init__(self, parent, workdir, cfg, jobs, history=()):
+        """cfg 为 None 时 (目录没有流程记录) 不能附带配置。"""
         super().__init__(parent)
-        self.setWindowTitle(T("复制配置和结果摘要（给 agent）"))
+        self.setWindowTitle(T("结果摘要（给 agent）"))
         self.resize(960, 720)
         self.workdir, self.cfg, self.jobs, self.history = workdir, cfg, copy.deepcopy(jobs), copy.deepcopy(history)
         self.worker = index.ReadWorker()
@@ -29,11 +31,15 @@ class SummaryDialog(QDialog):
         bar = QHBoxLayout()
         self.sections = {}
         for key, label in summary.SECTIONS.items():
-            check = QCheckBox(T(label))
-            check.setChecked(True)
+            check = QCheckBox(T("附带完整配置") if key in summary.OPTIONAL else T(label))
+            check.setChecked(key not in summary.OPTIONAL)
+            check.setEnabled(key != "configuration" or cfg is not None)
             check.toggled.connect(self.render)
             self.sections[key] = check
+            if key in summary.OPTIONAL:
+                bar.addSpacing(16)
             bar.addWidget(check)
+        bar.addStretch()
         layout.addLayout(bar)
         bar = QHBoxLayout()
         bar.addWidget(QLabel(T("每个对称块的能级数")))
@@ -55,6 +61,10 @@ class SummaryDialog(QDialog):
         self.copy_button.setEnabled(False)
         self.copy_button.clicked.connect(self.copy)
         bar.addWidget(self.copy_button)
+        self.save_button = QPushButton(T("保存为文件…"))
+        self.save_button.setEnabled(False)
+        self.save_button.clicked.connect(self.save)
+        bar.addWidget(self.save_button)
         cancel = QPushButton(T("取消"))
         cancel.clicked.connect(self.reject)
         bar.addWidget(cancel)
@@ -67,7 +77,7 @@ class SummaryDialog(QDialog):
     def load(self):
         self.token += 1
         self.data = None
-        self.copy_button.setEnabled(False)
+        self.set_ready(False)
         self.status.setText(T("正在读取结果…"))
         self.worker.submit(self.token, summary.collect, self.workdir, self.cfg, self.jobs,
                            self.history, self.limit.value())
@@ -97,17 +107,38 @@ class SummaryDialog(QDialog):
         except ValueError as e:
             self.content = ""
             self.preview.setPlainText(str(e))
-            self.copy_button.setEnabled(False)
+            self.set_ready(False)
             return
         self.content = content
         self.preview.setPlainText(content)
         self.status.setText(T("摘要大小：{n} KB", n=round(len(content.encode("utf-8")) / 1024, 1)))
-        self.copy_button.setEnabled(True)
+        self.set_ready(True)
+
+    def set_ready(self, ready):
+        self.copy_button.setEnabled(ready)
+        self.save_button.setEnabled(ready)
 
     def copy(self):
         if self.content:
             QGuiApplication.clipboard().setText(self.content)
             self.accept()
+
+    def save(self):
+        if not self.content:
+            return
+        name = (os.path.basename(os.path.normpath(self.workdir)) or "results") + "_summary.md"
+        path, _ = QFileDialog.getSaveFileName(self, T("保存结果摘要"), os.path.join(self.workdir, name),
+                                              T("Markdown 文件 (*.md)"))
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self.content)
+        except OSError as e:
+            QMessageBox.warning(self, T("保存结果摘要"), str(e))
+            return
+        self.saved_path = path
+        self.accept()
 
     def done(self, result):
         self.timer.stop()

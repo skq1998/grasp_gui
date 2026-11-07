@@ -126,7 +126,7 @@ def test_per_block_limit_parts_and_complete_json_configuration(tmp_path):
     assert "## 当前完整配置" in text and "## 能级与主要成分" not in text
     blocks = text.split("```json\n")[1:]
     parsed = [json.loads(block.split("\n```", 1)[0]) for block in blocks]
-    assert parsed[1] == data["configuration"]
+    assert parsed[-1] == data["configuration"]          # 配置是附加部分，放在最后
     with pytest.raises(ValueError):
         summary.render(data, [])
     jobs = [job("rci", state="z_first")]
@@ -236,7 +236,7 @@ def test_omitted_layers_drop_corresponding_result_sections(tmp_path):
     data["csfs"] = [dict(file=f"layer{i}.c", blocks=[dict(J_parity="1/2-", count=12)]) for i in range(10)]
     text = summary.render(data, ["levels", "scf", "csfs"], max_bytes=6000)
     parts = [json.loads(block.split("\n```", 1)[0]) for block in text.split("```json\n")[1:]]
-    meta, scf, csfs, levels = parts
+    meta, levels, scf, csfs = parts
     assert len(levels) < 10 and meta["omissions"]
     assert {r["step"] for r in scf} == {r["step"] for r in levels}
     assert {Path(r["file"]).stem for r in csfs} == {Path(r["file"]).stem for r in levels}

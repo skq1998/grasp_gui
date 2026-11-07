@@ -23,12 +23,14 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QStyledItemDelegate, QTableWidget, QTableWidgetItem, QTabWidget, QToolTip,
                                QVBoxLayout, QWidget)
 
+import grasp_config
 import grasp_core as core
 import grasp_index as index
 import grasp_mix as mix
+import grasp_session as sessions
 import grasp_trans as tr
 from grasp_core import T
-from gui_common import Panel, help_button, saved_settings
+from gui_common import Panel, button, help_button, saved_settings
 from wfn_panel import fmt, nice_ticks
 
 # (下拉框中的名称 (用时再翻译), 表头和坐标轴中的简写, 1 a.u. 折合多少, 显示格式)；第一个为默认单位
@@ -722,6 +724,7 @@ class LevelPanel(Panel):
     def __init__(self, workdir, settings=saved_settings):
         super().__init__()
         self.settings = settings   # 返回运行设置 (bindir, np, mpirun, mpitmp, nice) 的函数
+        self.summary_source = None  # 目录 -> (流程, 运行记录) 或 None；主窗口设为计算页的 summary_source
         self.cache = {}            # 路径 -> (mtime, 数据)
         self.reader = index.ReadWorker()
         self.read_generation = 0
@@ -763,6 +766,7 @@ class LevelPanel(Panel):
         menu.addAction(T("组态缩写…")).triggered.connect(lambda: AbbrevDialog.edit(self, self.preview_desc()))
         export.setMenu(menu)
         top.addWidget(export)
+        top.addWidget(button("结果摘要…", self.open_summary))
         top.addSpacing(12)
         self.show_links = QCheckBox(T("显示选中能级的全部已算跃迁"))
         self.show_links.setChecked(bool(core.load_config().get("level_links", False)))
@@ -1287,6 +1291,24 @@ class LevelPanel(Panel):
 
     LEVEL_HEADER = ["file", "J", "2J", "parity", "index", "configuration", "configuration_full", "term", "E_total_au", "E_rel_au",
                     "E_rel_cm-1", "E_rel_eV", "purity_percent", "leading_component", "lsj_label", "leading_csf_jj"]
+
+    def open_summary(self):
+        """结果摘要 (给 agent)：本目录的能级、层间变化、收敛情况等；完整配置是可选的附加部分。"""
+        from summary_panel import SummaryDialog
+        d = self.dir.text()
+        source = self.summary_source(d) if self.summary_source else None
+        if source is None:
+            try:
+                data, _ = sessions.read(d)
+            except (OSError, ValueError):
+                data = None
+            source = ((data or {}).get("pipeline", []), [])
+        jobs, history = source
+        cfg = grasp_config.export(jobs, dict(title=os.path.basename(os.path.normpath(d)))) if jobs else None
+        dlg = SummaryDialog(self, d, cfg, jobs, history)
+        if dlg.exec() == QDialog.Accepted:
+            self.message.emit(T("已保存结果摘要：{p}", p=dlg.saved_path) if getattr(dlg, "saved_path", None)
+                              else T("已复制结果摘要"))
 
     def export_levels(self):
         if not self.levels:

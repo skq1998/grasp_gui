@@ -822,8 +822,6 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "各态的 CSF 数": "CSF counts by state",
     "能级与主要成分": "Levels and leading components",
     "能级随层的变化": "Energy changes between layers",
-    "复制配置和结果摘要（给 agent）": "Copy configuration and results summary (for an agent)",
-    "预览结果摘要…": "Preview results summary…",
     "检查输入文件": "Check input files",
     "未声明文件依赖，无法检查": "File dependencies are undeclared; cannot check",
     "以下输入文件尚不存在，且未找到所选起点之后的已声明前序输出：": (
@@ -842,7 +840,6 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "该日志由后续步骤复用，无法判断此步的收敛情况": "A later step reuses this log; cannot determine convergence for this step",
     "每块能级数须为 1–200": "Levels per block must be between 1 and 200",
     "请至少选择一个摘要部分": "Select at least one summary section",
-    "配置和结果摘要": "Configuration and results summary",
     "运行成功仅指流程结束；收敛按日志判断；层间按 J、宇称和序号对应，不保证物理态身份相同；同名输出只保留最后写入。": (
         "Run success means the pipeline ended. Convergence is assessed from logs. Layers match by J, "
         "parity and index, without guaranteeing the same physical state. Reused outputs retain only the "
@@ -862,7 +859,14 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "没有发现缺失的输入文件。": "No missing input files found.",
     "缺少输入文件": "Missing input files",
     "仍然运行吗？": "Run anyway?",
-    "已复制配置和结果摘要": "Configuration and results summary copied",
+    "结果摘要…": "Results summary…",
+    "结果摘要": "Results summary",
+    "结果摘要（给 agent）": "Results summary (for an agent)",
+    "附带完整配置": "Include the complete configuration",
+    "保存结果摘要": "Save results summary",
+    "Markdown 文件 (*.md)": "Markdown files (*.md)",
+    "已保存结果摘要：{p}": "Results summary saved: {p}",
+    "已复制结果摘要": "Results summary copied",
     # MCP 与外部修改的记录
     "MCP 可读取允许目录中的结果、创建和更新方案、启动与停止计算。客户端通过标准输入输出连接，不开放端口。": (
         "MCP can read results, create and update plans, and start or stop calculations in the allowed "

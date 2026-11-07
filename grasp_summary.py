@@ -18,8 +18,9 @@ import grasp_mix as mix
 from grasp_core import T
 
 MAX_BYTES = 200 * 1024
-SECTIONS = dict(configuration="当前完整配置", run_status="各步运行状态", scf="SCF 收敛情况",
-                csfs="各态的 CSF 数", levels="能级与主要成分", layer_changes="能级随层的变化")
+SECTIONS = dict(levels="能级与主要成分", layer_changes="能级随层的变化", scf="SCF 收敛情况",
+                csfs="各态的 CSF 数", run_status="各步运行状态", configuration="当前完整配置")
+OPTIONAL = {"configuration"}        # 结果摘要为主；完整配置是附加的一部分，默认不选
 STEPS = {s.key: s for s in core.STEPS}
 NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][-+]?\d+)?"
 
@@ -346,7 +347,7 @@ def render(data, sections=None, max_bytes=MAX_BYTES):
         for layer in data["levels"]:
             for row in layer["levels"]:
                 row["relative_cm"] = (row["energy_hartree"] - zero) * mix.HARTREE_CM
-        lines = ["# GRASP GUI / " + T("配置和结果摘要"), "",
+        lines = ["# GRASP GUI / " + T("结果摘要"), "",
                  "```json", json.dumps(dict(generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
                                              omissions=omissions, warnings=data["warnings"],
                                              relative_zero_hartree=zero,

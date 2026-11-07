@@ -152,7 +152,7 @@ class MainWindow(QMainWindow):
         self.calc = None
         self.panels = {}           # 已创建的查看器面板：种类 -> 面板 (第一次切换到该标签页时创建)
         self.pending = {}          # 重新创建面板后要恢复的勾选文件：种类 -> [路径]
-        gc.PANEL_FACTORIES.update(wfn=wfn_panel, levels=lambda d: level_panel(d, lambda: self.run.values()))
+        gc.PANEL_FACTORIES.update(wfn=wfn_panel, levels=self.make_level_panel)
         self.build()
         self.restore_layout()
         core.save_config(workdir=self.cur_workdir)
@@ -273,6 +273,11 @@ class MainWindow(QMainWindow):
             act.triggered.connect(lambda _=False, c=code: self.set_language(c))
             group.addAction(act)
             lm.addAction(act)
+
+    def make_level_panel(self, d):
+        p = level_panel(d, lambda: self.run.values())
+        p.summary_source = lambda path: self.calc.summary_source(path) if self.calc else None
+        return p
 
     def toggle_mcp(self, enabled):
         core.save_config(mcp_enabled=enabled)

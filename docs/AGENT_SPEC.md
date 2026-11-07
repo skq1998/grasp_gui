@@ -90,16 +90,15 @@ undeclared/custom steps need manual checking. It assumes declared producers fini
 existence rather than physical correctness or file freshness. A missing file can therefore also mean the
 starting step is too late. The user decides whether to run anyway.
 
-After checking results in the GUI, use **Calculation → Export → Copy configuration and results summary
-(for an agent)**. First choose configuration metadata, attached inputs and references as for ordinary
-configuration export; then preview and select summary sections. Return this text to the agent for planning
-the next layer. The agent must not infer convergence from an exit code or a successful pipeline alone.
+After checking results in the GUI, use **Levels → Results summary…**: preview, select sections (the complete
+configuration is an optional extra), then copy it or save it as a Markdown file. Return this text to the agent
+for planning the next layer. The agent must not infer convergence from an exit code or a successful pipeline alone.
 
 每一层都给出**完整配置**，保留前面的步骤和参数。用户从剪贴板选择“更新当前目录”，核查只新增了一层，
 再运行新增步骤。文件检查按执行顺序推算已声明的输入/输出，假定前序步骤成功；只查文件存在性，不查物理正确性
 或新旧。缺失也可能是运行起点太晚；自定义等未声明步骤需人工核查。是否仍然运行由用户决定。
-在界面核查后，通过“计算 → 导出 → 复制配置和结果摘要（给 agent）”交给 agent，决定下一层。
-先按普通配置导出选择说明、附带输入和参考结果，再预览和勾选摘要。不能把退出码或流程成功当作收敛证明。
+在界面核查后，通过“能级图 → 结果摘要…”交给 agent，决定下一层：预览、勾选要包含的部分 (完整配置是可选的附加部分)，
+再复制或保存为 Markdown 文件。不能把退出码或流程成功当作收敛证明。
 
 ### Summary format / 摘要格式
 

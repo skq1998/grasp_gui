@@ -706,13 +706,12 @@ class ClearDialog(QDialog):
 class ExportDialog(QDialog):
     """把当前目录的流程导出为共享配置：填写说明，选择参考结果和附带文件。"""
 
-    def __init__(self, parent, workdir, pipeline, clipboard=False, with_summary=False):
+    def __init__(self, parent, workdir, pipeline, clipboard=False):
         super().__init__(parent)
         self.setWindowTitle(T("导出配置"))
         self.resize(820, 680)
         self.workdir, self.pipeline = workdir, pipeline
         self.to_clipboard, self.cfg = clipboard, None
-        self.with_summary = with_summary
         lay = QVBoxLayout(self)
         note = QLabel(T("配置保存当前流程中各步的参数，不含计算结果，也不含 GRASP bin 目录、MPI 进程数等与机器有关的设置。"
                         "别人导入后可以从头重复这个计算。"))
@@ -762,13 +761,12 @@ class ExportDialog(QDialog):
         lay.addWidget(self.notes)
         bar = QHBoxLayout()
         bar.addStretch()
-        copy = button("预览结果摘要…" if with_summary else "复制到剪贴板", lambda: self.accept(True))
+        copy = button("复制到剪贴板", lambda: self.accept(True))
         copy.setDefault(clipboard)
         bar.addWidget(copy)
-        if not with_summary:
-            ok = button("保存为文件…", self.accept)
-            ok.setDefault(not clipboard)
-            bar.addWidget(ok)
+        ok = button("保存为文件…", self.accept)
+        ok.setDefault(not clipboard)
+        bar.addWidget(ok)
         bar.addWidget(button("取消", self.reject))
         lay.addLayout(bar)
         self.show_notes()
@@ -818,7 +816,7 @@ class ExportDialog(QDialog):
             QMessageBox.warning(self, T("导出配置"), T("配置太大，无法复制到剪贴板；请保存为文件。"))
             return
         self.cfg, self.to_clipboard = cfg, clipboard
-        if clipboard and not self.with_summary:
+        if clipboard:
             QGuiApplication.clipboard().setText(content)
         core.save_config(config_author=self.author.text().strip())
         super().accept()
@@ -1071,7 +1069,6 @@ class CalcPanel(QWidget):
         menu.addAction(T("导出脚本…")).triggered.connect(self.export_script)
         menu.addAction(T("导出 Slurm 作业脚本…")).triggered.connect(self.export_slurm)
         menu.addAction(T("复制配置到剪贴板…")).triggered.connect(lambda: self.export_config(True))
-        menu.addAction(T("复制配置和结果摘要（给 agent）")).triggered.connect(lambda: self.export_config(True, True))
         export.setMenu(menu)
         pl.addWidget(ButtonColumn([[button("▶ 运行全部", self.run_pipeline), button("▶ 从选中开始", self.run_from_selected)],
                                    [button("编辑", self.edit_job), button("更新所选", self.update_job),
@@ -1901,22 +1898,22 @@ class CalcPanel(QWidget):
             self.session_cleared = True
         self.filesChanged.emit()
 
-    def export_config(self, clipboard=False, with_summary=False):
+    def summary_source(self, d):
+        """能级图页的结果摘要：本页当前目录的流程和本次会话的运行记录；其他目录返回 None (由调用方读目录记录)。"""
+        if os.path.abspath(d) != os.path.abspath(self.cur_workdir):
+            return None
+        self.flush_group()
+        return self.pipeline, self.summary_runs.get(self.cur_workdir, [])
+
+    def export_config(self, clipboard=False):
         """把当前流程导出为共享配置文件。"""
         if not self.need_pipeline():
             return
         self.flush_group()
-        dlg = ExportDialog(self, self.cur_workdir, self.pipeline, clipboard, with_summary)
+        dlg = ExportDialog(self, self.cur_workdir, self.pipeline, clipboard)
         if dlg.exec() != QDialog.Accepted:
             return
         cfg = dlg.cfg
-        if with_summary:
-            from summary_panel import SummaryDialog
-            preview = SummaryDialog(self, self.cur_workdir, cfg, self.pipeline,
-                                    self.summary_runs.get(self.cur_workdir, []))
-            if preview.exec() == QDialog.Accepted:
-                self.status(T("已复制配置和结果摘要"))
-            return
         if dlg.to_clipboard:
             self.status(T("已复制配置到剪贴板 ({n} 步)", n=len(cfg["jobs"])))
             return

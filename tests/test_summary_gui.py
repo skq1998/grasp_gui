@@ -18,18 +18,20 @@ from test_summary import job               # noqa: E402
 
 @pytest.mark.parametrize("language", ["zh", "en"])
 def test_background_preview_sections_and_copy(qapp, tmp_path, language):
+    """结果摘要为主：完整配置默认不选，勾选后才附带。"""
     core.set_lang(language)
     jobs = [job("rnucleus")]
     cfg = config.export(jobs, dict(title="summary preview"))
     dialog = SummaryDialog(None, str(tmp_path), cfg, jobs)
     dialog.show()
     spin(qapp, lambda: dialog.copy_button.isEnabled())
-    assert "summary preview" in dialog.content
-    dialog.sections["configuration"].setChecked(False)
+    assert not dialog.sections["configuration"].isChecked()
     assert "summary preview" not in dialog.content
+    dialog.sections["configuration"].setChecked(True)
+    assert "summary preview" in dialog.content
     for check in dialog.sections.values():
         check.setChecked(False)
-    assert not dialog.copy_button.isEnabled()
+    assert not dialog.copy_button.isEnabled() and not dialog.save_button.isEnabled()
     dialog.sections["run_status"].setChecked(True)
     assert dialog.copy_button.isEnabled()
     content = dialog.content
@@ -38,25 +40,39 @@ def test_background_preview_sections_and_copy(qapp, tmp_path, language):
     assert dialog.worker.closed
 
 
-def test_export_preview_cancel_does_not_replace_clipboard(qapp, tmp_path, monkeypatch, no_dialogs):
+def test_summary_saved_to_file(qapp, tmp_path, monkeypatch):
+    jobs = [job("rnucleus")]
+    dialog = SummaryDialog(None, str(tmp_path), None, jobs)
+    dialog.show()
+    spin(qapp, lambda: dialog.save_button.isEnabled())
+    assert not dialog.sections["configuration"].isEnabled()      # 没有配置可附带
+    target = tmp_path / "out.md"
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target), ""))
+    dialog.save()
+    assert target.read_text(encoding="utf-8") == dialog.content
+    assert dialog.saved_path == str(target)
+
+
+def test_summary_on_levels_tab_uses_calculation_pipeline(qapp, tmp_path, monkeypatch, no_dialogs):
+    """入口在能级图页；当前目录的流程取自计算页，计算页的导出菜单不再有摘要。"""
     w = window(tmp_path)
     w.calc.pipeline = [job("rnucleus")]
+    w.show_tab("levels")
     qapp.clipboard().setText("keep clipboard")
-
-    def export(d):
-        assert d.with_summary
-        d.accept(True)
-        return d.result()
+    seen = {}
 
     def cancel(d):
-        assert qapp.clipboard().text() == "keep clipboard"
+        seen.update(jobs=d.jobs, cfg=d.cfg)
         d.reject()
         return d.result()
 
-    monkeypatch.setattr(panel.ExportDialog, "exec", export)
     monkeypatch.setattr(SummaryDialog, "exec", cancel)
-    w.calc.export_config(True, True)
+    w.panel("levels").open_summary()
+    assert [j["step"] for j in seen["jobs"]] == ["rnucleus"] and seen["cfg"]["jobs"]
     assert qapp.clipboard().text() == "keep clipboard"
+    export = [b for b in w.calc.findChildren(QtWidgets.QPushButton) if b.menu() and b.text() == core.T("导出")]
+    texts = [a.text() for b in export for a in b.menu().actions()]
+    assert not any(core.T("结果摘要") in t for t in texts)
     assert w.close() and not no_dialogs
 
 
