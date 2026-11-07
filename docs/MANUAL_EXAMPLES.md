@@ -21,7 +21,7 @@ or configuration format were changed. “No directory” means absent from `gras
 | §6.6，扩展 MR | 无 / none | 暂无 / none | 缺 `rcsfmr` 程序页；还依赖 §6.5 的 LSJ 输出。不能用固定 MR 冒充按实际混合系数选择 / No rcsfmr form; requires §6.5 LSJ results and dynamic MR selection |
 | §6.7，RCI 重启 | 无 / none | 暂无 / none | `rci` 页没有 restart 字段，且需要中断留下的 `rci.res` / No restart field; requires an interrupted run's rci.res |
 | §6.8，Be I 自然轨道 | example8 | example8 | 已有 / Existing |
-| §6.9，Ni XXV 诱导跃迁 | example9 | example9 | 已有；含原有 custom 步骤 / Existing, including its existing custom steps |
+| §6.9，Ni XXV 诱导跃迁 | example9 | example9 | 已有；rhfszeeman95 用程序页，rtransition_phase 仍为 custom 步骤 / Existing; rhfszeeman95 form, rtransition_phase still a custom step |
 | §9，Mo XXXVIII | case1 | case1 | 已有 / Existing |
 | §10，Li 样序列 | case2 | **case2** | 新增 C IV，Z=6；原脚本 Z=6–12 / New, one ion of the sequence |
 | §11，Mg 样序列 | case3 | **case3** | 新增 Fe XV，Z=26；原脚本实际 Z=26–60，不是 Z=6–12 / New; corrected range from source |

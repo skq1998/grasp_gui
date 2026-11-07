@@ -177,6 +177,29 @@ def test_nsic_form(qapp, tmp_path, no_dialogs, lang):
     w.close()
 
 
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_hfszeeman_form(qapp, tmp_path, no_dialogs, lang):
+    core.set_lang(lang)
+    w = window(tmp_path)
+    c = w.calc
+    form = next(f for f in c.forms if f.step.key == "rhfszeeman95")
+    c.nav.setCurrentWidget(form)
+    form.set_values(dict(state="odd_result", offdiag=False, saveas="zeeman.txt", log="hfs.log"))
+    c.add_to_pipeline()
+    assert c.pipeline[-1]["stdin"] == "y\nodd_result\ny\nn\n"
+    assert c.pipeline[-1]["post"] == [("cp", "odd_result.ch", "zeeman.txt")]
+    c.switch_group("even")
+    assert form.values()["state"] != "odd_result"
+    c.switch_group("odd")
+    assert form.values()["state"] == "odd_result"
+    assert form.values()["offdiag"] is False
+    form.set_values(dict(state="bad name"))
+    assert c.current_job() is None
+    assert no_dialogs[-1][0] == "critical"
+    assert "23" in no_dialogs[-1][1][1]
+    assert w.close()
+
+
 @pytest.mark.parametrize("checked", [False, True])
 def test_field_enabled_by(qapp, checked):
     from calc_panel import StepForm

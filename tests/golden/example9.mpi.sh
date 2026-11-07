@@ -197,7 +197,7 @@ y
 y
 EOF
 
-# 18. rhfszeeman95
+# 18. rhfszeeman95 even_n3
 rhfszeeman95 <<'EOF'
 y
 even_n3
@@ -205,7 +205,7 @@ y
 y
 EOF
 
-# 19. rhfszeeman95
+# 19. rhfszeeman95 odd_n3
 rhfszeeman95 <<'EOF'
 y
 odd_n3

@@ -348,9 +348,10 @@ def example9():
         d.scf(lv, "3*", name, mem=True, src=f"rmcdhf_input{k + 1}")
         d.ci(name, lv, nqed="3", src=f"rci_input{k}")
         d.lsj(name, src=f"jj2lsj_input{k}")
+    for parity, k in [("even", 1), ("odd", 2)]:
+        d.group = parity
+        d.add("rhfszeeman95", f"hfszeeman95_input{k}", state=f"{parity}_n3", ci=True, offdiag=True)
     d.group = None
-    for name, k in [("even_n3", 1), ("odd_n3", 2)]:
-        d.custom("rhfszeeman95", stdin=f"y\n{name}\ny\ny\n", src=f"hfszeeman95_input{k}")
     d.add("rbiotransform", "rbiotransform_input", ci=True, init="even_n3", final="odd_n3", log="out_rbiotransform")
     d.custom("rtransition_phase", stdin="y\ny\neven_n3\nodd_n3\nE1,M2\n", log="out_transition_phase",
              src="rtransition_phase_input")

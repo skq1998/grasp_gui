@@ -573,7 +573,7 @@ EN = {
     "复制到 {g}（替换名称）": "Copy to {g} (rename files)",
     "标签上带组名的程序页按态组分别保存参数，其余程序页两组共用。":
         "Tabs labelled with the group keep separate parameters per group; the other tabs are shared.",
-    # rhfs / ris4
+    # rhfs / rhfszeeman95 / ris4
     "计算超精细结构常数 A、B 和朗德 g 因子。读取 isodata (核自旋 I、磁偶极矩、电四极矩在 rnucleus 中设置)、"
     "name.c、name.w、name.(c)m；输出 name.(c)h、name.(c)hoffd。":
         "Compute hyperfine constants A, B and Landé g factors. Reads isodata (nuclear spin I, dipole and "
@@ -581,6 +581,18 @@ EN = {
     "结束后运行 rhfs_lsj，用 LSJ 标记输出结果": "Then run rhfs_lsj to print the results with LSJ labels",
     "需先运行 jj2lsj；输出 name.(c)hlsj": "needs jj2lsj first; writes name.(c)hlsj",
     "  按能量排序": "  Sort by energy",
+    "默认设置下计算超精细和塞曼矩阵元。读取 isodata、name.c、name.w、name.(c)m；"
+    "输出 name.(c)h，勾选非对角时另写 name.(c)gjhfs。不同 J 块须在同一个态文件中，使用同一组轨道；不做双正交变换。":
+        "Compute hyperfine and Zeeman matrix elements with default settings. Reads isodata, name.c, name.w, "
+        "name.(c)m; writes name.(c)h and, with off-diagonal elements, name.(c)gjhfs. Different J blocks must "
+        "be in the same state file with one orbital set; no biorthogonal transformation is performed.",
+    "与 rhfs 共用 name.(c)h，格式不同，后运行的会覆盖先运行的。另存只复制本次常数结果，不备份已有文件。":
+        "Shares name.(c)h with rhfs, with a different format; the later run overwrites the earlier output. "
+        "Saving a copy preserves this run's constants only; it does not back up existing files.",
+    "计算非对角矩阵元": "Compute off-diagonal matrix elements",
+    "常数结果 name.(c)h 另存为": "Save a copy of constants name.(c)h as",
+    "rhfszeeman95 态名称须为不含空格的 ASCII 基名，最多 23 个字符":
+        "rhfszeeman95 state name must be an ASCII basename without spaces, at most 23 characters",
     "计算同位素移位：正常 / 特殊质量移位参数和场移电子因子。读取 isodata、name.c、name.w、name.(c)m；"
     "输出 name.(c)i。":
         "Compute isotope shifts: normal / specific mass shift parameters and field shift electronic factors. "
@@ -1650,6 +1662,36 @@ class RHfs(Step):
         return f"rhfs {v['state']}"
 
 
+class RHfsZeeman95(Step):
+    key = name = prog = "rhfszeeman95"
+    fields = [
+        Note("默认设置下计算超精细和塞曼矩阵元。读取 isodata、name.c、name.w、name.(c)m；"
+             "输出 name.(c)h，勾选非对角时另写 name.(c)gjhfs。不同 J 块须在同一个态文件中，使用同一组轨道；不做双正交变换。"),
+        Note("与 rhfs 共用 name.(c)h，格式不同，后运行的会覆盖先运行的。另存只复制本次常数结果，不备份已有文件。"),
+        Entry("state", "态名称", "oddCI6", added="2.5.0"),
+        Check("ci", "混合系数来自 CI 计算", True, "否则读 .m", added="2.5.0"),
+        Check("offdiag", "计算非对角矩阵元", True, added="2.5.0"),
+        Entry("saveas", "常数结果 name.(c)h 另存为", "", "空 = 不复制", added="2.5.0"),
+        Entry("log", "输出日志文件", "", added="2.5.0"),
+    ]
+
+    def validate(self, v):
+        # NAME 长度为 24，程序用首个空格截断态名，因此至少留一位空格。
+        if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,22}", v["state"].strip()):
+            raise ValueError(T("rhfszeeman95 态名称须为不含空格的 ASCII 基名，最多 23 个字符"))
+
+    def stdin(self, v):
+        self.validate(v)
+        return answers(["y", v["state"].strip(), yn(v["ci"]), yn(v["offdiag"])])
+
+    def post(self, v):
+        source = v["state"].strip() + (".ch" if v["ci"] else ".h")
+        return [("cp", source, v["saveas"].strip())] if v["saveas"].strip() else []
+
+    def title(self, v):
+        return f"rhfszeeman95 {v['state']}"
+
+
 class RIs4(Step):
     key = name = prog = "ris4"
     fields = [
@@ -2296,7 +2338,8 @@ class RMixAccumulateCsfg(Step):
 
 
 STEPS = [RNucleus(), RcsfGenerate(), RcsfInteract(), RcsfSplit(), RcsfZeroFirst(), RAngular(), RWfnEstimate(), RMcdhf(), RSave(),
-         RCi(), Jj2lsj(), Coupling(), RHfs(), RIs4(), RMixExtract(), RMixAccumulate(), RTabHfs(), RAsfSplit(), RLevels(),
+         RCi(), Jj2lsj(), Coupling(), RHfs(), RHfsZeeman95(), RIs4(), RMixExtract(), RMixAccumulate(), RTabHfs(),
+         RAsfSplit(), RLevels(),
          RTableLevels(), RTabTrans1(), RTabTrans2(),
          RBioTransform(), RTransition(), Custom(),
          RcsfgGenerate(), RcsfgInteract(), RcsfgSplit(), RcsfgZeroFirst(), RAngularCsfg(), RWfnEstimateCsfg(), RMcdhfCsfg(), RSaveCsfg(),
@@ -2312,14 +2355,14 @@ STEP_GROUPS = {
     "GRASP2018": [
         ("准备", ["rnucleus", "rcsfgenerate", "rcsfinteract", "rcsfsplit", "rcsfzerofirst"]),
         ("自洽场与 CI", ["rangular", "rwfnestimate", "rmcdhf", "rsave", "rci"]),
-        ("性质与跃迁", ["rhfs", "ris4", "rbiotransform", "rtransition"]),
+        ("性质与跃迁", ["rhfs", "rhfszeeman95", "ris4", "rbiotransform", "rtransition"]),
         ("结果与工具", ["jj2lsj", "coupling", "rlevels", "rtablevels", "rtabtrans1", "rtabtrans2", "rmixextract",
                       "rmixaccumulate", "rtabhfs", "rasfsplit", "custom"]),
     ],
     "GRASPG": [
         ("准备", ["rnucleus", "rcsfggenerate_csfg", "rcsfginteract_csfg", "rcsfgsplit_csfg", "rcsfgzerofirst_csfg"]),
         ("自洽场与 CI", ["rangular_csfg", "rwfnestimate_csfg", "rmcdhf_csfg", "rsave_csfg", "rci_csfg", "rci_block_csfg"]),
-        ("性质与跃迁", ["rhfs", "ris4", "rbiotransform", "rtransition"]),
+        ("性质与跃迁", ["rhfs", "rhfszeeman95", "ris4", "rbiotransform", "rtransition"]),
         ("结果与工具", ["jj2lsj_csfg", "rlevels_csfg", "rtablevels", "rtabtrans1", "rtabtrans2", "custom"]),
         ("CSFG 工具", ["rcsfgexpand_csfg", "rcsfgextend_csfg", "rcsfgblocksplit_csfg", "rmixaccumulate_csfg",
                        "rdistHmatrix_csfg"]),
@@ -2358,7 +2401,7 @@ def package_of(step_keys):
 
 GROUPS = ("odd", "even")
 GROUP_STEPS = ("rcsfgenerate", "rcsfinteract", "rcsfsplit", "rcsfzerofirst", "rangular", "rwfnestimate", "rmcdhf", "rsave", "rci",
-               "rmixextract", "rmixaccumulate", "rasfsplit", "jj2lsj", "coupling", "rhfs", "ris4",
+               "rmixextract", "rmixaccumulate", "rasfsplit", "jj2lsj", "coupling", "rhfs", "rhfszeeman95", "ris4",
                "rcsfggenerate_csfg", "rcsfginteract_csfg", "rcsfgsplit_csfg", "rcsfgzerofirst_csfg", "rangular_csfg", "rwfnestimate_csfg",
                "rmcdhf_csfg", "rsave_csfg", "rci_csfg", "jj2lsj_csfg", "rcsfgexpand_csfg", "rcsfgextend_csfg",
                "rcsfgblocksplit_csfg", "rmixaccumulate_csfg", "rci_block_csfg")

@@ -86,3 +86,53 @@ def test_coupling_reproduces_reference(name, state, backup, coupling_bindir, gra
     for scheme in ("LK3", "JK3"):
         assert (wd / f"{state}.coup3.{scheme}.lbl").stat().st_size > 0
     assert (wd / (state + backup)).is_file()
+
+
+def test_hfszeeman_matches_hand_input(grasp_bindir, tmp_path):
+    """同一批 Li I 轨道下比较四个默认分支；另存结果后用 rhfs 核对常数。"""
+    import shutil
+
+    cfg, _ = config.load(os.path.join(DEMOS, "example1.json"))
+    source = tmp_path / "source"
+    config.install(cfg, str(source))
+    script = core.shell_script(config.session(cfg)["pipeline"], grasp_bindir, ".")
+    result = subprocess.run(["sh", "-c", script], cwd=source, capture_output=True, text=True,
+                            env=core.child_env(), timeout=300)
+    assert result.returncode == 0, result.stderr[-3000:]
+    step = core.RHfsZeeman95()
+    for ci in (False, True):
+        suffix = ".ch" if ci else ".h"
+        for offdiag in (False, True):
+            outputs = []
+            for mode in ("form", "hand"):
+                wd = tmp_path / f"{mode}-{ci}-{offdiag}"
+                wd.mkdir()
+                for name in ("isodata", "2p_3.c", "2p_3.w", "2p_3.cm" if ci else "2p_3.m"):
+                    shutil.copy2(source / name, wd / name)
+                if mode == "form":
+                    vals = dict(step.defaults(), state="2p_3", ci=ci, offdiag=offdiag, saveas="constants.txt")
+                    script = core.shell_script([step.job(vals)], grasp_bindir, ".")
+                    result = subprocess.run(["sh", "-c", script], cwd=wd, capture_output=True, text=True,
+                                            env=core.child_env(), timeout=120)
+                else:
+                    stdin = f"y\n2p_3\n{'y' if ci else 'n'}\n{'y' if offdiag else 'n'}\n"
+                    result = subprocess.run([os.path.join(grasp_bindir, "rhfszeeman95")], cwd=wd, input=stdin,
+                                            capture_output=True, text=True, env=core.child_env(), timeout=120)
+                assert result.returncode == 0, result.stderr[-3000:]
+                constants = (wd / ("2p_3" + suffix)).read_bytes()
+                assert b"Interaction constants:" in constants
+                matrix = wd / ("2p_3" + (".cgjhfs" if ci else ".gjhfs"))
+                assert matrix.exists() == offdiag
+                outputs.append((constants, matrix.read_bytes() if offdiag else None))
+                if mode == "form":
+                    assert (wd / "constants.txt").read_bytes() == constants
+                    script = core.shell_script([core.RHfs().job(dict(core.RHfs.defaults(), state="2p_3", ci=ci))],
+                                               grasp_bindir, ".")
+                    result = subprocess.run(["sh", "-c", script], cwd=wd, capture_output=True, text=True,
+                                            env=core.child_env(), timeout=120)
+                    assert result.returncode == 0, result.stderr[-3000:]
+                    rhfs = (wd / ("2p_3" + suffix)).read_bytes()
+                    assert rhfs != constants
+                    assert rhfs.split(b"Interaction constants:")[1] == constants.split(b"Interaction constants:")[1]
+                    assert (wd / "constants.txt").read_bytes() == constants
+            assert outputs[0] == outputs[1]

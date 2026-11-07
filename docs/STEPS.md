@@ -199,6 +199,21 @@ program `rhfs`; `group`: "odd" / "even"
 | `sort` | bool | `true` | 按能量排序 |
 | `log` | string | `""` | 输出日志文件 / Output log file |
 
+## `rhfszeeman95`
+
+program `rhfszeeman95`; `group`: "odd" / "even"
+
+> 默认设置下计算超精细和塞曼矩阵元。读取 isodata、name.c、name.w、name.(c)m；输出 name.(c)h，勾选非对角时另写 name.(c)gjhfs。不同 J 块须在同一个态文件中，使用同一组轨道；不做双正交变换。 / Compute hyperfine and Zeeman matrix elements with default settings. Reads isodata, name.c, name.w, name.(c)m; writes name.(c)h and, with off-diagonal elements, name.(c)gjhfs. Different J blocks must be in the same state file with one orbital set; no biorthogonal transformation is performed.
+> 与 rhfs 共用 name.(c)h，格式不同，后运行的会覆盖先运行的。另存只复制本次常数结果，不备份已有文件。 / Shares name.(c)h with rhfs, with a different format; the later run overwrites the earlier output. Saving a copy preserves this run's constants only; it does not back up existing files.
+
+| key | type | default | meaning / 含义 |
+|---|---|---|---|
+| `state` | string | `"oddCI6"` | 态名称 / State name *(2.5.0)* |
+| `ci` | bool | `true` | 混合系数来自 CI 计算 / Mixing coefficients from CI calculation — 否则读 .m / otherwise .m is read *(2.5.0)* |
+| `offdiag` | bool | `true` | 计算非对角矩阵元 / Compute off-diagonal matrix elements *(2.5.0)* |
+| `saveas` | string | `""` | 常数结果 name.(c)h 另存为 / Save a copy of constants name.(c)h as — 空 = 不复制 / empty = no copy *(2.5.0)* |
+| `log` | string | `""` | 输出日志文件 / Output log file *(2.5.0)* |
+
 ## `ris4`
 
 program `ris4`; `group`: "odd" / "even"

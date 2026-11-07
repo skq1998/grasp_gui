@@ -95,8 +95,8 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 * **Program tabs**, two levels (top: group, bottom: program):
   * *Setup (准备)*: `rnucleus`, `rcsfgenerate`, `rcsfinteract`, `rcsfsplit`, `rcsfzerofirst`
   * *SCF & CI (自洽场与 CI)*: `rangular`, `rwfnestimate`, `rmcdhf`, `rsave`, `rci`
-  * *Properties & transitions (性质与跃迁)*: `rhfs` (optionally followed by `rhfs_lsj`), `ris4`, `rbiotransform`,
-    `rtransition`
+  * *Properties & transitions (性质与跃迁)*: `rhfs` (optionally followed by `rhfs_lsj`), `rhfszeeman95`, `ris4`,
+    `rbiotransform`, `rtransition`
   * *Results & tools (结果与工具)*: `jj2lsj`, `Coupling`, `rlevels`, `rtablevels`, `rtabtrans1`, `rtabtrans2`, `rmixextract`, `rmixaccumulate`, `rtabhfs`, `rasfsplit`, *Custom (自定义)*
     (any program with hand-written input)
 * **Package (程序包)** combo box at the top right: *GRASP2018* (default) or *GRASPG* (V3). It selects which program
@@ -149,6 +149,17 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 * **rmcdhf NSIC**: *Modify NSIC (修改 NSIC)* enables a non-negative count of extra first-cycle orbital improvements; unchecked uses the program default.
   EOL defaults: `(NW-NFIX)/4` serial, `4+(NW-NFIX)/4` MPI, or 0 with varied correlation orbitals; AL: `2+(NW-NFIX)/4` (integer division).
   The page description explains the defaults; older configurations import with this option unchecked and no warning.
+* **rhfszeeman95**: default-settings mode only. *State name (态名称)* is an ASCII basename of at most 23 characters;
+  *Mixing coefficients from CI (混合系数来自 CI 计算)* selects `.cm` rather than `.m`.
+  *Compute off-diagonal matrix elements (计算非对角矩阵元)* is checked by default and additionally writes
+  `name.(c)gjhfs`. All J blocks must belong to the same saved state and orbital set; no biorthogonal transformation
+  is performed. Reads `isodata`, `name.c`, `name.w` and `name.(c)m`. The constants output `name.(c)h` shares its name
+  with rhfs but includes an energy table: the later run overwrites the earlier output.
+  *Save a copy of constants name.(c)h as (常数结果 name.(c)h 另存为)* copies the new constants after the run
+  (empty = no copy); it does not back up the previous output or copy the matrix file.
+  *Output log file (输出日志文件)* is optional. Parameters are separate for odd/even state groups.
+  中文：本页只使用默认设置，非对角矩阵元默认勾选；不同 J 块须在同一态文件中、共用一组轨道。与 rhfs 共用常数文件名，
+  后运行的覆盖先运行的；“另存为”只在运行后复制本次常数结果，不备份旧文件，也不复制矩阵文件。参数按态组保存。
 * **Zero/first-order partition (零阶 / 一阶划分)**: `rcsfzerofirst` (*CSF list of the zero-order space*, *CSF list to
   partition*, *Save the result rcsf.out as*) puts the zero-order CSFs at the top of each block. `rangular` and `rci`
   have the check box *Zero/first-order partition: CSFs outside the zero-order space treated as first-order

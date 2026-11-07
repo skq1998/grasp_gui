@@ -247,22 +247,26 @@
    "group": "odd"
   },
   {
-   "step": "custom",
+   "step": "rhfszeeman95",
    "vals": {
-    "prog": "rhfszeeman95",
-    "args": "",
-    "stdin": "y\neven_n3\ny\ny\n",
+    "state": "even_n3",
+    "ci": true,
+    "offdiag": true,
+    "saveas": "",
     "log": ""
-   }
+   },
+   "group": "even"
   },
   {
-   "step": "custom",
+   "step": "rhfszeeman95",
    "vals": {
-    "prog": "rhfszeeman95",
-    "args": "",
-    "stdin": "y\nodd_n3\ny\ny\n",
+    "state": "odd_n3",
+    "ci": true,
+    "offdiag": true,
+    "saveas": "",
     "log": ""
-   }
+   },
+   "group": "odd"
   },
   {
    "step": "rbiotransform",
