@@ -59,6 +59,10 @@ If a step has to change, edit the configuration and generate the script again; d
    are not covered by the configuration; mention them in `summary`.
 9. `reference`: the output of `grasp_gui reference` for the final mixing coefficient files (Hartree, all levels in
    file order), unchanged.
+10. **State names: at most 23 characters**, letters, digits, `_`, `.`, `-` only. GRASP programs such as jj2lsj, rhfs
+   and rtransition read names into 24-character variables and open the wrong file otherwise. File-name limits of
+   other fields: [CONFIG_FORMAT.md, Name lengths](CONFIG_FORMAT.md#name-lengths--名称长度). `grasp_gui check`
+   reports violations.
 
 1. 顶层写 `format`、`version` (2)、`package` (GRASP2018)、`title`、`summary` (体系、能级、模型、计算内容)、`runtime`、
    `created_by` (agent 名称)、`jobs`，有结果时写 `reference`。
@@ -73,6 +77,9 @@ If a step has to change, edit the configuration and generate the script again; d
 7. `files` 只放界面不能生成的输入 (自定义步骤用到的)，普通文件名，UTF-8 文本，每个不超过 1 MB。
 8. 影响结果的每个手工操作都要是配置中的一步；配置以外的计算在 `summary` 中说明。
 9. `reference` 原样填入 `grasp_gui reference` 对最终混合系数文件的输出 (Hartree，按文件中的顺序列出全部能级)。
+10. **态名最多 23 个字符**，只用英文字母、数字、`_`、`.`、`-`。jj2lsj、rhfs、rtransition 等程序把态名读入 24 个字符的变量，
+   超长时会打开错误的文件。其他字段的长度限制见 [CONFIG_FORMAT.md 的“名称长度”](CONFIG_FORMAT.md#name-lengths--名称长度)；
+   `grasp_gui check` 会报告超限。
 
 ## Minimal example / 最小示例
 
@@ -113,9 +120,9 @@ all* recomputes everything; the *Levels* tab shows the resulting levels for comp
 > specified in docs/AGENT_SPEC.md of https://github.com/skq1998/grasp_gui. Write the configuration first, check it
 > with `grasp_gui check`, run GRASP only through the script from `grasp_gui script`, and add the output of
 > `grasp_gui reference` for the final `.cm`/`.m` files. Use the field names of `grasp_gui steps`, no absolute paths,
-> and `custom` steps only for programs without a tab.
+> `custom` steps only for programs without a tab, and state names of at most 23 characters.
 
 > 运行 GRASP2018 计算时，按 https://github.com/skq1998/grasp_gui 的 docs/AGENT_SPEC.md 同时给出 GRASP GUI 配置文件
 > (`grasp-gui-config`，版本 2)：先写配置并用 `grasp_gui check` 检查，只通过 `grasp_gui script` 生成的脚本运行 GRASP，
 > 再把 `grasp_gui reference` 对最终 `.cm`/`.m` 文件的输出填入配置。参数名以 `grasp_gui steps` 为准，不写绝对路径，
-> 只有没有程序页的程序才用 `custom` 步骤。
+> 只有没有程序页的程序才用 `custom` 步骤，态名不超过 23 个字符。

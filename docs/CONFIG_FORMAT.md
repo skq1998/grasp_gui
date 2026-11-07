@@ -71,6 +71,37 @@ below still apply. 文件与剪贴板共用 32 MiB 的 UTF-8 文本上限（含 
   命令行和文件操作由导入方的界面按当前规则**重新生成**。缺少的参数用默认值，不认识的参数忽略，并都告知用户。
 * **命令**：直接保存命令本身，只用于 2.1 之前的版本加入流程、没有记录表单参数的步骤；不会重新生成输入，可移植性较差。
 
+### Name lengths / 名称长度
+
+GRASP reads state and file names into fixed-length character variables. A longer name is cut off silently, and
+programs that split the name at its first blank get an empty name when the variable is full; they then open the
+wrong file (for example jj2lsj with a 24-character state name opens `fort.21` and stops with "Not a Configuration
+Symmetry List File"). The importing GUI checks these limits (`grasp_gui check`). Limits from compas/grasp
+`9006157` (source file: variable):
+
+| Program tab | Field | Limit | Source |
+|---|---|---|---|
+| jj2lsj, rhfs, ris4, rhfszeeman95, Coupling (jj2lsj files) | `state` | 23 characters | `jj2lsj_code.f90`, `hfs92.f90`, `ris.f90`, `hfszeeman06.f90`: `NAME*24` |
+| rbiotransform, rtransition | `init`, `final` | 23 characters each | `fname.f90`: `NAME(2)*24` |
+| rmixextract | `state` | 64 characters | `rmixextract.f90`: `StrInput*64` |
+| rasfsplit, rmixaccumulate | `state` | 80 characters (GUI limit; program: 100 / 199) | `rasfsplit.f90`, `rmixaccumulate.f90` |
+| rci | `state` | 127 characters | `rci92.f90`: `NAME*128` |
+| rwfnestimate | `wfile` | 128 bytes | `genrwf.f90`: `INFILE*128` |
+| rcsfzerofirst | `zero`, `full` | 256 bytes | `set_CSF_ZFlist.f90`: `FILNAM*256` |
+| rtabtrans2 | `tfile` | 80 bytes | `rtabtrans2.f90`: `FILENAME1*80` |
+| rlevels, rtabhfs | each of `files` | 80 bytes | `rlevels.f90`: `strInFile*80`; rtabhfs: GUI limit |
+
+State names use letters, digits, `_`, `.` and `-` (not starting with `.` or `-`), no blanks or non-ASCII characters.
+**Keep every state name at most 23 characters**, also in the forms without a limit of their own (`rmcdhf` `save`,
+`rsave`, `rcsfsplit`, `rcsfgenerate` `saveas`): the same name is read later by jj2lsj, rhfs, rtransition and the
+other 24-character programs. Names derived from it count too, such as the `name` + label files of rcsfsplit.
+
+GRASP 把态名、文件名读入定长的字符变量：名字过长时被悄悄截断；按第一个空格截取名字的程序在变量写满时得到空名字，
+会打开错误的文件 (例如 jj2lsj 遇到 24 个字符的态名时打开 `fort.21`，报 “Not a Configuration Symmetry List File”)。
+导入方的界面按上表检查 (`grasp_gui check`)。态名只用英文字母、数字、`_`、`.`、`-` (不以 `.` 或 `-` 开头)，不含空格和
+非 ASCII 字符。**所有态名都不要超过 23 个字符**，包括本身没有限制的表单 (rmcdhf 的 `save`、rsave、rcsfsplit、
+rcsfgenerate 的 `saveas`)：后面的 jj2lsj、rhfs、rtransition 等程序还要读入这个名字；rcsfsplit 加上标签后的名字同样计算在内。
+
 ### Attached files / 附带文件
 
 `{"name", "text"}`: a plain file name (no directory, not starting with `.`), UTF-8 text, at most 1 MB per file and

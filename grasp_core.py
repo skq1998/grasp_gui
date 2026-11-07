@@ -649,6 +649,10 @@ EN = {
         "Reads name.(c)hlsj from rhfs_lsj and writes hfs.tex. This version supports HFS data only.",
     "超精细常数文件": "Hyperfine constant files",
     "每行一个，最多 20 个": "One per line, at most 20",
+    "{p} 的态名称“{s}”须为英文字母、数字、下划线、点或短横线 (不以点或短横线开头)，最多 {n} 个字符": (
+        "{p}: state name \"{s}\" must use letters, digits, underscores, dots or hyphens (not starting with a dot "
+        "or hyphen), at most {n} characters"),
+    "{p} 的文件名“{s}”不能含空白，最多 {n} 个字节": "{p}: file name \"{s}\" must not contain spaces, at most {n} bytes",
     "态名称须为 1–80 个英文字母、数字、下划线、点或短横线，且不能以点或短横线开头":
         "State name must have 1–80 ASCII letters, digits, underscores, dots or hyphens, and start with a "
         "letter, digit or underscore",
@@ -1493,7 +1497,12 @@ class RcsfZeroFirst(Step):
         Entry("saveas", "结果 rcsf.out 保存为", "odd3.c", "与要划分的列表同名时覆盖原列表；留空则不复制"),
     ]
 
+    def validate(self, v):
+        for key in ("zero", "full"):              # set_CSF_ZFlist.f90: FILNAM*256
+            file_name(v[key], 256, "rcsfzerofirst")
+
     def stdin(self, v):
+        self.validate(v)
         return answers([v["zero"].strip(), v["full"].strip()])
 
     def post(self, v):
@@ -1540,7 +1549,12 @@ class RWfnEstimate(Step):
         Entry("delz", "  关联轨道的 Z 增加量", "0", "仅方法 4"),
     ]
 
+    def validate(self, v):
+        if v["use_file"]:                          # genrwf.f90: INFILE*128
+            file_name(v["wfile"].strip() or "rwfn.out", 128, "rwfnestimate")
+
     def stdin(self, v):
+        self.validate(v)
         lines = ["y"]
         if v["use_file"]:
             lines += ["1", v["wfile"].strip(), v["forbs"]]
@@ -1643,7 +1657,11 @@ class RCi(Step):
         Entry("log", "输出日志文件", "outodd_rci"),
     ]
 
+    def validate(self, v):
+        state_name(v["state"], 127, "rci")            # rci92.f90: NAME*128
+
     def stdin(self, v):
+        self.validate(v)
         state = v["state"].strip()
         if v.get("zf"):
             # 非默认设置：不重启、不改光速、按一阶微扰处理部分 CSF，再逐块给出 ICCUT
@@ -1685,6 +1703,7 @@ class Jj2lsj(Step):
     ]
 
     def validate(self, v):
+        state_name(v["state"], 23, "jj2lsj")          # jj2lsj_code.f90: NAME*24
         if not v.get("coupling_files"):
             return
         if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,22}", v["state"].strip()):
@@ -1785,7 +1804,11 @@ class RHfs(Step):
         Entry("log", "输出日志文件", ""),
     ]
 
+    def validate(self, v):
+        state_name(v["state"], 23, "rhfs")            # hfs92.f90: NAME*24
+
     def stdin(self, v):
+        self.validate(v)
         return answers(["y", v["state"].strip(), yn(v["ci"])])
 
     def post(self, v):
@@ -1840,12 +1863,34 @@ class RIs4(Step):
         Entry("log", "输出日志文件", ""),
     ]
 
+    def validate(self, v):
+        state_name(v["state"], 23, "ris4")            # ris.f90: NAME*24
+
     def stdin(self, v):
+        self.validate(v)
         # 最后一问只在角系数文件不存在时出现；多给的一行不会被读取
         return answers(["y", v["state"].strip(), yn(v["ci"]), yn(v["higher"]), yn(v["save"])])
 
     def title(self, v):
         return f"ris4 {v['state']}"
+
+
+def state_name(value, limit, prog):
+    """GRASP 把态名读入定长的字符变量，再按第一个空格截取：超长时被截断，或者截出空名字，程序打开错误的文件。
+    limit 依据 compas/grasp 源码，见 docs/CONFIG_FORMAT.md 的“名称长度”。"""
+    name = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", name) or len(name) > limit:
+        raise ValueError(T("{p} 的态名称“{s}”须为英文字母、数字、下划线、点或短横线 (不以点或短横线开头)，最多 {n} 个字符",
+                           p=prog, s=name, n=limit))
+    return name
+
+
+def file_name(value, limit, prog):
+    """程序读入的文件名：不含空白，UTF-8 字节数不超过 limit (超长时 Fortran 截断后打开错误的文件)。"""
+    name = value.strip()
+    if not name or re.search(r"\s", name) or len(name.encode("utf-8")) > limit:
+        raise ValueError(T("{p} 的文件名“{s}”不能含空白，最多 {n} 个字节", p=prog, s=name, n=limit))
+    return name
 
 
 def tool_state(value):
@@ -1881,6 +1926,7 @@ class RMixExtract(Step):
     ]
 
     def validate(self, v):
+        state_name(v["state"], 64, "rmixextract")     # rmixextract.f90: StrInput*64
         tool_state(v["state"])
         tool_fraction(v["cutoff"])
         if v["scope"] not in ("0", "1"):
@@ -1962,7 +2008,12 @@ class RLevels(Step):
         Entry("log", "输出日志文件", ""),
     ]
 
+    def validate(self, v):
+        for f in shlex.split(v["files"]):          # rlevels.f90: strInFile*80
+            file_name(f, 80, "rlevels")
+
     def args(self, v):
+        self.validate(v)
         return shlex.split(v["files"])
 
 
@@ -2012,7 +2063,11 @@ class RTabTrans2(Step):
         Entry("digits", "波长小数位数 (1–6)", "3"),
     ]
 
+    def validate(self, v):
+        file_name(v["tfile"], 80, "rtabtrans2")       # rtabtrans2.f90: FILENAME1*80
+
     def stdin(self, v):
+        self.validate(v)
         lines = [v["tfile"].strip(), v["fmt"]]
         if v["fmt"] == "1":                 # ASCII 时询问表格左列的离子名称
             lines.append(v["ion"])
@@ -2030,7 +2085,12 @@ class RBioTransform(Step):
         Entry("log", "输出日志文件", "out_rbiotransform"),
     ]
 
+    def validate(self, v):
+        for key in ("init", "final"):              # fname.f90: NAME(2)*24
+            state_name(v[key], 23, "rbiotransform")
+
     def stdin(self, v):
+        self.validate(v)
         return answers(["y", yn(v["ci"]), v["init"], v["final"], "y"])
 
 
@@ -2048,7 +2108,12 @@ class RTransition(Step):
         Entry("log", "输出日志文件", "out_transition"),
     ]
 
+    def validate(self, v):
+        for key in ("init", "final"):              # fname.f90: NAME(2)*24
+            state_name(v[key], 23, "rtransition")
+
     def stdin(self, v):
+        self.validate(v)
         kind = v["kind"].strip().upper()        # rtransition 只认大写的 E / M
         kinds = [k for k in re.split(r"[\s,;]+", kind) if k]
         lines = ["y", yn(v["ci"]), v["init"], v["final"], kind]

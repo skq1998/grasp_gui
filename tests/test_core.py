@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+import grasp_config as config  # noqa: E402
 import grasp_core as core
 from conftest import ROOT
 
@@ -103,3 +104,41 @@ def test_normalize_old_choice_values():
 
 def test_rename_group():
     assert core.rename_group({"a": ["odd2.c", "outodd_rci"]}, "odd", "even") == {"a": ["even2.c", "outeven_rci"]}
+
+
+@pytest.mark.parametrize("step,key,limit", [
+    ("jj2lsj", "state", 23), ("rhfs", "state", 23), ("ris4", "state", 23), ("rhfszeeman95", "state", 23),
+    ("rbiotransform", "init", 23), ("rbiotransform", "final", 23), ("rtransition", "init", 23),
+    ("rtransition", "final", 23), ("rmixextract", "state", 64), ("rci", "state", 127)])
+def test_state_name_limits_from_grasp_sources(step, key, limit):
+    """GRASP 读入态名的字符变量有长度上限 (docs/CONFIG_FORMAT.md 的“名称长度”)；超限的配置在检查时报错。"""
+    s = config.STEPS[step]
+    v = s.defaults()
+    v[key] = "a" * limit
+    s.validate(v)
+    v[key] = "a" * (limit + 1)
+    with pytest.raises(ValueError):
+        s.validate(v)
+    v[key] = "odd 2"
+    with pytest.raises(ValueError):
+        s.validate(v)
+
+
+def test_long_jj2lsj_state_rejected_on_check():
+    """agent 写出 24 个字符的态名时，导入检查就报错，不等 jj2lsj 打开错误的文件。"""
+    vals = dict(config.STEPS["jj2lsj"].defaults(), state="rn2_odd_cv6_low_corr_qed")
+    doc = dict(format=config.FORMAT, version=2, jobs=[dict(step="jj2lsj", vals=vals)])
+    with pytest.raises(config.ConfigError, match="23"):
+        config.check(doc)
+
+
+@pytest.mark.parametrize("step,key,limit", [("rcsfzerofirst", "zero", 256), ("rtabtrans2", "tfile", 80),
+                                            ("rlevels", "files", 80)])
+def test_file_name_limits_from_grasp_sources(step, key, limit):
+    s = config.STEPS[step]
+    v = s.defaults()
+    v[key] = "a" * limit
+    s.validate(v)
+    v[key] = "a" * (limit + 1)
+    with pytest.raises(ValueError):
+        s.validate(v)
