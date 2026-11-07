@@ -213,8 +213,10 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 * **Program output (程序输出)**: dark terminal-style pane, last 5000 lines (set a log file in the form for the full
   output); *List files (查看文件)*, *Clear (清屏)*. Errors in red, step headers in blue.
 * **Background runs (后台运行)**: every run (a program or the pipeline) is executed by a separate background process
-  (`grasp_gui _run`); the tab shows its output live and *■ Stop* stops it. The status bar shows *Running: step i/n
-  title (运行中：第 i/n 步 …)*.
+  (`grasp_gui _run`); the tab shows its output live and *■ Stop* stops it. A permanent label at the right of the
+  status bar shows *Running: step i/n title, this step h:mm:ss (运行中：第 i/n 步 …，本步 …)*, updated every second,
+  plus *last output … ago (最后输出于 … 前)* when the programs have printed nothing for a minute or more (GRASP may be
+  silent for hours in a long calculation). Messages of other tabs and menu hints do not replace it.
   * Quitting while a run is in progress asks *Continue in background (后台继续)* (default) / *Stop the run and quit
     (停止计算并退出)* / *Cancel (取消)*; without a run the program quits without asking. If the window disappears
     unexpectedly (ssh disconnected, crash), the run continues in the background.

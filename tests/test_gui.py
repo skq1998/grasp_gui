@@ -246,3 +246,30 @@ def test_preview_column_and_buttons_adapt(qapp, tmp_path, no_dialogs):
     assert buttons.columns == 1
     assert w.close()
     assert no_dialogs == []
+
+
+def test_progress_label_survives_status_messages(qapp, tmp_path, no_dialogs):
+    """运行进度在常驻标签中：其他页的状态消息不会清掉它；本步时间和最后输出时间来自运行状态和日志。"""
+    import time as _time
+
+    doc = dict(format=config.FORMAT, version=2, jobs=[
+        dict(step="custom", vals=dict(prog="sh", args="-c 'echo start; sleep 3'", stdin="", log=""))])
+    cfg, _ = config.check(doc)
+    config.install(cfg, str(tmp_path / "wd"))
+    w = window(tmp_path / "wd")
+    w.calc.run_pipeline()
+    spin(qapp, lambda: "sh" in w.progress_label.text())
+    w.statusBar().showMessage("other page message")
+    w.show_tab("levels")
+    qapp.processEvents()
+    assert "sh" in w.progress_label.text()
+    log = tmp_path / "wd" / bg.RUN_LOG
+    old = _time.time() - 125
+    os.utime(log, (old, old))
+    w.calc.update_progress()
+    assert "2:0" in w.progress_label.text()        # 最后输出于 2:05 前
+    spin(qapp, lambda: not w.calc.busy, timeout=30)
+    w.calc.update_progress()
+    assert w.progress_label.text() == ""
+    assert w.close()
+    assert no_dialogs == []

@@ -782,6 +782,8 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "计算在 {h} 上运行 (进程 {p})，只能在那台机器上停止。": "The run is on {h} (process {p}); it can only be stopped on that machine.",
     "运行": "Run",
     "运行中：第 {i}/{n} 步 {t}": "Running: step {i}/{n} {t}",
+    "，本步 {d}": ", this step {d}",
+    "，最后输出于 {d} 前": ", last output {d} ago",
     "此目录已有计算在运行": "A run is already in progress in this directory",
     "停止计算并退出": "Stop the run and quit",
     "后台继续": "Continue in background",

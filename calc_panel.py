@@ -163,6 +163,14 @@ class StepForm(QScrollArea):
         return self.step.job(self.values())
 
 
+def elapsed(seconds):
+    """时间间隔，如 47 s、12:05、3:04:05。"""
+    seconds = max(0, int(seconds))
+    h, rest = divmod(seconds, 3600)
+    m, sec = divmod(rest, 60)
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}" if m else f"{sec} s"
+
+
 class ButtonColumn(QWidget):
     """按组排列的按钮：高度放得下时排成一列 (组间留空)，放不下时排成两列，面板变矮时不会被按钮撑住。"""
     GAP = 8
@@ -612,6 +620,7 @@ class CalcPanel(QWidget):
     """计算：各程序的参数表单、流程、运行和程序输出。工作目录和运行设置 (RunSettings) 由主窗口提供；
     参数和流程按工作目录保存在 core.SESSION_FILE 中。"""
     message = Signal(str)                  # 状态栏消息
+    progress = Signal(str)                 # 运行进度 (状态栏右侧的常驻标签；空字符串 = 没有运行)
     runFinished = Signal(bool)             # 一次运行结束 (查看器据此刷新)
     workdirRequested = Signal(str)         # 需要切换工作目录 (导入示例、载入参数)
 
@@ -643,9 +652,33 @@ class CalcPanel(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(100)
+        self.ptimer = QTimer(self)
+        self.ptimer.timeout.connect(self.update_progress)
+        self.ptimer.start(1000)
 
     def status(self, text):
         self.message.emit(text)
+
+    def update_progress(self):
+        """运行中：当前步骤、本步已运行的时间和最后一次输出距今的时间 (每秒更新)。
+        放在常驻标签中，切换标签页或菜单提示不会把它清掉；GRASP 长时间没有输出时也能看出计算仍在进行。"""
+        if not self.busy:
+            self.progress.emit("")
+            return
+        st = grasp_bg.status(self.cur_workdir) or {}
+        i, n = st.get("step", 0), len(self.titles)
+        title = self.titles[i] if 0 <= i < n else "?"
+        now = time.time()
+        text = T("运行中：第 {i}/{n} 步 {t}", i=i + 1, n=n, t=title)
+        if st.get("step_start"):
+            text += T("，本步 {d}", d=elapsed(now - st["step_start"]))
+        try:
+            quiet = now - os.path.getmtime(os.path.join(self.cur_workdir, grasp_bg.RUN_LOG))
+            if quiet >= 60:
+                text += T("，最后输出于 {d} 前", d=elapsed(quiet))
+        except OSError:
+            pass
+        self.progress.emit(text)
 
     # ---- 布局 ----
     def build(self):

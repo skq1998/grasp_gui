@@ -185,6 +185,10 @@ class MainWindow(QMainWindow):
         if self.calc is None:
             self.calc = CalcPanel(self.run, self.cur_workdir)
             self.calc.message.connect(self.statusBar().showMessage)
+            # 运行进度放在常驻标签中：其他页的消息和菜单提示只替换左侧的临时消息
+            self.progress_label = QLabel()
+            self.statusBar().addPermanentWidget(self.progress_label)
+            self.calc.progress.connect(self.progress_label.setText)
             self.calc.runFinished.connect(self.refresh_panels)
             self.calc.workdirRequested.connect(self.change_workdir)
         else:

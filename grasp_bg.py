@@ -207,6 +207,7 @@ class Server:
     def started(self, i, job):
         with self.lock:
             self.state["step"] = i
+            self.state["step_start"] = time.time()          # 界面据此显示本步已运行的时间
             write_state(self.workdir, self.state)
             self.send(dict(step=i))
 
