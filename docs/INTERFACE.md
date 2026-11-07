@@ -417,8 +417,9 @@ Clipboard output is limited to 4 MiB; file output and both input routes allow 32
 ## Levels tab / 能级图页
 
 **Results summary… (结果摘要…)** in the top bar opens a preview of a results summary for an agent: levels with
-leading components, energy changes between layers, rmcdhf SCF convergence (from logs), CSF counts and the run
-status of the steps. *Include the complete configuration (附带完整配置)* is an optional extra, off by default and
+leading components, energy changes between layers, rmcdhf SCF convergence (from logs, plus the final
+self-consistency and generalised occupation of each orbital from `name.sum`, with the orbitals new in the layer
+marked), CSF counts and the run status of the steps. *Include the complete configuration (附带完整配置)* is an optional extra, off by default and
 unavailable when the directory has no pipeline record. 1–200 levels per symmetry block (default 5); reading runs
 in the background. The Markdown/JSON text is capped at 200 KiB; leading components and earlier results are
 omitted first, with an explicit list. *Copy to clipboard (复制到剪贴板)* or *Save to file… (保存为文件…)*
@@ -427,7 +428,7 @@ the summary uses its current pipeline and this session's run records; otherwise 
 Exporting a configuration alone stays under *Calculation → Export*.
 
 顶栏的“结果摘要…”：给 agent 的结果摘要，包括能级与主要成分、能级随层的变化、rmcdhf 收敛情况、CSF 数和各步运行状态。
-“附带完整配置”是可选的附加部分，默认不选；目录没有流程记录时不可选。每块默认 5 个能级 (1–200)，后台读取，文本最多
+rmcdhf 部分另含 `name.sum` 中每个轨道最终的自洽程度和广义占据数，并标出本层新增的轨道。“附带完整配置”是可选的附加部分，默认不选；目录没有流程记录时不可选。每块默认 5 个能级 (1–200)，后台读取，文本最多
 200 KiB (先省主要成分、再省较早的结果，并写明)。可以复制到剪贴板或保存为文件 (`<目录名>_summary.md`)。单独导出配置仍在计算页的“导出”。
 
 Large mixing and CSF files are indexed in the background. The status bar shows *Reading … (正在读取 …)*

@@ -224,6 +224,34 @@ def scf_log(path, cancel=None):
                 basis="compas/grasp 9006157: scf.f90:154-235,292-295; improv.f90:173-185; newco.f90:116-128")
 
 
+def rmcdhf_sum(path):
+    """rmcdhf 的总结文件 (rmcdhf.sum，rsave 改名为 name.sum) 中每个轨道最终的自洽程度和广义占据数。
+    格式依据 compas/grasp 9006157 的 endsum.f90:44-60,74-79 (FORMAT 302、304：1X,I2,A2 后接数值)；
+    文件只有迭代结束后才写这两张表，没有迭代过程。"""
+    orbitals, table = {}, None
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("Radial wavefunction summary"):
+                table, orbitals = "radial", {}
+            elif "Generalised" in line:
+                table = "occupation"
+            elif table and re.match(r" [ \d]\d[a-z][ -] ", line):
+                name, parts = line[1:3].strip() + line[3:5].strip(), line[5:].split()
+                try:
+                    if table == "radial" and len(parts) == 7:
+                        orbitals[name] = dict(name=name, self_consistency=abs(number(parts[5])))
+                    elif table == "occupation" and len(parts) == 6 and name in orbitals:
+                        orbitals[name]["occupation"] = number(parts[5])
+                except ValueError:
+                    continue
+    if not orbitals:
+        raise ValueError(T("{f} 中没有轨道总结 (rmcdhf 可能没有正常结束)", f=Path(path).name))
+    rows = list(orbitals.values())
+    return dict(sum_file=Path(path).name, orbitals=rows,
+                max_final_self_consistency=max(r["self_consistency"] for r in rows),
+                basis="compas/grasp 9006157: endsum.f90:44-60,74-79")
+
+
 def result_order(jobs):
     ordered = []
     for i, job in enumerate(jobs):
@@ -233,6 +261,33 @@ def result_order(jobs):
     # 同名文件再次写出时，旧层的能量已经不存在，不能把新结果伪装成旧结果。
     last = {r["file"]: i for i, r in enumerate(ordered)}
     return [r for i, r in enumerate(ordered) if last[r["file"]] == i]
+
+
+def add_sum(row, root, values, group, earlier):
+    """加入 .sum 中最终的自洽程度和广义占据数，标出比同一态组上一次 rmcdhf 新增的轨道。
+    新增轨道的占据数小，说明这一层的贡献已经不大；没有日志时，最终自洽程度是唯一的收敛线索。"""
+    state = values["save"].strip()
+    path = root / ((state + ".sum") if state else "rmcdhf.sum")
+    if not path.is_file():
+        row["sum"] = dict(sum_file=path.name, missing=True)
+        return
+    try:
+        data = rmcdhf_sum(path)
+    except (OSError, ValueError) as e:
+        row["sum"] = dict(sum_file=path.name, error=str(e))
+        return
+    result = path.with_suffix(".m") if state else root / "rmix.out"
+    if result.is_file() and result.stat().st_mtime - path.stat().st_mtime > 300:
+        data["possibly_stale"] = True          # 总结文件比混合系数文件早得多，可能是上一次计算留下的
+    previous = next((r for r in reversed(earlier) if r.get("group") == group and "orbitals" in r.get("sum", {})), None)
+    if previous is not None:
+        known = {o["name"] for o in previous["sum"]["orbitals"]}
+        for o in data["orbitals"]:
+            o["new"] = o["name"] not in known
+    row["group"] = group
+    row["sum"] = data
+    if row.get("converged") is None and not row["log"]:
+        row["reason"] = T("无日志，迭代过程未知；最终自洽程度见 .sum")
 
 
 def collect(workdir, cfg, jobs, history=(), per_block=5, cancel=None, progress=None):
@@ -260,6 +315,8 @@ def collect(workdir, cfg, jobs, history=(), per_block=5, cancel=None, progress=N
         if result["run_status"][i]["status"] == "running":
             row["converged"] = None
             row["reason"] = T("此步仍在运行，收敛尚无法确定")
+        else:
+            add_sum(row, root, values, job.get("group"), result["scf"])
         result["scf"].append(row)
     for path in sorted(root.glob("*.c")):
         index.checkpoint(cancel)

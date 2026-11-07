@@ -837,6 +837,8 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
         "fingerprints"),
     "本次会话记录；按步骤参数指纹对应": "Current GUI session record; matched by step parameter fingerprints",
     "无日志，无法判断": "No log; cannot determine convergence",
+    "无日志，迭代过程未知；最终自洽程度见 .sum": "No log, so the iterations are unknown; final self-consistency from .sum",
+    "{f} 中没有轨道总结 (rmcdhf 可能没有正常结束)": "{f} has no orbital summary (rmcdhf may not have finished normally)",
     "该日志由后续步骤复用，无法判断此步的收敛情况": "A later step reuses this log; cannot determine convergence for this step",
     "每块能级数须为 1–200": "Levels per block must be between 1 and 200",
     "请至少选择一个摘要部分": "Select at least one summary section",

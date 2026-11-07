@@ -102,17 +102,25 @@ for planning the next layer. The agent must not infer convergence from an exit c
 
 ### Summary format / 摘要格式
 
-The clipboard contains Markdown with separate JSON code blocks. The first block records generation time,
-`omissions`, `warnings` and evidence limitations. Each selected section follows in this fixed order:
+The summary (clipboard or `<directory>_summary.md`) is Markdown with separate JSON code blocks. The first block
+records generation time, `omissions`, `warnings` and evidence limitations. Each selected section follows in this
+fixed order; the complete configuration is an optional extra and comes last:
 
 | Section / 部分 | JSON content / 内容 |
 |---|---|
-| Current complete configuration / 当前完整配置 | The unchanged shared-configuration object / 原格式完整配置 |
-| Step run status / 各步运行状态 | Step number, title, `status`, `basis`, run times / 步号、标题、状态、依据、时间 |
-| SCF convergence / SCF 收敛情况 | Log path, iteration count, last 3 iterations, `converged` / 日志、次数、最后三次迭代、是否收敛 |
-| CSF counts / 各态的 CSF 数 | `.c` files, counts for each J/parity block / 各态每个 J、宇称块的 CSF 数 |
 | Levels / 能级与主要成分 | Ordered result files; J, parity, index, Hartree, relative cm⁻¹, purity, top 3 jj components, LSJ labels |
 | Layer changes / 能级随层的变化 | Per-group (odd/even) matches by J, parity, index; Hartree and consecutive-layer differences in cm⁻¹ |
+| SCF convergence / SCF 收敛情况 | Log path, iteration count, last 3 iterations, `converged`; `sum`: final self-consistency and generalised occupation of every orbital from `name.sum`, `new` for orbitals added since the previous rmcdhf of the same group |
+| CSF counts / 各态的 CSF 数 | `.c` files, counts for each J/parity block / 各态每个 J、宇称块的 CSF 数 |
+| Step run status / 各步运行状态 | Step number, title, `status`, `basis`, run times / 步号、标题、状态、依据、时间 |
+| Current complete configuration / 当前完整配置 | Optional; the unchanged shared-configuration object / 可选；原格式完整配置 |
+
+`sum` comes from the rmcdhf summary file (`rmcdhf.sum`, renamed `name.sum` by rsave; compas/grasp 9006157
+`endsum.f90:44–60,74–79`). It has no iteration history, only the final values. A small generalised occupation
+of the orbitals new in this layer means the layer adds little; `possibly_stale` marks a `.sum` much older than the
+mixing file. Without a log, `converged` stays `null` and `sum` is the only convergence evidence.
+`sum` 取自 rmcdhf 的总结文件 (rsave 改名为 `name.sum`)，只有最终值，没有迭代过程。本层新增轨道 (`new`) 的广义占据数小，
+说明这一层的贡献已经不大；没有日志时 `converged` 为 `null`，最终自洽程度是唯一的收敛线索。
 
 `status` is `success`, `failed`, `not_run`, `running`, `stopped` or `unknown`. The latest matching record
 wins. Current-GUI-session records compare parameter fingerprints; the persisted background state contains

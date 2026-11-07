@@ -252,3 +252,37 @@ def test_scf_distinguishes_block_averages_and_optimized_levels(tmp_path):
     assert last["block_average_energies_hartree"] == [-7.1]
     assert last["optimized_levels"] == [dict(index=1, energy_hartree=-7.6, weight=1.0)]
     assert last["delta_optimized_energy_hartree"] == pytest.approx(-0.1)
+
+
+def test_rmcdhf_sum_final_consistency_and_occupations():
+    """endsum.f90 的两张表：每个轨道最终的自洽程度和广义占据数 (case1 even3 的真实输出)。"""
+    data = summary.rmcdhf_sum(DATA / "rmcdhf_even3.sum")
+    rows = {o["name"]: o for o in data["orbitals"]}
+    assert list(rows)[:4] == ["1s", "2s", "2p-", "2p"] and "3d" in rows
+    assert rows["1s"]["occupation"] == pytest.approx(1.99996)
+    assert rows["3p"]["self_consistency"] == pytest.approx(2.931e-07)
+    assert data["max_final_self_consistency"] == max(o["self_consistency"] for o in data["orbitals"])
+
+
+def test_summary_marks_new_layer_orbitals_from_sum_files(tmp_path):
+    """同一态组上一次 rmcdhf 之后新增的轨道标为 new；没有日志时仍给出 .sum 的最终自洽程度。"""
+    (tmp_path / "even3.sum").write_bytes((DATA / "rmcdhf_even3.sum").read_bytes())
+    (tmp_path / "even4.sum").write_bytes((DATA / "rmcdhf_even4.sum").read_bytes())
+    jobs = [job("rmcdhf", save="even3", log=""), job("rmcdhf", save="even4", log=""), job("rmcdhf", save="even5")]
+    for j in jobs:
+        j["group"] = "even"
+    data = summary.collect(tmp_path, None, jobs)
+    first, second, third = data["scf"]
+    assert not any("new" in o for o in first["sum"]["orbitals"])
+    new = {o["name"] for o in second["sum"]["orbitals"] if o["new"]}
+    assert new and all(name.startswith("4") for name in new)
+    assert second["reason"] == core.T("无日志，迭代过程未知；最终自洽程度见 .sum")
+    assert third["sum"] == dict(sum_file="even5.sum", missing=True)
+    text = summary.render(data, ["scf"])
+    assert "max_final_self_consistency" in text
+
+
+def test_sum_without_orbital_tables_is_reported(tmp_path):
+    (tmp_path / "odd2.sum").write_text("There are 5 electrons in the cloud\n")
+    data = summary.collect(tmp_path, None, [job("rmcdhf", save="odd2", log="")])
+    assert "error" in data["scf"][0]["sum"]
