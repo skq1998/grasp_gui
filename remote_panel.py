@@ -705,6 +705,7 @@ class RemoteWindow(QMainWindow):
     def __init__(self, source, directory, parent=None):
         super().__init__(parent)
         self.source, self.directory, self.detached = source, directory, []
+        self.transfer_dialogs = []
         source.setParent(self)
         self.label = T("服务器 {h}:{p}", h=source.client.host, p=directory)
         self.setWindowTitle(self.label)
@@ -725,10 +726,35 @@ class RemoteWindow(QMainWindow):
         source.notice.connect(self.statusBar().showMessage)
         self.waves.message.connect(self.statusBar().showMessage)
         self.levels.message.connect(self.statusBar().showMessage)
+        files = self.menuBar().addMenu(T("文件"))
+        files.addAction(T("下载到本机…")).triggered.connect(lambda: self.open_transfer())
+        files.addAction(T("从本机上传…")).triggered.connect(lambda: self.open_transfer(upload=True))
+        files.addAction(T("上传本机目录…")).triggered.connect(lambda: self.open_transfer(upload=True, folder=True))
         menu = self.menuBar().addMenu(T("窗口"))
         menu.addAction(T("重新连接")).triggered.connect(source.reconnect)
         menu.addAction(T("在新窗口中打开径向波函数")).triggered.connect(lambda: self.open_view("wfn"))
         menu.addAction(T("在新窗口中打开能级图")).triggered.connect(lambda: self.open_view("levels"))
+
+    def open_transfer(self, upload=False, folder=False):
+        from PySide6.QtWidgets import QFileDialog
+        from transfer_panel import TransferDialog
+        local, names = None, None
+        if upload:
+            if folder:
+                chosen = QFileDialog.getExistingDirectory(self, T("上传本机目录…"), str(Path.home()))
+                paths = [Path(chosen)] if chosen else []
+            else:
+                chosen, _ = QFileDialog.getOpenFileNames(self, T("从本机上传…"), str(Path.home()))
+                paths = [Path(value) for value in chosen]
+            if not paths:
+                return
+            local = os.path.commonpath([str(path.parent) for path in paths])
+            names = [path.relative_to(local).as_posix() for path in paths]
+        dialog = TransferDialog(self.source, self.directory, local, names, self)
+        self.transfer_dialogs.append(dialog)
+        dialog.finished.connect(lambda result: self.transfer_dialogs.remove(dialog))
+        dialog.finished.connect(dialog.deleteLater)
+        dialog.show()
 
     def open_view(self, kind):
         win = QMainWindow(self)
@@ -740,6 +766,8 @@ class RemoteWindow(QMainWindow):
         self.detached.append((win, panel))
 
     def closeEvent(self, event):
+        for dialog in list(self.transfer_dialogs):
+            dialog.shutdown()
         for win, panel in self.detached:
             panel.shutdown()
             win.close()

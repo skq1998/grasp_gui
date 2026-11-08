@@ -108,6 +108,24 @@ Closing the remote window closes its viewers and connection; it does not stop a 
 标题显示服务器来源，保存从本机家目录开始选择；不使用桌面会话历史，不在桌面读取服务器目录，取消或旧回答不改变剪贴板。
 关闭远程窗口同时关闭这些查看器和连接，后台计算继续。完整协议、缓存/重连限制见 [REMOTE.md](REMOTE.md)。
 
+The remote window's **File** menu offers **Download to this computer…**, **Upload from this computer…**
+and **Upload local directory…**. The transfer dialog lists all regular files and sizes in decimal MB, excludes symbolic
+links/special files and defaults to selecting files no larger than 100 MB each (decimal MB). The threshold and
+server rsync path are saved per host. Changing the threshold resets the selection; large files need individual
+selection or Include large files. Confirmation separately counts selected small, selected large and unselected
+large files. Skip existing files is the default, with Resume / verify and Overwrite alternatives. The background
+progress shows speed and remaining time, and can be cancelled; partial data is kept for a later resume.
+Transfer windows are non-modal, so analysis and the main window remain usable. Closing a transfer window
+while it is busy asks whether to cancel, with No as the default; declining keeps it open and transferring. Closing
+the remote window cancels its transfers. The default download location is `~/grasp_calcs/remote/<host>/<directory>/`.
+
+远程窗口“文件”菜单提供下载、上传文件和上传目录；清单列出全部普通文件及十进制 MB 大小，跳过符号链接及特殊文件。
+单个文件大于 100 MB 默认不勾选，可逐个勾选或使用“包括大文件”；阈值按主机保存，修改后重置勾选。
+确认时分别列出小文件、选中大文件和未选大文件的数量/大小；同名文件默认跳过，也可续传/校验或覆盖。
+传输窗口为非模态，传输时仍可操作远程分析和主窗口；进度、速度、剩余时间同时显示在传输窗口和远程状态栏。
+传输中关闭传输窗口会询问是否取消，默认否；拒绝时窗口保持打开，传输继续。取消保留部分数据。
+关闭远程窗口会直接取消其传输；下载目录可自行选择。
+
 The connection dialog also has **Install / update server…** and **Remove from server…**. They show the host,
 bundled version/size, editable installation root, checks and exact paths before a default-No confirmation.
 Transfer progress and Cancel are available; returning from installation verifies the server and saves its path.

@@ -982,6 +982,54 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "服务器版命令：remote、mcp、check、script、steps、reference、_run；--version 显示程序和协议版本。": (
         "Server commands: remote, mcp, check, script, steps, reference, _run; "
         "--version shows the application and protocol versions."),
+    # 用户选择的 rsync 文件传输
+    "传输文件必须是目录内的相对路径": "Transfer files must use relative paths inside the directory",
+    "文件太多，请缩小选择范围": "Too many files; select a smaller directory",
+    "目标路径包含符号链接，请换一个目录：{p}": "Destination contains a symbolic link; choose another directory: {p}",
+    "rsync 请填写完整路径或使用 rsync": "Use rsync or its absolute path",
+    "找不到 rsync；请安装系统 rsync 或设置完整路径": "Cannot find rsync; install system rsync or set its absolute path",
+    "此 rsync 缺少续传或校验所需选项，请安装 GNU rsync：{v}；缺少 {p}": (
+        "This rsync lacks resume or verification options; install GNU rsync: {v}; missing {p}"),
+    "请先选择要传输的文件": "Select files to transfer first",
+    "含空格或特殊字符的路径需要两端 rsync 支持 --protect-args": (
+        "Paths with spaces or special characters require --protect-args on both rsync installations"),
+    "传输已取消，已传的部分可在下次续传": "Transfer cancelled; partial data can be resumed next time",
+    "文件传输需要现有 SSH 连接复用，请先重新连接": "File transfer requires the existing SSH master; reconnect first",
+    "文件在确认后已改变，请刷新清单后重新选择": "Files changed after confirmation; refresh the list and select again",
+    "服务器拒绝传输会话，请管理员将 MaxSessions 调大；现有分析会话仍可使用": (
+        "Server refused the transfer session; ask the administrator to increase MaxSessions. Analysis "
+        "remains available."),
+    "rsync 传输失败：{e}": "rsync transfer failed: {e}",
+    "从本机上传…": "Upload from this computer…",
+    "下载到本机…": "Download to this computer…",
+    "上传本机目录…": "Upload local directory…",
+    "服务器 rsync": "Server rsync",
+    "目标目录": "Destination directory",
+    "每个文件的大小阈值；1 MB = 1,000,000 字节": "Per-file threshold; 1 MB = 1,000,000 bytes",
+    "大文件阈值": "Large-file threshold",
+    "跳过已有文件": "Skip existing files",
+    "续传 / 校验": "Resume / verify",
+    "覆盖已有文件": "Overwrite existing files",
+    "同名文件": "Existing files",
+    "包括大文件": "Include large files",
+    "大小": "Size",
+    "大文件": "Large file",
+    ".w、.c、.cm、角系数等大文件通常不需要下载；能级、组成和波函数曲线可直接在远程窗口查看。": (
+        "Large .w, .c, .cm and angular files usually need no download. View levels, compositions and "
+        "wavefunctions remotely."),
+    "正在读取文件清单…": "Reading file list…",
+    "刷新清单": "Refresh file list",
+    "确认传输…": "Confirm transfer…",
+    "取消传输": "Cancel transfer",
+    "传输仍在进行，关闭窗口将取消传输。是否取消并关闭？": (
+        "A transfer is still running. Closing this window will cancel it. Cancel and close?"),
+    "已跳过符号链接或特殊文件：{n}": "Symbolic links or special files skipped: {n}",
+    "小文件：{n} 个，{b} MB；选中大文件：{l} 个，{s} MB；未选大文件：{u} 个，{t} MB": (
+        "Small files: {n}, {b} MB; selected large: {l}, {s} MB; unselected large: {u}, {t} MB"),
+    "请选择目标目录": "Select a destination directory",
+    "传输 {n}% · {s} · 剩余 {t}": "Transfer {n}% · {s} · remaining {t}",
+    "传输失败，请查看 SSH 连接状态": "Transfer failed; check the SSH connection",
+    "已按所选规则处理 {n} 个文件": "Processed {n} files using the selected policy",
     "可安装捆绑服务器版，或在此设置已有程序的完整路径。": (
         "Install the bundled server, or enter the absolute path of an existing executable here."),
     "服务器版本较旧": "Older server version",

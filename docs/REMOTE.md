@@ -123,6 +123,7 @@ Two server workers permit pipelined reads; run/stop are serialized. Server code 
 | `orbitals` | Directory, optional files/limit; properties computed on the original grid |
 | `wavefunctions` | Directory, optional files/names; points 2–10000, at most 100 sampled curves |
 | `summary` | Directory, optional per_block (1–200, default 5), selected sections; server-rendered text and configuration availability |
+| `transfer_files` | Directory, optional relative names, rsync path and destination names; regular-file inventory and rsync capabilities |
 | `composition` | Directory, mixing file, block, index; up to 500 leading components |
 | `view` | `kind: levels` or `wfn`; a whole view in one request, optional file/name selection and known signature |
 | `pipeline` | Read-only saved jobs and revision |
@@ -209,6 +210,72 @@ return a clear error in this build. There are no automatic downloads or server-i
 MCP 开关仍由用户控制，绘图工具在没有 Qt 时返回明确错误。目录版构建及手动安装见
 [legacy/README.md](https://github.com/skq1998/grasp_gui/blob/legacy/legacy/README.md)。
 
+
+## Selected file transfer / 选中文件传输
+
+The remote window File menu transfers only confirmed files using the system **rsync** on both computers.
+Analysis still runs on the server; no raw files are downloaded merely to view results. There is no scp/sftp
+fallback and no bundled rsync or Python dependency. A custom server rsync path is stored per host.
+
+Transfer windows are non-modal: analysis and the main window remain usable, with progress also shown in the
+remote status bar. Closing a busy transfer window asks whether to cancel (default No); declining keeps the
+window open and the transfer running. Closing the remote window cancels all of its transfers directly.
+传输窗口为非模态，传输时仍可分析结果、操作主窗口，远程状态栏同步显示进度。
+传输中关闭传输窗口需确认取消（默认否）；拒绝时窗口保持打开，传输继续。关闭远程窗口直接取消其全部传输。
+
+Close confirmation / 关闭确认：[English](images/en_rsync_cancel.png) / [中文](images/zh_rsync_cancel.png)。
+
+The dialog recursively lists regular files with sizes in decimal MB. Symbolic links and special files are excluded and their
+skipped count is shown; links are never followed. Files **larger than 100 MB** are unchecked by default;
+1 MB is 1,000,000 bytes. The editable
+per-host threshold resets selections, and large files can be selected individually or with Include large files.
+The large-file reminder explains that .w/.c/.cm/angular files can usually stay on the server. Confirmation
+separately reports selected small files, selected large files and unselected large files, with counts and totals.
+Upload uses the same rules. Download initially targets `~/grasp_calcs/remote/<host>/<remote-directory-name>/`,
+which can be changed. Selecting local directories preserves their basename; selecting files preserves their
+relative paths from the common parent. Existing files default to Skip; Resume / verify and Overwrite are explicit.
+
+Final options are -rt, --checksum, --partial, --partial-dir=.grasp-rsync-partial, --safe-links, --files-from=-
+and --from0. The NUL-separated manifest contains only checked relative names. Resume uses rsync's delta algorithm
+and partial data; transferred content is also checked by rsync's full-file verification. Overwrite adds
+--ignore-times --whole-file; Skip adds --ignore-existing. No --delete, --copy-links or --keep-dirlinks is used.
+Source size/mtime is checked again before transfer; destination paths with symlinks are refused.
+
+The -e command derives from the existing SSH Client options, including ControlPath, aliases, identity and jump
+host settings in the master. Explicit -J is omitted from the auxiliary command because that route is already
+established; otherwise SSH rejects -J together with the no-fallback ProxyCommand. Prepending ControlMaster=no,
+ProxyCommand=false and BatchMode=yes permits only the already
+authenticated master: if it vanishes, transfer fails instead of authenticating again. rsync needs a second SSH
+session; MaxSessions 1 reports an explicit administrator-action message and leaves analysis usable. Missing
+rsync reports installation/path guidance. Cancellation interrupts only the rsync process group, retains partial
+data, and does not stop the analysis connection. Progress, speed and ETA are displayed without blocking Qt.
+
+Capabilities are read from --version/--help on both ends. GNU rsync 3.1+ uses --info=progress2; older capable
+versions use --progress. Special paths require --protect-args/-s support at both ends. Implementations without
+the required partial/checksum/manifest options (including basic OpenBSD openrsync) fail clearly and suggest
+GNU rsync; they never silently drop integrity or resume guarantees.
+
+用系统 rsync 显式传输勾选文件，不改变服务器分析结果的方式，不自动传输程序；服务器版的安装更新另有确认流程。
+两端缺少 rsync 或缺少必要的续传/校验选项时明确提示，不换用其他传输工具。MaxSessions 1 不能再开传输会话，
+因此给出管理员调整提示，原分析会话仍可继续。GNU 新版显示总进度，旧版按可用能力显示逐文件进度；
+基础 openrsync 缺少必要选项时提示安装 GNU rsync。断线或取消后的部分数据保留，重新选择“续传 / 校验”可继续。
+
+### Optional SSH acceptance / 可选真实验收
+
+Use dedicated test accounts and a disposable writable directory. One fixture needs MaxSessions > 1 and an
+optional second fixture uses MaxSessions 1; forwarding and external routing may remain disabled. Tests generate
+200 MiB dummy files, cancel and kill the transfer SSH client, resume, compare SHA-256, exercise all overwrite
+policies and missing rsync, then remove only their generated subdirectories and local large files.
+
+```sh
+GRASP_RSYNC_TEST_HOST=test-alias \
+GRASP_RSYNC_TEST_SINGLE_HOST=single-session-alias \
+GRASP_RSYNC_TEST_CONFIG=/path/to/test-ssh-config \
+GRASP_RSYNC_TEST_DIRECTORY=/absolute/disposable/directory \
+python3 -m pytest tests/test_transfer_ssh.py -q
+```
+
+Tests skip without the dedicated fixture or local rsync. Never point the test directory at calculation results.
 
 ## Bundled installation / 从桌面端安装服务器版
 

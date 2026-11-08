@@ -15,7 +15,8 @@ GRASP2018 的图形界面：在表单中填写各程序的参数，界面自动�
 
 [MCP service / MCP 服务](docs/MCP.md)：headless local/SSH access, **off by default / 默认关闭**。
 
-[SSH remote access / SSH 远程连接](docs/REMOTE.md)：analyse results on the server, view and control runs on your desktop / 服务器分析结果，桌面查看与启停。
+[SSH remote access / SSH 远程连接](docs/REMOTE.md)：analyse results on the server, view and control runs on your desktop / 服务器分析结果，桌面查看与启停；可通过系统 rsync 显式上传/下载选中的文件（默认排除大文件）。
+Selected files can be uploaded/downloaded with system rsync; large files are excluded by default.
 
 ## Screenshots / 截图
 
