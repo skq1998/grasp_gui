@@ -280,14 +280,18 @@ Tests skip without the dedicated fixture or local rsync. Never point the test di
 ## Bundled installation / 从桌面端安装服务器版
 
 In **Connect to server**, **Install / update server…** opens an explicit installation dialog;
-**Remove from server…** uses the same host settings. The application never installs automatically. An unavailable server program offers installation, an existing path, or cancel when a bundle is available;
+**Remove from server…** uses the same host settings. The application never installs automatically. When the
+server program cannot be started, a build with a bundle offers installation, an existing path, or cancel;
 authentication, host-key, network and timeout errors only update the status. Only a numerically older compatible
-server version offers an update, with No as the default; newer servers never prompt for a downgrade. An incompatible protocol requires updating or choosing another server executable.
+server version offers an update, with No as the default; newer servers never prompt for a downgrade. An
+incompatible protocol is reported in the status area: use **Install / update server…** or choose another server
+executable.
 
 The dialog displays the host, bundled version/size, install root, executable link, architecture, glibc and free
 space. **Check server** closes this dialog's analysis session before using SSH, so MaxSessions 1 works. It checks
-x86_64, glibc ≥ 2.17, write access, executable filesystem and space for the archive plus staging. No sudo or
-shell/PATH changes are made. An administrator-managed executable or link is not replaced.
+x86_64, glibc ≥ 2.17, write access, executable filesystem and space for the archive plus staging; when the install
+root does not exist yet, the nearest existing parent is tested and the root is not created. No sudo or shell/PATH
+changes are made. An administrator-managed executable or link is not replaced.
 
 **Confirm installation** sends the bundled archive on SSH stdin, checks SHA-256, unpacks into a private staging
 directory, checks --version and the remote handshake, then atomically replaces ~/.local/bin/grasp_gui.
@@ -297,27 +301,25 @@ cancel; failed/interrupted transfers clean temporary files and keep the current 
 directory with different contents is refused rather than overwritten.
 
 Removal first lists application-owned version directories and the link and asks for confirmation. It refuses
-while an installed version is running and keeps unrelated files, calculation directories and results.
+while an installed version is running and keeps unrelated files, calculation directories and results. It also
+clears the previous-version record; a missing install root is left alone.
 
 Build the server archive on legacy first, then use
 `./build.sh [--onedir] --server-bundle /path/to/grasp_gui-server-linux-x86_64.tar.gz`
 (or GRASP_SERVER_BUNDLE). The adjacent .sha256 file and SERVER_VERSION inside the archive must match this
 desktop release/protocol. Every published desktop release must include the server archive. For development,
-CI or self-built binaries, omitting the option still builds normally; installation is disabled and says **This build does not include
-the server package**. Legacy builds do not bundle it. No runtime downloads or external server connections occur.
+CI or self-built binaries, omitting the option still builds normally; the installation button is then disabled
+with **This build does not include the server package**, and removal remains available. Legacy builds do not
+bundle it. No runtime downloads or external server connections occur.
 
 “连接服务器”中的“安装 / 更新服务器版…”和“从服务器移除…”沿用每台主机的设置。程序不自动安装；
-找不到程序时可选安装、使用已有路径或取消，版本不同时可拒绝更新并在协议兼容时继续。
-安装对话框先列主机、版本、大小、目录和链接，检查架构/glibc/空间/写权限及 noexec，再由用户明确确认。
+服务器端程序不能启动时，带捆绑包的构建可选安装、使用已有路径或取消；认证、主机密钥、网络和超时错误只显示在状态栏。
+只有服务器版本较旧且协议兼容时才提示更新 (默认否)，较新的服务器不会提示降级；协议不兼容时在状态栏说明，可手动安装 / 更新
+或改用其他程序。安装对话框先列主机、版本、大小、目录和链接，检查架构/glibc/空间/写权限及 noexec
+(安装目录还不存在时检查最近的已存在上级目录，不创建目录)，再由用户明确确认。
 分析会话先关闭，安装通过 SSH 标准输入传输，不需要 scp、sftp、端口转发、管理员权限或外网。
 校验、解压及版本/握手检查通过后才原子切换链接；保留上一版及仍运行的旧版，取消或失败清理临时目录。
-移除前列出本程序安装的版本和链接，运行中的版本拒绝移除；不动工作目录、计算结果、无所有权标记的目录和管理员程序。
-正式桌面发行版全部捆绑服务器包。开发、CI 或自行构建时可不捆绑，仍可连接已有程序，安装入口禁用并明确显示“本构建不含服务器版”。
-
-开发或自行构建中，安装入口在没有捆绑包时禁用并说明原因，移除入口仍可用。检查只在最近已存在的上级目录测试权限、
-空间和执行能力，不创建安装目录；移除不存在的目录时直接结束。移除后也清理程序的上一版记录。
-取消导致的管道关闭统一报告“安装已取消”。新版服务器以及认证、主机密钥、网络和超时错误均不触发安装提示。
-
-In development or self-built binaries without a bundle, the installation button is disabled with an explanation; removal remains available.
-Checking an absent install root tests its nearest existing parent without creating the root. Removal of an absent
-root is a no-op and successful removal also clears the previous-version record. Cancelled broken pipes report cancellation.
+移除前列出本程序安装的版本和链接，运行中的版本拒绝移除；不动工作目录、计算结果、无所有权标记的目录和管理员程序，
+同时清除上一版记录；安装目录不存在时不做任何操作。
+正式桌面发行版全部捆绑服务器包。开发、CI 或自行构建时可不捆绑，仍可连接已有程序，安装按钮禁用并明确显示“本构建不含服务器版”，
+移除仍可用。
