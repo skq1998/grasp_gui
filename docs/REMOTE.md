@@ -8,17 +8,22 @@
 
 ### 安装服务器端
 
-在桌面电脑下载支持 remote 协议的旧系统版 (glibc ≥ 2.17)，手动上传：
+优先使用无 Qt 的服务器目录版 (glibc ≥ 2.17)，可在下方的安装对话框中明确确认后安装。
+手动安装时，把服务器版压缩包和校验文件上传到服务器，先核对校验和，再解压到新的版本目录：
 
 ```sh
-scp grasp_gui-legacy-linux-x86_64 cluster:grasp_gui-legacy
-ssh cluster 'mkdir -p ~/.local/bin; mv ~/grasp_gui-legacy ~/.local/bin/grasp_gui; chmod +x ~/.local/bin/grasp_gui'
-ssh cluster '~/.local/bin/grasp_gui --version'
+sha256sum -c grasp_gui-server-linux-x86_64.tar.gz.sha256
+mkdir -p "$HOME/.local/lib/grasp_gui/2.8.0" "$HOME/.local/bin"
+tar xzf grasp_gui-server-linux-x86_64.tar.gz --strip-components=1 -C "$HOME/.local/lib/grasp_gui/2.8.0"
+"$HOME/.local/lib/grasp_gui/2.8.0/grasp_gui-server" --version
+ln -s "$HOME/.local/lib/grasp_gui/2.8.0/grasp_gui-server" "$HOME/.local/bin/grasp_gui.next"
+mv -Tf "$HOME/.local/bin/grasp_gui.next" "$HOME/.local/bin/grasp_gui"
 ```
 
 默认依次尝试 `~/.local/bin/grasp_gui`、PATH。非交互 SSH 的 PATH/module 环境可能与终端不同，可在连接对话框
 指定完整路径；成功选择目录时按主机保存实际路径和目录 (`remote_hosts` 用户偏好)。找不到、不能启动或协议不兼容时，
-对话框显示原始错误输出；按上述方法手动更新，再设置完整路径重试。服务器上的 GRASP bin、MPI 等运行设置仍由服务器端
+对话框显示原始错误输出，可明确选择安装捆绑版、使用已有路径或取消。手动更新后也可设置完整路径重试。
+示例中的版本目录需替换为所下载的版本，不覆盖仍运行的版本；管理员可统一安装到 `/opt` 或通过 module 提供路径。服务器上的 GRASP bin、MPI 等运行设置仍由服务器端
 原有配置决定；第一版不能在桌面修改。
 
 ### 登录
@@ -203,3 +208,49 @@ return a clear error in this build. There are no automatic downloads or server-i
 `--version` 同时显示程序和远程协议版本，`--lang en` 可切换英文。窗口命令返回 2，提示改用桌面版或旧系统版；
 MCP 开关仍由用户控制，绘图工具在没有 Qt 时返回明确错误。目录版构建及手动安装见
 [legacy/README.md](https://github.com/skq1998/grasp_gui/blob/legacy/legacy/README.md)。
+
+
+## Bundled installation / 从桌面端安装服务器版
+
+In **Connect to server**, **Install / update server…** opens an explicit installation dialog;
+**Remove from server…** uses the same host settings. The application never installs automatically. An unavailable server program offers installation, an existing path, or cancel when a bundle is available;
+authentication, host-key, network and timeout errors only update the status. Only a numerically older compatible
+server version offers an update, with No as the default; newer servers never prompt for a downgrade. An incompatible protocol requires updating or choosing another server executable.
+
+The dialog displays the host, bundled version/size, install root, executable link, architecture, glibc and free
+space. **Check server** closes this dialog's analysis session before using SSH, so MaxSessions 1 works. It checks
+x86_64, glibc ≥ 2.17, write access, executable filesystem and space for the archive plus staging. No sudo or
+shell/PATH changes are made. An administrator-managed executable or link is not replaced.
+
+**Confirm installation** sends the bundled archive on SSH stdin, checks SHA-256, unpacks into a private staging
+directory, checks --version and the remote handshake, then atomically replaces ~/.local/bin/grasp_gui.
+The default root is ~/.local/lib/grasp_gui/<version>/; a custom root is saved per host. The previous version and
+any older running versions remain; obsolete application-owned versions are removed. The progress bar supports
+cancel; failed/interrupted transfers clean temporary files and keep the current link. An existing version
+directory with different contents is refused rather than overwritten.
+
+Removal first lists application-owned version directories and the link and asks for confirmation. It refuses
+while an installed version is running and keeps unrelated files, calculation directories and results.
+
+Build the server archive on legacy first, then use
+`./build.sh [--onedir] --server-bundle /path/to/grasp_gui-server-linux-x86_64.tar.gz`
+(or GRASP_SERVER_BUNDLE). The adjacent .sha256 file and SERVER_VERSION inside the archive must match this
+desktop release/protocol. Every published desktop release must include the server archive. For development,
+CI or self-built binaries, omitting the option still builds normally; installation is disabled and says **This build does not include
+the server package**. Legacy builds do not bundle it. No runtime downloads or external server connections occur.
+
+“连接服务器”中的“安装 / 更新服务器版…”和“从服务器移除…”沿用每台主机的设置。程序不自动安装；
+找不到程序时可选安装、使用已有路径或取消，版本不同时可拒绝更新并在协议兼容时继续。
+安装对话框先列主机、版本、大小、目录和链接，检查架构/glibc/空间/写权限及 noexec，再由用户明确确认。
+分析会话先关闭，安装通过 SSH 标准输入传输，不需要 scp、sftp、端口转发、管理员权限或外网。
+校验、解压及版本/握手检查通过后才原子切换链接；保留上一版及仍运行的旧版，取消或失败清理临时目录。
+移除前列出本程序安装的版本和链接，运行中的版本拒绝移除；不动工作目录、计算结果、无所有权标记的目录和管理员程序。
+正式桌面发行版全部捆绑服务器包。开发、CI 或自行构建时可不捆绑，仍可连接已有程序，安装入口禁用并明确显示“本构建不含服务器版”。
+
+开发或自行构建中，安装入口在没有捆绑包时禁用并说明原因，移除入口仍可用。检查只在最近已存在的上级目录测试权限、
+空间和执行能力，不创建安装目录；移除不存在的目录时直接结束。移除后也清理程序的上一版记录。
+取消导致的管道关闭统一报告“安装已取消”。新版服务器以及认证、主机密钥、网络和超时错误均不触发安装提示。
+
+In development or self-built binaries without a bundle, the installation button is disabled with an explanation; removal remains available.
+Checking an absent install root tests its nearest existing parent without creating the root. Removal of an absent
+root is a no-op and successful removal also clears the previous-version record. Cancelled broken pipes report cancellation.

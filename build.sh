@@ -18,7 +18,24 @@ ENV=${GRASP_BUILD_ENV:-build/venv}
 "$ENV/bin/pip" install -q "pyside6-essentials>=6.8.3,<6.9" "pyinstaller>=6"
 
 MODE=--onefile
-[ "$1" = "--onedir" ] && MODE=--onedir
+SERVER_BUNDLE=${GRASP_SERVER_BUNDLE:-}
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --onedir) MODE=--onedir ;;
+        --server-bundle) shift; SERVER_BUNDLE=${1:?Missing server archive path} ;;
+        *) echo "Usage: $0 [--onedir] [--server-bundle ARCHIVE.tar.gz]" >&2; exit 2 ;;
+    esac
+    shift
+done
+SERVER_DATA=()
+if [ -n "$SERVER_BUNDLE" ]; then
+    # 先核对压缩包和其中的版本记录，避免捆绑过期的服务器程序。
+    "$ENV/bin/python" -c 'import grasp_install,sys; grasp_install.bundle(sys.argv[1])' "$SERVER_BUNDLE"
+    mkdir -p build/server
+    cp "$SERVER_BUNDLE" build/server/grasp_gui-server-linux-x86_64.tar.gz
+    cp "$SERVER_BUNDLE.sha256" build/server/grasp_gui-server-linux-x86_64.tar.gz.sha256
+    SERVER_DATA=(--add-data "$PWD/build/server:server")
+fi
 
 # Fonts bundled into the executable, so that machines without (Chinese) fonts can display the GUI:
 # Noto Sans CJK (SIL Open Font License) and DejaVu Sans / Sans Mono (free licence), taken from this
@@ -44,7 +61,7 @@ done
 # __future__ is imported by shiboken's signature bootstrap, which PyInstaller does not detect
 "$ENV/bin/pyinstaller" --noconfirm --clean --log-level WARN "$MODE" --name grasp_gui \
     --distpath dist --workpath build/pyinstaller --specpath build \
-    --hidden-import __future__ \
+    --hidden-import __future__ "${SERVER_DATA[@]}" \
     --add-data "$PWD/$FONTS:fonts" \
     --add-data "$PWD/demos/*.json:demos" \
     grasp_gui.py

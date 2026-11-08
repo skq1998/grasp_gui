@@ -982,6 +982,46 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "服务器版命令：remote、mcp、check、script、steps、reference、_run；--version 显示程序和协议版本。": (
         "Server commands: remote, mcp, check, script, steps, reference, _run; "
         "--version shows the application and protocol versions."),
+    "可安装捆绑服务器版，或在此设置已有程序的完整路径。": (
+        "Install the bundled server, or enter the absolute path of an existing executable here."),
+    "服务器版本较旧": "Older server version",
+    # 捆绑服务器版的显式安装
+    "本构建不含服务器版": "This build does not include the server package",
+    "服务器压缩包校验失败": "Server archive checksum failed",
+    "服务器压缩包包含不安全的路径或文件类型": "Server archive contains unsafe paths or file types",
+    "服务器版本记录无效": "Invalid server version record",
+    "捆绑服务器版的版本或协议与桌面版不一致": "Bundled server version or protocol does not match this desktop build",
+    "安装目录必须是完整路径或 ~/ 路径": "Install directory must be an absolute or ~/ path",
+    "无法识别服务器安装检查结果": "Cannot read server installation checks",
+    "服务器需要 glibc 2.17 或更新版本": "Server requires glibc 2.17 or newer",
+    "服务器安装目录空间不足": "Not enough space in the server installation directory",
+    "安装已取消": "Installation cancelled",
+    "服务器安装请求超时": "Server installation request timed out",
+    "服务器安装失败": "Server installation failed",
+    "从服务器移除": "Remove from server",
+    "从服务器移除…": "Remove from server…",
+    "安装 / 更新服务器版": "Install / update server",
+    "安装 / 更新服务器版…": "Install / update server…",
+    "安装与分析会话依次进行；不使用 sudo，不修改 PATH 或 shell 配置。": (
+        "Installation and analysis sessions run sequentially. No sudo, PATH or shell configuration changes."),
+    "安装目录": "Installation directory",
+    "检查服务器": "Check server",
+    "确认移除": "Confirm removal",
+    "确认安装": "Confirm installation",
+    "捆绑版本：{v}；大小：{n} MiB": "Bundled version: {v}; size: {n} MiB",
+    "没有本程序安装的版本": "No versions installed by this application",
+    "架构：{a}；{g}；可用空间：{n} MiB": "Architecture: {a}; {g}; free space: {n} MiB",
+    "安装目录：{p}\n链接：{l}\n已安装版本：\n{v}": "Install directory: {p}\nLink: {l}\nInstalled versions:\n{v}",
+    "移除下面列出的版本目录及本程序创建的链接；不删除计算目录或结果。": (
+        "Remove the listed version directories and the application-created link. "
+        "Calculation directories and results are kept."),
+    "将传输捆绑包、校验并切换链接；保留上一版和仍在运行的旧版。": (
+        "Transfer and verify the bundled archive, then switch the link. Keep the previous and any running versions."),
+    "服务器版本不同": "Different server version",
+    "服务器 {v}，桌面 {d}；协议兼容，可继续使用。现在安装捆绑版本吗？": (
+        "Server {v}, desktop {d}: the protocol is compatible, so you can continue. Install the bundled version now?"),
+    "服务器端不可用": "Server executable unavailable",
+    "使用已有的路径": "Use an existing path",
     # SSH 远程连接
     "SSH 登录": "SSH login",
     "SSH 主机确认": "SSH host confirmation",

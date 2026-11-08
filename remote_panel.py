@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QFormLayout, QHBoxLayout, QLa
                                QTabWidget, QVBoxLayout, QWidget)
 
 import grasp_config as config
+import grasp_install as install
 import grasp_core as core
 import grasp_mix as mix
 import grasp_ssh as ssh
@@ -117,12 +118,24 @@ class ConnectDialog(QDialog):
         self.connect_button = button("连接 / 刷新", self.connect_server)
         bar.addWidget(self.connect_button)
         bar.addWidget(button("上一级", self.parent_directory))
+        self.package, self.bundle_error = None, ""
+        try:
+            self.package = install.bundle()
+        except (OSError, ValueError) as error:
+            self.bundle_error = str(error)
+        self.install_button = button("安装 / 更新服务器版…", self.install_server)
+        self.install_button.setEnabled(self.package is not None)
+        self.install_button.setToolTip(self.bundle_error)
+        bar.addWidget(self.install_button)
+        bar.addWidget(button("从服务器移除…", lambda: self.install_server(remove=True)))
         layout.addLayout(bar)
         self.files = QListWidget()
         self.files.itemDoubleClicked.connect(self.enter)
         layout.addWidget(self.files, 1)
         self.status = QLabel(T("密钥或 ssh-agent 优先；密码和验证码仅在 OpenSSH 输入框中输入，不保存。"))
         self.status.setWordWrap(True)
+        if self.bundle_error:
+            self.status.setText(self.status.text() + "\n" + self.bundle_error)
         layout.addWidget(self.status)
         bar = QHBoxLayout()
         bar.addStretch()
@@ -133,6 +146,38 @@ class ConnectDialog(QDialog):
         layout.addLayout(bar)
         self.host.currentTextChanged.connect(self.profile)
         self.profile(self.host.currentText())
+
+    def install_server(self, remove=False):
+        if not remove and self.package is None:
+            self.status.setText(self.bundle_error)
+            return
+        from install_panel import InstallDialog
+        if self.source and self.source.client.host != self.host.currentText().strip():
+            self.source.close()
+            self.source = None
+        if self.source is None:
+            try:
+                self.source = Source(ssh.Client(self.host.currentText().strip(), self.program.text().strip()), self)
+                self.source.notice.connect(self.status.setText)
+            except (OSError, ValueError) as error:
+                self.status.setText(str(error))
+                return
+        source = self.source
+        source.close()
+        self.source, self.directory = None, None
+        self.use.setEnabled(False)
+        dialog = InstallDialog(source.client, self, remove)
+        saved = core.load_config().get("remote_hosts", {}).get(source.client.host, {})
+        dialog.root.setText(saved.get("install_root", dialog.root.text()))
+        if dialog.exec() == QDialog.Accepted:
+            self.program.setText(dialog.installed_path or "")
+            profiles = core.load_config().get("remote_hosts", {})
+            profile = profiles.setdefault(source.client.host, {})
+            profile["program"] = dialog.installed_path or ""
+            profile["install_root"] = dialog.root.text().strip()
+            core.save_config(remote_hosts=profiles)
+            if dialog.installed_path:
+                self.connect_server()
 
     def profile(self, host):
         saved = core.load_config().get("remote_hosts", {}).get(host, {})
@@ -160,7 +205,22 @@ class ConnectDialog(QDialog):
     def loaded(self, value, error):
         self.connect_button.setEnabled(True)
         if error:
-            self.status.setText(str(error) + "\n" + T("请手动安装或更新服务器端，并在此设置完整路径；程序不会自动上传。"))
+            self.status.setText(str(error))
+            if not isinstance(error, ssh.ServerUnavailable) or self.package is None:
+                return
+            self.status.setText(str(error) + "\n" + T("可安装捆绑服务器版，或在此设置已有程序的完整路径。"))
+            box = QMessageBox(self)
+            box.setWindowTitle(T("服务器端不可用"))
+            box.setText(str(error))
+            upload = box.addButton(T("安装 / 更新服务器版…"), QMessageBox.ActionRole)
+            existing = box.addButton(T("使用已有的路径"), QMessageBox.ActionRole)
+            cancel = box.addButton(T("取消"), QMessageBox.RejectRole)
+            box.setDefaultButton(cancel)
+            box.exec()
+            if box.clickedButton() == upload:
+                self.install_server()
+            elif box.clickedButton() == existing:
+                self.program.setFocus()
             return
         self.directory = value["directory"]
         self.parent_path = value["parent"]
@@ -173,7 +233,15 @@ class ConnectDialog(QDialog):
             item.setToolTip(f"{row['type']} · {row['size']} bytes")
             self.files.addItem(item)
         self.use.setEnabled(True)
+        version = self.source.server.get("version", core.VERSION)
         self.status.setText(T("服务器 {h}:{p}", h=self.source.client.host, p=self.directory))
+        if (self.package is not None and install.older_version(version, core.VERSION)
+                and getattr(self, "offered_version", None) != version):
+            self.offered_version = version
+            if QMessageBox.question(self, T("服务器版本较旧"),
+                    T("服务器 {v}，桌面 {d}；协议兼容，可继续使用。现在安装捆绑版本吗？", v=version, d=core.VERSION),
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
+                self.install_server()
 
     def enter(self, item):
         row = item.data(Qt.UserRole)
@@ -190,8 +258,8 @@ class ConnectDialog(QDialog):
         if not self.source or not self.directory:
             return
         profiles = core.load_config().get("remote_hosts", {})
-        profiles[self.source.client.host] = dict(program=self.source.server.get("executable", "") or
-                                                 self.program.text().strip(), directory=self.directory)
+        profiles.setdefault(self.source.client.host, {}).update(
+            program=self.source.server.get("executable", "") or self.program.text().strip(), directory=self.directory)
         core.save_config(remote_hosts=profiles)
         super().accept()
 
