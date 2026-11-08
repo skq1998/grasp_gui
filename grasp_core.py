@@ -19,7 +19,7 @@ import subprocess
 import sys
 import threading
 
-VERSION = "2.8.0"         # 发布时改为发布的版本号 (写入导出的共享配置)
+VERSION = "2.9.0"         # 发布时改为发布的版本号 (写入导出的共享配置)
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "grasp_gui.json")
 
@@ -1065,7 +1065,6 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
         "Calculation directories and results are kept."),
     "将传输捆绑包、校验并切换链接；保留上一版和仍在运行的旧版。": (
         "Transfer and verify the bundled archive, then switch the link. Keep the previous and any running versions."),
-    "服务器版本不同": "Different server version",
     "服务器 {v}，桌面 {d}；协议兼容，可继续使用。现在安装捆绑版本吗？": (
         "Server {v}, desktop {d}: the protocol is compatible, so you can continue. Install the bundled version now?"),
     "服务器端不可用": "Server executable unavailable",
@@ -1119,9 +1118,6 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
         "If a user scope fails, export Slurm or explicitly start normally; check the run state first.",
     "组成尚在读取": "Composition loading",
     "自动尝试 ~/.local/bin/grasp_gui 和 PATH；也可填完整路径": "Tries ~/.local/bin/grasp_gui then PATH; or enter the full path",
-    "请手动安装或更新服务器端，并在此设置完整路径；程序不会自动上传。":
-        "Install or update the server program manually and set its full path here; it is never uploaded "
-        "automatically.",
     "请输入有效的 SSH 主机或 user@host": "Enter a valid SSH host or user@host",
     "读取更多组成": "Load more components",
     "读取期间远程文件已改变，请刷新": "Remote files changed while reading; refresh",
