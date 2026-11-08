@@ -27,7 +27,8 @@ GREETING = "GRASP_GUI_REMOTE 1"
 MAX_FRAME = 32 << 20
 COMPRESS_AT = 16384
 READ_ONLY = {"hello", "list_dir", "levels", "transitions", "orbitals", "wavefunctions", "composition",
-             "run_status", "tail_log", "pipeline", "run_plan", "export_script", "view", "watch", "summary"}
+             "run_status", "tail_log", "pipeline", "run_plan", "export_script", "view", "watch", "summary",
+             "transfer_files"}
 
 
 def pack(data):
@@ -102,6 +103,17 @@ class Operations(service.Service):
     def pipeline(self, directory):
         root, data, revision = self.record(directory)
         return dict(jobs=data.get("pipeline", []), revision=revision, directory=str(root))
+
+    def transfer_files(self, directory, names=None, rsync="rsync", targets=None):
+        import grasp_transfer as transfer
+        root = self.path(directory, directory=True)
+        if targets is not None:
+            if not isinstance(targets, list) or len(targets) > 50000:
+                raise ValueError("invalid target list")
+            transfer.safe_targets(root, targets)
+        result = transfer.scan(root, names)
+        result["rsync"] = transfer.capabilities(rsync)
+        return result
 
     def summary(self, directory, per_block=5, sections=None):
         import grasp_summary as summary

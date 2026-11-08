@@ -8,17 +8,22 @@
 
 ### 安装服务器端
 
-在桌面电脑下载支持 remote 协议的旧系统版 (glibc ≥ 2.17)，手动上传：
+优先使用无 Qt 的服务器目录版 (glibc ≥ 2.17)，可在下方的安装对话框中明确确认后安装。
+手动安装时，把服务器版压缩包和校验文件上传到服务器，先核对校验和，再解压到新的版本目录：
 
 ```sh
-scp grasp_gui-legacy-linux-x86_64 cluster:grasp_gui-legacy
-ssh cluster 'mkdir -p ~/.local/bin; mv ~/grasp_gui-legacy ~/.local/bin/grasp_gui; chmod +x ~/.local/bin/grasp_gui'
-ssh cluster '~/.local/bin/grasp_gui --version'
+sha256sum -c grasp_gui-server-linux-x86_64.tar.gz.sha256
+mkdir -p "$HOME/.local/lib/grasp_gui/2.8.0" "$HOME/.local/bin"
+tar xzf grasp_gui-server-linux-x86_64.tar.gz --strip-components=1 -C "$HOME/.local/lib/grasp_gui/2.8.0"
+"$HOME/.local/lib/grasp_gui/2.8.0/grasp_gui-server" --version
+ln -s "$HOME/.local/lib/grasp_gui/2.8.0/grasp_gui-server" "$HOME/.local/bin/grasp_gui.next"
+mv -Tf "$HOME/.local/bin/grasp_gui.next" "$HOME/.local/bin/grasp_gui"
 ```
 
 默认依次尝试 `~/.local/bin/grasp_gui`、PATH。非交互 SSH 的 PATH/module 环境可能与终端不同，可在连接对话框
 指定完整路径；成功选择目录时按主机保存实际路径和目录 (`remote_hosts` 用户偏好)。找不到、不能启动或协议不兼容时，
-对话框显示原始错误输出；按上述方法手动更新，再设置完整路径重试。服务器上的 GRASP bin、MPI 等运行设置仍由服务器端
+对话框显示原始错误输出，可明确选择安装捆绑版、使用已有路径或取消。手动更新后也可设置完整路径重试。
+示例中的版本目录需替换为所下载的版本，不覆盖仍运行的版本；管理员可统一安装到 `/opt` 或通过 module 提供路径。服务器上的 GRASP bin、MPI 等运行设置仍由服务器端
 原有配置决定；第一版不能在桌面修改。
 
 ### 登录
@@ -118,6 +123,7 @@ Two server workers permit pipelined reads; run/stop are serialized. Server code 
 | `orbitals` | Directory, optional files/limit; properties computed on the original grid |
 | `wavefunctions` | Directory, optional files/names; points 2–10000, at most 100 sampled curves |
 | `summary` | Directory, optional per_block (1–200, default 5), selected sections; server-rendered text and configuration availability |
+| `transfer_files` | Directory, optional relative names, rsync path and destination names; regular-file inventory and rsync capabilities |
 | `composition` | Directory, mixing file, block, index; up to 500 leading components |
 | `view` | `kind: levels` or `wfn`; a whole view in one request, optional file/name selection and known signature |
 | `pipeline` | Read-only saved jobs and revision |
@@ -203,3 +209,115 @@ return a clear error in this build. There are no automatic downloads or server-i
 `--version` 同时显示程序和远程协议版本，`--lang en` 可切换英文。窗口命令返回 2，提示改用桌面版或旧系统版；
 MCP 开关仍由用户控制，绘图工具在没有 Qt 时返回明确错误。目录版构建及手动安装见
 [legacy/README.md](https://github.com/skq1998/grasp_gui/blob/legacy/legacy/README.md)。
+
+
+## Selected file transfer / 选中文件传输
+
+The remote window File menu transfers only confirmed files using the system **rsync** on both computers.
+Analysis still runs on the server; no raw files are downloaded merely to view results. There is no scp/sftp
+fallback and no bundled rsync or Python dependency. A custom server rsync path is stored per host.
+
+Transfer windows are non-modal: analysis and the main window remain usable, with progress also shown in the
+remote status bar. Closing a busy transfer window asks whether to cancel (default No); declining keeps the
+window open and the transfer running. Closing the remote window cancels all of its transfers directly.
+传输窗口为非模态，传输时仍可分析结果、操作主窗口，远程状态栏同步显示进度。
+传输中关闭传输窗口需确认取消（默认否）；拒绝时窗口保持打开，传输继续。关闭远程窗口直接取消其全部传输。
+
+Close confirmation / 关闭确认：[English](images/en_rsync_cancel.png) / [中文](images/zh_rsync_cancel.png)。
+
+The dialog recursively lists regular files with sizes in decimal MB. Symbolic links and special files are excluded and their
+skipped count is shown; links are never followed. Files **larger than 100 MB** are unchecked by default;
+1 MB is 1,000,000 bytes. The editable
+per-host threshold resets selections, and large files can be selected individually or with Include large files.
+The large-file reminder explains that .w/.c/.cm/angular files can usually stay on the server. Confirmation
+separately reports selected small files, selected large files and unselected large files, with counts and totals.
+Upload uses the same rules. Download initially targets `~/grasp_calcs/remote/<host>/<remote-directory-name>/`,
+which can be changed. Selecting local directories preserves their basename; selecting files preserves their
+relative paths from the common parent. Existing files default to Skip; Resume / verify and Overwrite are explicit.
+
+Final options are -rt, --checksum, --partial, --partial-dir=.grasp-rsync-partial, --safe-links, --files-from=-
+and --from0. The NUL-separated manifest contains only checked relative names. Resume uses rsync's delta algorithm
+and partial data; transferred content is also checked by rsync's full-file verification. Overwrite adds
+--ignore-times --whole-file; Skip adds --ignore-existing. No --delete, --copy-links or --keep-dirlinks is used.
+Source size/mtime is checked again before transfer; destination paths with symlinks are refused.
+
+The -e command derives from the existing SSH Client options, including ControlPath, aliases, identity and jump
+host settings in the master. Explicit -J is omitted from the auxiliary command because that route is already
+established; otherwise SSH rejects -J together with the no-fallback ProxyCommand. Prepending ControlMaster=no,
+ProxyCommand=false and BatchMode=yes permits only the already
+authenticated master: if it vanishes, transfer fails instead of authenticating again. rsync needs a second SSH
+session; MaxSessions 1 reports an explicit administrator-action message and leaves analysis usable. Missing
+rsync reports installation/path guidance. Cancellation interrupts only the rsync process group, retains partial
+data, and does not stop the analysis connection. Progress, speed and ETA are displayed without blocking Qt.
+
+Capabilities are read from --version/--help on both ends. GNU rsync 3.1+ uses --info=progress2; older capable
+versions use --progress. Special paths require --protect-args/-s support at both ends. Implementations without
+the required partial/checksum/manifest options (including basic OpenBSD openrsync) fail clearly and suggest
+GNU rsync; they never silently drop integrity or resume guarantees.
+
+用系统 rsync 显式传输勾选文件，不改变服务器分析结果的方式，不自动传输程序；服务器版的安装更新另有确认流程。
+两端缺少 rsync 或缺少必要的续传/校验选项时明确提示，不换用其他传输工具。MaxSessions 1 不能再开传输会话，
+因此给出管理员调整提示，原分析会话仍可继续。GNU 新版显示总进度，旧版按可用能力显示逐文件进度；
+基础 openrsync 缺少必要选项时提示安装 GNU rsync。断线或取消后的部分数据保留，重新选择“续传 / 校验”可继续。
+
+### Optional SSH acceptance / 可选真实验收
+
+Use dedicated test accounts and a disposable writable directory. One fixture needs MaxSessions > 1 and an
+optional second fixture uses MaxSessions 1; forwarding and external routing may remain disabled. Tests generate
+200 MiB dummy files, cancel and kill the transfer SSH client, resume, compare SHA-256, exercise all overwrite
+policies and missing rsync, then remove only their generated subdirectories and local large files.
+
+```sh
+GRASP_RSYNC_TEST_HOST=test-alias \
+GRASP_RSYNC_TEST_SINGLE_HOST=single-session-alias \
+GRASP_RSYNC_TEST_CONFIG=/path/to/test-ssh-config \
+GRASP_RSYNC_TEST_DIRECTORY=/absolute/disposable/directory \
+python3 -m pytest tests/test_transfer_ssh.py -q
+```
+
+Tests skip without the dedicated fixture or local rsync. Never point the test directory at calculation results.
+
+## Bundled installation / 从桌面端安装服务器版
+
+In **Connect to server**, **Install / update server…** opens an explicit installation dialog;
+**Remove from server…** uses the same host settings. The application never installs automatically. An unavailable server program offers installation, an existing path, or cancel when a bundle is available;
+authentication, host-key, network and timeout errors only update the status. Only a numerically older compatible
+server version offers an update, with No as the default; newer servers never prompt for a downgrade. An incompatible protocol requires updating or choosing another server executable.
+
+The dialog displays the host, bundled version/size, install root, executable link, architecture, glibc and free
+space. **Check server** closes this dialog's analysis session before using SSH, so MaxSessions 1 works. It checks
+x86_64, glibc ≥ 2.17, write access, executable filesystem and space for the archive plus staging. No sudo or
+shell/PATH changes are made. An administrator-managed executable or link is not replaced.
+
+**Confirm installation** sends the bundled archive on SSH stdin, checks SHA-256, unpacks into a private staging
+directory, checks --version and the remote handshake, then atomically replaces ~/.local/bin/grasp_gui.
+The default root is ~/.local/lib/grasp_gui/<version>/; a custom root is saved per host. The previous version and
+any older running versions remain; obsolete application-owned versions are removed. The progress bar supports
+cancel; failed/interrupted transfers clean temporary files and keep the current link. An existing version
+directory with different contents is refused rather than overwritten.
+
+Removal first lists application-owned version directories and the link and asks for confirmation. It refuses
+while an installed version is running and keeps unrelated files, calculation directories and results.
+
+Build the server archive on legacy first, then use
+`./build.sh [--onedir] --server-bundle /path/to/grasp_gui-server-linux-x86_64.tar.gz`
+(or GRASP_SERVER_BUNDLE). The adjacent .sha256 file and SERVER_VERSION inside the archive must match this
+desktop release/protocol. Every published desktop release must include the server archive. For development,
+CI or self-built binaries, omitting the option still builds normally; installation is disabled and says **This build does not include
+the server package**. Legacy builds do not bundle it. No runtime downloads or external server connections occur.
+
+“连接服务器”中的“安装 / 更新服务器版…”和“从服务器移除…”沿用每台主机的设置。程序不自动安装；
+找不到程序时可选安装、使用已有路径或取消，版本不同时可拒绝更新并在协议兼容时继续。
+安装对话框先列主机、版本、大小、目录和链接，检查架构/glibc/空间/写权限及 noexec，再由用户明确确认。
+分析会话先关闭，安装通过 SSH 标准输入传输，不需要 scp、sftp、端口转发、管理员权限或外网。
+校验、解压及版本/握手检查通过后才原子切换链接；保留上一版及仍运行的旧版，取消或失败清理临时目录。
+移除前列出本程序安装的版本和链接，运行中的版本拒绝移除；不动工作目录、计算结果、无所有权标记的目录和管理员程序。
+正式桌面发行版全部捆绑服务器包。开发、CI 或自行构建时可不捆绑，仍可连接已有程序，安装入口禁用并明确显示“本构建不含服务器版”。
+
+开发或自行构建中，安装入口在没有捆绑包时禁用并说明原因，移除入口仍可用。检查只在最近已存在的上级目录测试权限、
+空间和执行能力，不创建安装目录；移除不存在的目录时直接结束。移除后也清理程序的上一版记录。
+取消导致的管道关闭统一报告“安装已取消”。新版服务器以及认证、主机密钥、网络和超时错误均不触发安装提示。
+
+In development or self-built binaries without a bundle, the installation button is disabled with an explanation; removal remains available.
+Checking an absent install root tests its nearest existing parent without creating the root. Removal of an absent
+root is a no-op and successful removal also clears the previous-version record. Cancelled broken pipes report cancellation.

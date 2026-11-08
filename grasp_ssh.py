@@ -21,6 +21,10 @@ import grasp_remote as protocol
 from grasp_core import T
 
 
+class ServerUnavailable(ConnectionError):
+    """SSH 已进入远程命令，但程序在握手前退出；不包含认证和网络错误。"""
+
+
 class UnknownOutcome(ConnectionError):
     """连接丢失后不能自动重发启动/停止；用户先核对重新查询的状态。"""
 
@@ -269,8 +273,13 @@ class Client:
                 break
             if value.get("event") in ("eof", "protocol_error"):
                 stderr.join(timeout=0.2)
-                raise ConnectionError(self.diagnostics or value.get("text") or
-                                      T("服务器握手失败，请检查程序路径并安装或更新服务器端"))
+                try:
+                    code = process.wait(timeout=0.5)
+                except subprocess.TimeoutExpired:
+                    code = None
+                error = ServerUnavailable if value["event"] == "eof" and code not in (None, 255) else ConnectionError
+                raise error(self.diagnostics or value.get("text") or
+                            T("服务器握手失败，请检查程序路径并安装或更新服务器端"))
         else:
             raise TimeoutError(T("SSH 登录或服务器握手超时"))
         while not self.closed.is_set() and time.monotonic() < deadline:
@@ -357,7 +366,7 @@ class Client:
                         now = time.monotonic()
                         for item in self.pending.values():
                             base = 180 if item["method"] in (
-                                "view", "levels", "composition", "wavefunctions", "summary") else 30
+                                "view", "levels", "composition", "wavefunctions", "summary", "transfer_files") else 30
                             if now - item["sent"] > base + 20 * self.rtt:
                                 raise TimeoutError(T("远程请求超时，正在重新连接"))
                         continue

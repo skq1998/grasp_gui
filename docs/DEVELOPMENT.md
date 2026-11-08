@@ -409,17 +409,26 @@ Coupling 是独立外部程序：`COUPLING_BINDIR=/path/to/coupling/bin GRASP_BI
 
 ## 发布流程
 
+每个正式发布的桌面构建**必须**使用 `build.sh --server-bundle ARCHIVE.tar.gz` 捆绑服务器目录包；
+先核对 sha256 和包内版本/协议记录。发布顺序固定为 legacy 上 `legacy/build_server.sh` →
+main 上 `build.sh --server-bundle` → legacy GUI（不捆绑）。服务器压缩包及其 `.sha256` 也必须同时作为发布附件上传，供手动安装。
+`build.sh` 本身仍保持可选捆绑，供开发、CI 和自行构建使用；这些构建缺包时安装按钮禁用并说明原因。
+冒烟测试增加受限 SSH（MaxSessions 1、禁转发和外网）下首次安装、更新、取消清理、连接读取和卸载；
+同时检查未捆绑的桌面构建、特殊字符家目录、架构/glibc/noexec/空间错误和校验失败不切换链接。
+
+
 服务器版使用独立入口 `grasp_server.py`，不导入 Qt；命令复用配置、remote、MCP 和后台运行模块。
 发布前先在含最新 main 的 legacy 源码树运行 `legacy/build_server.sh`，生成目录版压缩包及 sha256。
 目录版直接从安装目录加载库，避免集群 `/tmp` 的 noexec 限制；不采用每次解压的单文件形式。
 先在 glibc 2.17、`/tmp` noexec 的容器中核验配置命令、后台流程、SSH remote/MCP 和窗口错误提示，
 再构建普通版与旧系统版。服务器版的脚本和安装说明单独维护在 legacy 目录中。
 
-1. 在 main 上提交，用 `git archive <提交>` 导出干净的代码，运行 `./build.sh`。
-2. 冒烟测试：在清空的环境下用中英文界面各启动一次，并在没有字体的环境下再启动一次。
-3. 旧系统版：把 main 合并到 `legacy`，用该提交的干净代码运行 `legacy/build.sh`，在旧系统容器中测试。
-4. 推送带注释的标签 `vX.Y.Z`，用 GitHub API 创建 Release，上传两个可执行文件和各自的 `.sha256`。
-5. 以未登录访客身份下载，运行 `sha256sum -c`，并确认 Release 页面的“最新版本”正确。
+1. 先把发布的 main 同步到 `legacy`，从干净的源码运行 `legacy/build_server.sh`，构建服务器目录包及 `.sha256`，完成上述服务器冒烟测试。
+2. 在 main 上用 `git archive <提交>` 导出干净代码，运行 `./build.sh --server-bundle ARCHIVE.tar.gz`；正式发布不得省略该参数。
+3. 桌面冒烟测试：在清空的环境下用中英文界面各启动一次，并在没有字体的环境下再启动一次；验证捆绑包的安装与连接。
+4. 从同一发布源码的 legacy 分支运行 `legacy/build.sh`，构建不捆绑服务器包的 GUI，并在旧系统容器中测试。
+5. 推送带注释的标签 `vX.Y.Z`，用 GitHub API 创建 Release，上传普通版、旧系统版及其校验文件，同时上传服务器 `.tar.gz` 和 `.tar.gz.sha256`。
+6. 以未登录访客身份下载，运行 `sha256sum -c`，并确认 Release 页面的“最新版本”正确。
 
 ## MCP 服务 (#16)
 
