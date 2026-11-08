@@ -9,11 +9,20 @@ import grasp_bg as bg
 import grasp_config as config
 import grasp_core as core
 import grasp_session as sessions
+import grasp_summary as summary
 import grasp_workdir as work
 from grasp_core import T
 
 MAX_TEXT = 65536
 MAX_ROWS = 1000
+
+
+class PreflightError(ValueError):
+    """保留可读报告和结构化问题，供协议层返回；运行尚未启动。"""
+
+    def __init__(self, checked):
+        super().__init__(summary.check_text(checked))
+        self.data = dict(started=False, **checked)
 
 
 class Service:
@@ -45,8 +54,12 @@ class Service:
             raise ValueError(T("自定义命令默认拒绝；请由用户用 --allow-custom 启动服务"))
 
     def validate_config(self, configuration):
-        cfg, warnings = config.check(configuration)
-        return dict(valid=True, warnings=warnings, custom_commands=config.custom_commands(cfg))
+        cfg, warnings = config.check(configuration, validate=False)
+        # 配置中的额外动作不参与推算，实际导入会按表单参数重新生成。
+        jobs = [dict(step=j.get("step"), vals=j.get("vals"), group=j.get("group")) for j in cfg["jobs"]]
+        checked = summary.check_files(None, jobs)
+        return dict(valid=not checked["invalid"], issues=checked["issues"], warnings=warnings,
+                    custom_commands=config.custom_commands(cfg))
 
     def list_steps(self):
         return dict(steps=[dict(key=s.key, name=T(s.name), program=s.prog, mpi=s.mpi) for s in core.STEPS])
@@ -121,15 +134,21 @@ class Service:
             text = core.shell_script(jobs, settings["bindir"], str(root), mpi, settings["mpitmp"])
         return dict(text=text[:MAX_TEXT], truncated=len(text) > MAX_TEXT)
 
-    def run(self, directory, start=1):
+    def run(self, directory, start=1, force=False):
         root, data, _ = self.record(directory)
         jobs = data.get("pipeline", [])
         if not 1 <= start <= len(jobs):
             raise ValueError(T("起始步骤超出流程范围"))
-        cfg = config.export(jobs, dict(title=root.name))
+        if type(force) is not bool:
+            raise ValueError("force must be boolean")
+        cfg = config.export(jobs, dict(title=root.name), validate=False)
         self.custom(cfg)
+        settings = dict(core.saved_run_settings(), cwd=str(root))
+        checked = summary.check_files(str(root), cfg["jobs"], start=start - 1, run=settings, path_check=self.path)
+        if checked["invalid"] or checked["missing"] and not force:
+            raise PreflightError(checked)
         # 表单参数是依据，不能让记录中伪造的 prog/pre 绕过自定义命令限制。
-        jobs = config.session(cfg)["pipeline"]
+        jobs = [config.make_job(j) for j in cfg["jobs"][start - 1:]]
         for name in (bg.RUN_REQUEST, bg.RUN_STATE, bg.RUN_STATE + ".tmp", bg.RUN_LOG):
             path = self.path(str(root / name))
             if path.exists() and not path.is_file():
@@ -142,8 +161,7 @@ class Service:
                     self.path(str(root / action[1]))
                     self.path(str(root / action[2]))
         work.idle(root)
-        settings = dict(core.saved_run_settings(), cwd=str(root))
-        proc = bg.launch(str(root), jobs[start - 1:], settings, started_by="mcp")
+        proc = bg.launch(str(root), jobs, settings, started_by="mcp")
         threading.Thread(target=proc.wait, daemon=True).start()
         connection = bg.connect(str(root), timeout=bg.ATTACH_WAIT)
         if connection is None:

@@ -41,7 +41,8 @@ TOOLS = {
     "export_script": ("Return a shell or Slurm script", {"directory": DIRECTORY, "slurm": schema("object")},
                       ["directory"]),
     "run": ("Start the pipeline, optionally from a one-based step number",
-            {"directory": DIRECTORY, "start": schema("integer", minimum=1, default=1)}, ["directory"]),
+            {"directory": DIRECTORY, "start": schema("integer", minimum=1, default=1),
+             "force": schema("boolean", default=False)}, ["directory"]),
     "status": ("Read the latest background run state", {"directory": DIRECTORY}, ["directory"]),
     "tail_log": ("Read a bounded log tail", {"directory": DIRECTORY,
                                             "lines": schema("integer", minimum=1, maximum=1000, default=100)},
@@ -92,7 +93,7 @@ def arguments(name, values):
         raise ValueError("unknown or missing tool arguments")
     for key, value in values.items():
         spec = properties[key]
-        expected = dict(string=str, object=dict, array=list, integer=int)[spec["type"]]
+        expected = dict(string=str, object=dict, array=list, integer=int, boolean=bool)[spec["type"]]
         if type(value) is not expected:
             raise ValueError(f"invalid argument type: {key}")
         if expected is int and (value < spec.get("minimum", value) or value > spec.get("maximum", value)):
@@ -123,7 +124,10 @@ class Server:
 
     def result(self, name, params):
         try:
-            data = self.call(name, params)
+            try:
+                data = self.call(name, params)
+            except service.PreflightError as e:
+                data = e.data
             if isinstance(data, dict) and "_image" in data:
                 raw = data.pop("_image")
                 content = [dict(type="image", mimeType="image/png", data=base64.b64encode(raw).decode("ascii"))]
@@ -131,7 +135,7 @@ class Server:
                 content = []
             encoded = json.dumps(data, ensure_ascii=False, allow_nan=False)
             content.append(dict(type="text", text=encoded))
-            result = dict(content=content, isError=False)
+            result = dict(content=content, isError=data.get("started") is False or data.get("valid") is False)
             if self.protocol != "2025-03-26":
                 result["structuredContent"] = data
             if len(json.dumps(result).encode("utf-8")) > MAX_RESPONSE:

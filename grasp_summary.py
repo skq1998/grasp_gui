@@ -4,6 +4,7 @@ from collections import deque
 import copy
 import datetime
 import difflib
+import errno
 import fnmatch
 import json
 from pathlib import Path
@@ -29,59 +30,120 @@ def page(job):
     step = STEPS.get(job.get("step"))
     if step is None or not isinstance(job.get("vals"), dict):
         return None, None
-    values = dict(step.defaults(), **job["vals"])
+    values = config.job_values(job)
     return step, values
 
 
-def check_files(workdir, jobs, start=0, run=None, offset=0):
-    """只推算从起点实际运行的步骤；已有结果可用，但不能假设跳过的步骤会生成文件。"""
-    root = Path(workdir)
-    available, removed = set(), set()
-    missing, skipped = [], []
-    names = {p.name for p in root.iterdir() if p.is_file()}
+def check_files(workdir, jobs, start=0, run=None, offset=0, path_check=None):
+    """检查选中步骤；workdir=None 只检查参数和派生名称，不据文件存在与否判断配置。"""
+    root = Path(workdir) if workdir is not None else None
+    available, removed, origins = set(), set(), {}
+    missing, skipped, invalid = [], [], []
+    names = {p.name for p in root.iterdir() if p.is_file()} if root is not None else set()
+    reported = set()
 
-    def require(name, number, title):
-        if not name:
-            missing.append(dict(step=number, program=title, file=T("（未指定文件）"), similar=[]))
+    def require(name, number, title, errors):
+        for error in errors:
+            if error["kind"] != "name" or not name:
+                continue
+            value = error["name"]
+            related = name == value if error["unit"] == "bytes" else (
+                Path(name).name == value or Path(name).name.startswith(value + "."))
+            origin = origins.get(name)
+            if related and origin and origin["step"] != number:
+                key = origin["step"], number, error["field"], value
+                if key not in reported:
+                    reported.add(key)
+                    invalid.append(dict(error, **origin, file=name,
+                                        required_by=dict(step=number, program=title, field=error["field"])))
+        if root is None:
             return
-        found = any(fnmatch.fnmatchcase(p, name) for p in available)
+        if not name:
+            found = False
+        else:
+            try:
+                if path_check:
+                    path_check(str(root / name))
+                found = any(fnmatch.fnmatchcase(p, name) for p in available)
+                if not found:
+                    candidates = [Path(name)] if Path(name).is_absolute() else root.glob(name)
+                    found = any((path_check(str(p)) if path_check else p).is_file() and
+                                (str(p) if Path(name).is_absolute() else str(p.relative_to(root))) not in removed
+                                for p in candidates)
+            except OSError as e:
+                if e.errno != errno.ENAMETOOLONG:
+                    raise
+                found = False  # 超过文件系统限制的输入也不存在；名称问题仍在同一报告中。
         if not found:
-            found = any(p.is_file() and str(p.relative_to(root)) not in removed for p in root.glob(name)) if (
-                not Path(name).is_absolute()) else Path(name).is_file() and name not in removed
-        if not found:
-            near = difflib.get_close_matches(name, sorted(names | available), n=3, cutoff=0.6)
-            missing.append(dict(step=number, program=title, file=name, similar=near))
+            near = difflib.get_close_matches(name, sorted(names | available), n=3, cutoff=0.6) if name else []
+            missing.append(dict(kind="missing", step=number, program=title,
+                                file=name or T("（未指定文件）"), similar=near, reason=T("缺少输入文件")))
 
-    def produced(name):
+    def produced(name, origin):
+        if root is not None and path_check:
+            path_check(str(root / name))
         available.add(name)
         removed.discard(name)
+        origins[name] = origin
 
-    for offset, job in enumerate(jobs[start:], start + offset + 1):
+    for number, job in enumerate(jobs[start:], start + offset + 1):
         step, values = page(job)
-        title = job.get("title", job.get("prog", ""))
-        if step is None or step.inputs(values, run) is None:
-            skipped.append(dict(step=offset, program=title, reason=T("未声明文件依赖，无法检查")))
+        title = (step.prog if step else "") or job.get("prog") or job.get("title", "")
+        errors = []
+        if step is not None:
+            try:
+                step.validate(values)
+            except ValueError as e:
+                row = dict(getattr(e, "details", dict(kind="validation", field=None, reason=str(e))),
+                           step=number, program=title)
+                errors.append(row)
+                invalid.append(row)
+        try:
+            inputs = step.inputs(values, run) if step else None
+            if inputs is None:
+                skipped.append(dict(step=number, program=title, reason=T("未声明文件依赖，无法检查")))
+                continue
+            pre = job["pre"] if "pre" in job else step.pre(values)
+            post = job["post"] if "post" in job else step.post(values)
+            outputs, removes = step.outputs(values, run) or [], step.removes(values)
+        except ValueError as e:
+            if not errors:
+                invalid.append(dict(kind="validation", step=number, program=title, field=None, reason=str(e)))
             continue
-        for action in job.get("pre", []):
+        origin = dict(step=number, program=title, field=", ".join(step.output_fields) or "outputs")
+        for action in pre:
             if action[0] == "cp":
-                require(action[1], offset, title)
-                produced(action[2])
-        for name in step.inputs(values, run):
-            require(name, offset, title)
-        for name in step.outputs(values, run) or []:
-            produced(name)
-        for action in job.get("post", []):
+                require(action[1], number, title, errors)
+                produced(action[2], origin)
+        for name in inputs:
+            require(name, number, title, errors)
+        for name in outputs:
+            produced(name, origin)
+        for action in post:
             if action[0] == "cp":
-                require(action[1], offset, title)
-                produced(action[2])
-        for name in step.removes(values):
+                require(action[1], number, title, errors)
+                produced(action[2], origin)
+        for name in removes:
             available.discard(name)
+            origins.pop(name, None)
             removed.add(name)
-    return dict(missing=missing, skipped=skipped)
+    invalid.sort(key=lambda r: r["step"])
+    issues = sorted(invalid + missing, key=lambda r: r["step"])
+    return dict(missing=missing, skipped=skipped, invalid=invalid, issues=issues)
 
 
 def check_text(result):
-    lines = [T("以下输入文件尚不存在，且未找到所选起点之后的已声明前序输出：")]
+    lines = [T("流程预检发现以下问题：")]
+    for row in result["invalid"]:
+        if "required_by" in row:
+            consumer = row["required_by"]
+            lines.append(T("第 {n} 步 {p} 的 {field} 写出 {file}，会使第 {next} 步 {consumer} 的 {target} 无法运行：{why}",
+                           n=row["step"], p=row["program"], field=row["field"], file=row["file"],
+                           next=consumer["step"], consumer=consumer["program"], target=consumer["field"],
+                           why=row["reason"]))
+        else:
+            lines.append(T("第 {n} 步 {p} 的 {field}：{why}", n=row["step"], p=row["program"],
+                           field=row.get("field") or T("参数"), why=row["reason"]))
     for row in result["missing"]:
         lines.append(T("第 {n} 步 {p}：缺少 {f}；未找到已声明的前序输出，请核对文件名、运行起点或未检查的步骤。",
                        n=row["step"], p=row["program"], f=row["file"]))

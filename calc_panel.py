@@ -1384,7 +1384,9 @@ class CalcPanel(QWidget):
             self.show_preview()
 
     def check_inputs(self):
-        jobs = self.pipeline[self.selected() or 0:] if self.pipeline else [self.current_job()]
+        form = self.nav.currentWidget()
+        jobs = self.pipeline[self.selected() or 0:] if self.pipeline else [
+            dict(step=form.step.key, vals=form.values(), prog=form.step.prog)]
         if not all(jobs) or not self.check_dirs():
             return
         try:
@@ -1393,8 +1395,8 @@ class CalcPanel(QWidget):
         except (OSError, ValueError) as e:
             QMessageBox.warning(self, T("检查输入文件"), str(e))
             return
-        text = summary.check_text(result) if result["missing"] else T("没有发现缺失的输入文件。")
-        if not result["missing"] and result["skipped"]:
+        text = summary.check_text(result) if result["issues"] else T("没有发现缺失的输入文件或名称问题。")
+        if not result["issues"] and result["skipped"]:
             text += "\n" + "\n".join(T("第 {n} 步 {p}：{why}", n=r["step"], p=r["program"], why=r["reason"])
                                        for r in result["skipped"])
         QMessageBox.information(self, T("检查输入文件"), text)
@@ -1428,6 +1430,9 @@ class CalcPanel(QWidget):
             checked = summary.check_files(self.cur_workdir, jobs, run=cfg, offset=first or 0)
         except (OSError, ValueError) as e:
             QMessageBox.warning(self, T("检查输入文件"), str(e))
+            return
+        if checked["invalid"]:
+            QMessageBox.warning(self, T("名称或参数不合法，不能运行"), summary.check_text(checked))
             return
         if checked["missing"] and QMessageBox.question(
                 self, T("缺少输入文件"), summary.check_text(checked) + "\n\n" + T("仍然运行吗？"),

@@ -232,9 +232,14 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   unavailable afterwards. The angular-file check uses the same `.30` sentinel convention as the existing
   runner, including each MPI rank; it is not an integrity or physics check. Custom/undeclared steps are
   marked unchecked; a non-modal notice in program output reports their count on run. Missing files produce a step/filename report with similar names; **Run anyway (仍然运行吗？)**
-  defaults to No. A complete check is silent on run; the manual button shows the report.
+  defaults to No. The same report includes invalid names/parameters with step, program, field, name and limit.
+  Derived names are traced to the producer and identify the downstream step that cannot read them. Name/parameter
+  issues always block the run, with no Run anyway option, even if files are also missing. Without issues the run
+  check is silent; the manual button reports no missing inputs or name issues. It does not generate invalid stdin.
   “检查输入文件”检查从选中开始的流程；流程为空时检查当前表单。运行前也检查，包括更新后运行新增步骤。
   未声明依赖的步骤标为无法检查；缺失时列步骤、文件及相近文件名，默认取消，可选仍然运行。
+  名称/参数问题与缺文件合在一份报告，列步号、程序、字段、名字及上限；派生名称追溯到写出它的步骤，并注明后续
+  哪一步会失败。只要有名称或参数问题就禁止运行，不提供“仍然运行”，不会先生成错误输入再执行。
 * **Input preview (输入预览)**: when the lower area is at least 1300 pixels wide it is a column of its own between the
   pipeline and the program output (the three widths are remembered); when narrower it is a tab next to *Pipeline*.
   It shows the command, the here-document with the program's stdin and the file actions, e.g.

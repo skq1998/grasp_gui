@@ -141,7 +141,7 @@ atomic units.
 | `get_pipeline` | `directory` | `config`, `revision` |
 | `update_workdir` | `directory`, `revision`, `config` | 保留结果、更新记录，不运行 / Retain results, update without running |
 | `export_script` | `directory`, optional `slurm` settings object | 有界脚本文本 / Bounded shell or Slurm text |
-| `run` | `directory`, optional `start` (1-based) | 后台启动 / Start background run |
+| `run` | `directory`, optional `start` (1-based), `force` (boolean, default false) | 预检后后台启动 / Preflight then start |
 | `status` | `directory` | 后台状态 / Background state |
 | `tail_log` | `directory`, optional `lines` (1–1000, default 100) | 有界日志 / Bounded log tail |
 | `stop` | `directory` | 停止请求和确认 / Stop request and confirmation |
@@ -170,6 +170,54 @@ responses at 8 MiB, with truncation flags. Transitions default to GUI-computed c
 rtransition outputs. Branching ratios cover only the channels read, not a complete lifetime. `output`
 is relative to the workdir and restricted to the root. Numerical tools work without Qt; drawing reports
 an explicit error without it and otherwise reuses the viewers offscreen.
+
+## 运行前检查 / Run preflight
+
+`run` 使用与 GUI 相同的名称和文件预检，只检查 `start` 起实际运行的步骤。每页的 `validate` 是名称限制的
+唯一依据；上游输出会沿 `inputs/outputs` 及复制动作关联，报告在哪一步生成了令后续步骤失败的派生名称。
+
+- 名称超限或其他参数校验失败：拒绝启动，`force: true` 也不能跳过。
+- 缺少输入文件：默认拒绝，只有显式传入布尔值 `force: true` 才允许启动；仍须由程序实际读到需要的文件。
+- 未声明文件依赖的步骤列为 `skipped`，不据此声称安全或完整，也不单独阻止运行。
+- 自定义命令权限、根目录限制和其他启动条件照常检查；`force` 不绕过这些限制。
+
+拒绝的工具结果为 `isError: true`，JSON 文本和 (支持时的) `structuredContent` 同时含 `started: false`、
+`issues`、`invalid`、`missing`、`skipped`。`issues` 按步号排序；`invalid` 为名称/参数问题，`missing` 为缺文件。
+每个问题含 `kind` (`name` / `validation` / `missing`)、`step` (从 1 开始)、`program`、`reason`，以及：
+
+- 名称：`field`、`name`、`limit`、`unit` (`characters` 或 `bytes`)；
+- 派生名称：另有 `file` 和 `required_by: {step, program, field}`，原步骤的 `field` 给出影响输出名称的字段；`name/limit/unit` 属于下游名称校验，
+  不表示生产程序自身新增了相同的限制；
+- 缺文件：`file` 和 `similar` (相近文件名)。
+
+例如问题列表中的一项 (省略其余条目；`reason` 随语言变化，程序应读取结构化字段而非解析提示文字)：
+
+```json
+{
+  "kind": "name", "step": 2, "program": "jj2lsj", "field": "state",
+  "name": "rn2_odd_cv6_low_corr_qed", "limit": 23, "unit": "characters",
+  "reason": "jj2lsj 的态名称超出允许长度"
+}
+```
+
+`validate_config` 也返回 `valid: false` 和结构化 `issues`，会报告派生名称；它不检查本机文件存在性，
+配置可能用于另一台服务器。其他配置结构错误仍按原方式返回工具错误。导入、更新和脚本生成仍严格校验，
+不会因诊断接口允许汇总问题而放行无效配置。修正配置后应再次校验/运行，不要把协议响应当作运行成功。
+
+Before `run`, the same checker as the GUI validates names/parameters and required files from the selected start.
+Invalid names/parameters always block execution. Missing inputs block by default; only boolean `force: true`
+permits a run despite them. It does not create those files or bypass custom-command permissions, root restrictions
+or other startup checks. Undeclared dependencies are reported as `skipped`.
+
+Rejected calls return `isError: true` with JSON/structured data containing `started: false`, sorted `issues`,
+`invalid`, `missing` and `skipped`. Issues identify one-based step, program and reason. Name issues additionally
+include field, name, limit and character/byte unit. Derived-name issues identify the output file and its downstream
+consumer in `required_by`; missing-file issues include similar filenames. Only the steps actually selected to run
+are checked; skipped producers are not assumed to produce files.
+
+`validate_config` returns `valid: false` and structured `issues` for name/parameter problems, including derived
+names. It does not check whether inputs exist locally. Other structural errors retain normal tool-error handling;
+import/update/script generation remain strict. Correct the configuration before retrying.
 
 ## 并发修改 / Concurrent edits
 

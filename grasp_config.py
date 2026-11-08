@@ -75,9 +75,10 @@ def upgrade(doc):
     return doc
 
 
-def check(doc):
+def check(doc, *, validate=True):
     """升级并检查配置：返回 (配置, 警告列表)；无法导入时抛出 ConfigError。
-    缺少的参数用默认值补上，不认识的参数忽略 (都列入警告)。"""
+    缺少的参数用默认值补上，不认识的参数忽略 (都列入警告)。
+    validate=False 仅供预检先检查结构，再逐步汇总校验问题；导入与生成仍用默认严格模式。"""
     cfg = upgrade(doc)
     warnings = []
     package = cfg.get("package", "GRASP2018")
@@ -112,7 +113,8 @@ def check(doc):
         if missing:
             warnings.append(T("第 {i} 步 ({step}) 缺少的参数用默认值：{k}", i=i, step=step.key, k=", ".join(missing)))
         try:
-            step.validate(job_values(job))
+            if validate:
+                step.validate(job_values(job))
         except ValueError as e:
             raise ConfigError(T("第 {i} 步 ({step})：{e}", i=i, step=step.key, e=e)) from e
     total = 0
@@ -335,7 +337,7 @@ def reference_energies(path):
     return [round(lv.energy, 10) for b in grasp_mix.open_mix(path) for lv in b.levels]
 
 
-def export(pipeline, meta, files=(), references=()):
+def export(pipeline, meta, files=(), references=(), *, validate=True):
     """由流程生成配置。meta：title、summary、author 等；files、references 为文件路径。"""
     cfg = dict(format=FORMAT, version=VERSION, created_by=f"GRASP GUI {core.VERSION}",
                package=core.package_of(j.get("step") for j in pipeline))
@@ -345,7 +347,7 @@ def export(pipeline, meta, files=(), references=()):
         cfg["files"] = [dict(name=os.path.basename(p), text=read_text_file(p)) for p in files]
     if references:
         cfg["reference"] = [dict(file=os.path.basename(p), energies=reference_energies(p)) for p in references]
-    check(cfg)
+    check(cfg, validate=validate)
     return cfg
 
 
