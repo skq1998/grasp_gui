@@ -1,0 +1,27 @@
+# 无 Qt 的服务器目录版：glibc 2.17，固定 Python 和 PyInstaller 版本。
+FROM quay.io/pypa/manylinux2014_x86_64 AS build
+ARG PY_RELEASE=20261026
+ARG PY_FILE=cpython-3.13.18%2B20261026-x86_64-unknown-linux-gnu-install_only.tar.gz
+ARG PY_SHA256=126343c54daff4068efc1ac269518d0cc202d57857794948103dd1454e8881be
+RUN curl -sSfL "https://github.com/astral-sh/python-build-standalone/releases/download/$PY_RELEASE/$PY_FILE" -o /tmp/python.tar.gz \
+    && echo "$PY_SHA256  /tmp/python.tar.gz" | sha256sum -c - \
+    && mkdir /opt/pbs && tar xzf /tmp/python.tar.gz -C /opt/pbs && rm /tmp/python.tar.gz
+ENV PATH=/opt/pbs/python/bin:$PATH
+# 静态链接 bootloader 的 zlib，使启动程序本身只依赖 glibc。
+RUN PYINSTALLER_COMPILE_BOOTLOADER=1 PYI_STATIC_ZLIB=1 \
+    python3 -m pip install -q --no-cache-dir --no-binary=pyinstaller "pyinstaller==6.22.3"
+COPY . /src
+WORKDIR /src
+# 独立入口使分析器不遍历桌面模块；显式排除 Qt，防止环境中的库被间接收集。
+RUN pyinstaller --noconfirm --clean --strip --log-level WARN --onedir --name grasp_gui-server \
+        --distpath dist --workpath build/server-pyinstaller --specpath build \
+        --exclude-module PySide2 --exclude-module PySide6 --exclude-module PyQt5 --exclude-module PyQt6 \
+        --exclude-module shiboken2 --exclude-module shiboken6 \
+        --exclude-module grasp_gui --exclude-module remote_panel --exclude-module gui_common \
+        --exclude-module calc_panel --exclude-module level_panel --exclude-module wfn_panel \
+        --add-data "/src/demos/*.json:demos" grasp_server.py \
+    && cp LICENSE dist/grasp_gui-server/LICENSE \
+    && python3 -VV > dist/grasp_gui-server/PYTHON_VERSION \
+    && dist/grasp_gui-server/grasp_gui-server --version > dist/grasp_gui-server/SERVER_VERSION
+FROM scratch
+COPY --from=build /src/dist/grasp_gui-server /grasp_gui-server

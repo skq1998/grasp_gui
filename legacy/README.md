@@ -66,3 +66,55 @@ glvnd `libGL` (loadable only; OpenGL is not used).
 Test without old hardware: run the executable in `centos:7`, `debian:9`, `ubuntu:18.04`, `rockylinux:8` containers
 with `DISPLAY` pointing to an Xvfb container on the same Docker network, and log in with `ssh -X` from the Xvfb
 container into a `centos:7` container running sshd.
+
+## Headless server / 无界面服务器版
+
+For SSH remote viewing or MCP, prefer `grasp_gui-server`: Linux x86_64, glibc ≥ 2.17, no Qt, fonts,
+X11 or system Python required. The desktop build displays the windows on your computer; the legacy build
+still supports `ssh -X`. The server build supports `remote`, `mcp`, `check`, `script`, `steps`, `reference`
+and `_run`; window commands fail with a clear message. MCP plotting requires the desktop or legacy build.
+`--version` reports the application and remote protocol versions. MCP remains disabled by default.
+
+服务器仅用于命令行和远程分析时，优先用 `grasp_gui-server`；需要服务器上的窗口经 `ssh -X` 显示时仍用旧系统版，
+本机窗口使用普通桌面版。三者共用计算和结果读取实现；服务器版不含 Qt、字体、X11，不需要系统 Python。
+MCP 开关仍由用户本人控制，不能在服务器版中绘图。
+
+Build from a legacy tree containing the issue #18 main entry:
+
+```bash
+legacy/build_server.sh
+# dist/grasp_gui-server-linux-x86_64.tar.gz and .tar.gz.sha256
+```
+
+The recipe pins python-build-standalone **3.13.18 / 20261026**, its SHA-256 and PyInstaller **6.22.3**.
+[Python 3.13 receives security fixes until October 2029](https://devguide.python.org/versions/).
+The x86_64 Linux GNU distribution targets glibc 2.17; we test the frozen result on CentOS 7.
+The PyInstaller bootloader is rebuilt with static zlib; Qt bindings are explicitly excluded. Debug symbols
+are stripped. This build does not alter either GUI build recipe.
+
+发布目录版 `.tar.gz`：解压后直接从安装位置加载库，因此 `/tmp` 为 noexec 也可运行；启动无需每次解压。
+单文件虽然方便复制，却需要可执行的解压目录、每次建立临时副本，不适合集群。目录版用固定版本目录，
+更新链接时保留上一版，正在运行的进程继续使用旧目录。
+
+### User installation / 用户安装
+
+No administrator rights are needed. Verify the downloaded archive, then install into a **new** version directory
+(replace `2.8.0` with the archive's release version). Do not overwrite a version while it is running:
+
+```bash
+sha256sum -c grasp_gui-server-linux-x86_64.tar.gz.sha256
+mkdir -p "$HOME/.local/lib/grasp_gui/2.8.0" "$HOME/.local/bin"
+tar xzf grasp_gui-server-linux-x86_64.tar.gz --strip-components=1 -C "$HOME/.local/lib/grasp_gui/2.8.0"
+"$HOME/.local/lib/grasp_gui/2.8.0/grasp_gui-server" --version
+ln -s "$HOME/.local/lib/grasp_gui/2.8.0/grasp_gui-server" "$HOME/.local/bin/grasp_gui.next"
+mv -Tf "$HOME/.local/bin/grasp_gui.next" "$HOME/.local/bin/grasp_gui"
+"$HOME/.local/bin/grasp_gui" --version
+```
+
+安装目录必须允许执行且有足够空间；不要安装到 noexec 文件系统。程序不修改 PATH 或 shell 配置；
+连接对话框可以直接填 `~/.local/bin/grasp_gui` 对应的完整路径。管理员也可安装到 `/opt/grasp_gui/<版本>/`，
+通过 module 文件提供路径，或把完整路径告知用户。配置和工作目录仍属于用户，不放在程序目录内。
+
+The program itself never downloads updates. Manual installation needs only local archive files and standard
+shell/tar tools; administrator installation under `/opt` or a module is optional. A noexec home filesystem
+requires a different executable installation filesystem, even though `/tmp` may remain noexec.
