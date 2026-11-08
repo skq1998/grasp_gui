@@ -16,13 +16,14 @@ from gui_common import fixed_font
 
 
 class SummaryDialog(QDialog):
-    def __init__(self, parent, workdir, cfg, jobs, history=()):
+    def __init__(self, parent, workdir, cfg, jobs, history=(), loader=None):
         """cfg 为 None 时 (目录没有流程记录) 不能附带配置。"""
         super().__init__(parent)
         self.setWindowTitle(T("结果摘要（给 agent）"))
         self.resize(960, 720)
         self.workdir, self.cfg, self.jobs, self.history = workdir, cfg, copy.deepcopy(jobs), copy.deepcopy(history)
-        self.worker = index.ReadWorker()
+        self.loader, self.save_dir, self.cancel_load = loader, workdir, None
+        self.worker = index.ReadWorker() if loader is None else None
         self.data, self.content, self.token = None, "", 0
         layout = QVBoxLayout(self)
         note = QLabel(T("先预览并选择包含的部分。默认每个对称块前 5 个能级，文本最多 200 KB；结果读取在后台进行。"))
@@ -33,8 +34,8 @@ class SummaryDialog(QDialog):
         for key, label in summary.SECTIONS.items():
             check = QCheckBox(T("附带完整配置") if key in summary.OPTIONAL else T(label))
             check.setChecked(key not in summary.OPTIONAL)
-            check.setEnabled(key != "configuration" or cfg is not None)
-            check.toggled.connect(self.render)
+            check.setEnabled(key != "configuration" or cfg is not None or loader is not None)
+            check.toggled.connect(self.load if loader is not None else self.render)
             self.sections[key] = check
             if key in summary.OPTIONAL:
                 bar.addSpacing(16)
@@ -71,18 +72,47 @@ class SummaryDialog(QDialog):
         layout.addLayout(bar)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
-        self.timer.start(50)
+        if self.worker is not None:
+            self.timer.start(50)
         self.load()
 
     def load(self):
+        if self.cancel_load is not None:
+            self.cancel_load()
+            self.cancel_load = None
         self.token += 1
         self.data = None
+        self.content = ""
         self.set_ready(False)
         self.status.setText(T("正在读取结果…"))
+        if self.loader is not None:
+            token = self.token
+            self.cancel_load = self.loader(
+                self.limit.value(), [k for k, check in self.sections.items() if check.isChecked()],
+                lambda value, error: self.loaded(token, value, error))
+            return
         self.worker.submit(self.token, summary.collect, self.workdir, self.cfg, self.jobs,
                            self.history, self.limit.value())
 
+    def loaded(self, token, value, error):
+        if token != self.token:
+            return
+        if error:
+            self.preview.setPlainText(str(error))
+            self.status.setText(T("无法生成摘要"))
+            return
+        self.data = value
+        check = self.sections["configuration"]
+        check.blockSignals(True)
+        check.setEnabled(value["has_configuration"])
+        if not value["has_configuration"]:
+            check.setChecked(False)
+        check.blockSignals(False)
+        self.render()
+
     def poll(self):
+        if self.worker is None:
+            return
         try:
             while True:
                 kind, token, value = self.worker.events.get_nowait()
@@ -103,7 +133,8 @@ class SummaryDialog(QDialog):
         if self.data is None:
             return
         try:
-            content = summary.render(self.data, [k for k, check in self.sections.items() if check.isChecked()])
+            content = self.data["text"] if self.loader is not None else summary.render(
+                self.data, [k for k, check in self.sections.items() if check.isChecked()])
         except ValueError as e:
             self.content = ""
             self.preview.setPlainText(str(e))
@@ -127,7 +158,7 @@ class SummaryDialog(QDialog):
         if not self.content:
             return
         name = (os.path.basename(os.path.normpath(self.workdir)) or "results") + "_summary.md"
-        path, _ = QFileDialog.getSaveFileName(self, T("保存结果摘要"), os.path.join(self.workdir, name),
+        path, _ = QFileDialog.getSaveFileName(self, T("保存结果摘要"), os.path.join(self.save_dir, name),
                                               T("Markdown 文件 (*.md)"))
         if not path:
             return
@@ -142,5 +173,10 @@ class SummaryDialog(QDialog):
 
     def done(self, result):
         self.timer.stop()
-        self.worker.close()
+        self.token += 1
+        if self.cancel_load is not None:
+            self.cancel_load()
+            self.cancel_load = None
+        if self.worker is not None:
+            self.worker.close()
         super().done(result)

@@ -75,6 +75,39 @@ started by an MCP agent] ([此计算由 MCP agent 启动])** in the output, incl
 With MCP disabled, the toggle is the only agent-related interface item.
 MCP 打开时，打开该来源的计算会在输出区显示来源；关闭时不显示 agent 提示，只有菜单开关。
 
+### Connect to server / 连接服务器
+
+**File → Connect to server… (文件 → 连接服务器…)** opens an SSH dialog: editable aliases from ssh_config,
+server executable (default discovery or full path), directory, Connect/refresh, Parent directory, file metadata,
+and Use this directory. Double-click directories to browse. Host-specific executable/directory preferences persist;
+credentials do not. Errors show the server diagnostic and manual installation guidance. Password/verification-code
+prompts use OpenSSH ASKPASS; old OpenSSH supports keys only. First-contact host-key confirmation shows the full
+prompt/fingerprint with a visible input field and a verification reminder; passwords remain hidden. Hardware-key
+notifications have no input or reply and close when ssh finishes the operation. Details and installation: [REMOTE.md](REMOTE.md).
+
+The separate remote window shows **Server host:/path (服务器 host:/path)** above all three tabs and in its title.
+Calculation is read-only: select a pipeline step to inspect parameters/input, run all/from selection, stop, refresh,
+and follow pushed logs. Custom commands require confirmation. Logging-out policies may require choosing user scope,
+Slurm export or explicit normal startup. Radial and level tabs reuse the existing viewers with remote data;
+levels/compositions and coarse/fine curves appear progressively. Hover, selection, zoom and pan use cached data.
+Load more components explicitly requests up to 500 items. Remote transitions display existing results; drawing a
+pair never starts a new transition calculation. Diagram marks are temporary. Export CSV/figures locally;
+original GRASP transition-file export is unavailable because raw data stays on the server. Window opens extra viewers sharing
+the same session, with the same source in their titles, and offers Reconnect after bounded automatic retries.
+Results summary on the remote Levels tab uses the same dialog, with server-generated text and server-only run
+state. Changing sections/level count requests a new summary. The dialog title shows the source; save chooses a
+local file, starting in the desktop home directory. Cancel/older responses do not alter the clipboard or preview.
+Closing the remote window closes its viewers and connection; it does not stop a background calculation.
+
+“连接服务器”对话框可选 SSH 别名或手输 user@host、设置程序完整路径、浏览目录；成功使用目录后保存每台主机的
+程序位置与目录，不保存密码。连接失败显示原始诊断和手动安装提示。远程窗口及独立查看器显示服务器来源，计算流程
+只读，参数和输入预览不能编辑；可运行、停止和跟踪日志，自定义命令须确认。会受退出登录清理影响时默认取消，
+用户可选 scope、导出 Slurm 或明确照常启动。能级/组成、粗/细曲线渐进显示；选中、悬停、缩放和平移使用缓存，
+“读取更多组成”才补取数据。远程跃迁页只读已有结果，图上标记不写文件。“窗口”菜单可开共享连接的查看器并重新连接。
+远程“结果摘要…”由服务器读流程、状态并生成文本；勾选/能级数改变后重新请求，复制与本机保存沿用同一对话框。
+标题显示服务器来源，保存从本机家目录开始选择；不使用桌面会话历史，不在桌面读取服务器目录，取消或旧回答不改变剪贴板。
+关闭远程窗口同时关闭这些查看器和连接，后台计算继续。完整协议、缓存/重连限制见 [REMOTE.md](REMOTE.md)。
+
 ### Command line / 命令行
 
 ```

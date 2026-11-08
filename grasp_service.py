@@ -134,7 +134,7 @@ class Service:
             text = core.shell_script(jobs, settings["bindir"], str(root), mpi, settings["mpitmp"])
         return dict(text=text[:MAX_TEXT], truncated=len(text) > MAX_TEXT)
 
-    def run(self, directory, start=1, force=False):
+    def run(self, directory, start=1, force=False, *, started_by="mcp", user_scope=False):
         root, data, _ = self.record(directory)
         jobs = data.get("pipeline", [])
         if not 1 <= start <= len(jobs):
@@ -161,16 +161,31 @@ class Service:
                     self.path(str(root / action[1]))
                     self.path(str(root / action[2]))
         work.idle(root)
-        proc = bg.launch(str(root), jobs, settings, started_by="mcp")
-        threading.Thread(target=proc.wait, daemon=True).start()
-        connection = bg.connect(str(root), timeout=bg.ATTACH_WAIT)
+        import tempfile
+        # scope 启动失败时保留 systemd 原始诊断；文件不构成与后台进程相连的管道。
+        diagnostic = tempfile.TemporaryFile() if user_scope else None
+        try:
+            options = dict(started_by=started_by, user_scope=user_scope)
+            if diagnostic is not None:
+                options["stderr"] = diagnostic
+            proc = bg.launch(str(root), jobs, settings, **options)
+            threading.Thread(target=proc.wait, daemon=True).start()
+            connection = bg.connect(str(root), timeout=bg.ATTACH_WAIT)
+            if connection is None and diagnostic is not None:
+                diagnostic.seek(0)
+                message = diagnostic.read(MAX_TEXT).decode("utf-8", "replace").strip()
+                if message:
+                    raise ValueError(message)
+        finally:
+            if diagnostic is not None:
+                diagnostic.close()
         if connection is None:
             raise ValueError(T("无法连接后台运行进程，请检查运行状态和日志"))
         try:
             self.handshake(connection).close()
         finally:
             connection.close()
-        return dict(started=True, directory=str(root), from_step=start, started_by="mcp")
+        return dict(started=True, directory=str(root), from_step=start, started_by=started_by)
 
     def handshake(self, connection):
         """先读初始状态，后台才能确认客户端已连上；不能连上后立刻关闭。"""
@@ -236,33 +251,36 @@ class Service:
             self.path(str(p))
         return root
 
-    def list_results(self, directory):
+    @staticmethod
+    def file_type(path):
         import grasp_mix as mix
         import grasp_wfn as wfn
 
+        if mix.is_mix_file(path):
+            return "mixing"
+        if wfn.is_wfn_file(path):
+            return "wavefunctions"
+        with path.open("rb") as f:
+            head = f.read(512)
+        if head.startswith(b"Core subshells:"):
+            return "csf"
+        if re.search(rb"\bf[12]?\s*=", head):
+            return "transitions"
+        return None
+
+    def list_results(self, directory):
         root = self.directory_files(directory)
         rows = []
         for path in sorted(root.iterdir()):
             if not path.is_file():
                 continue
-            kind = None
-            if mix.is_mix_file(path):
-                kind = "mixing"
-            elif wfn.is_wfn_file(path):
-                kind = "wavefunctions"
-            else:
-                with path.open("rb") as f:
-                    head = f.read(512)
-                if head.startswith(b"Core subshells:"):
-                    kind = "csf"
-                elif re.search(rb"\bf[12]?\s*=", head):
-                    kind = "transitions"
+            kind = self.file_type(path)
             if kind:
                 st = path.stat()
                 rows.append(dict(name=path.name, type=kind, size=st.st_size, mtime_ns=st.st_mtime_ns))
         return dict(files=rows[:MAX_ROWS], truncated=len(rows) > MAX_ROWS)
 
-    def levels(self, directory, files=None, limit=200, components=3):
+    def levels(self, directory, files=None, limit=200, components=3, brief=False, cancel=None, progress=None):
         import grasp_mix as mix
 
         root = self.directory_files(directory)
@@ -271,15 +289,18 @@ class Service:
         truncated = False
         for name in names:
             path = self.path(str(root / name))
-            blocks = mix.open_mix(path, summary=True, k=max(components, 1))
-            csf_path = mix.find_csf_for(str(path))
-            csfs = mix.open_csfs(csf_path) if csf_path and components else None
-            _, labels = mix.find_lsj_for(str(path), blocks)
+            blocks = mix.open_mix(path, summary=not brief, k=max(components, 1), cancel=cancel, progress=progress)
+            csf_path = None if brief else mix.find_csf_for(str(path))
+            csfs = mix.open_csfs(csf_path, cancel, progress) if csf_path and components and not brief else None
+            lsj_path, labels = (None, {}) if brief else mix.find_lsj_for(str(path), blocks)
+            core_orbitals = mix.csf_core(csf_path) if csf_path else []
             for b in blocks:
                 for lv in b.levels:
                     if len(rows) >= limit:
                         return dict(levels=rows, truncated=True)
-                    top = lv.top_components(max(components, 1))
+                    import grasp_index
+                    grasp_index.checkpoint(cancel)
+                    top = lv.top_components(max(components, 1)) if not brief else []
                     parts = []
                     for i, c in top[:components]:
                         text = csfs[b.nb - 1][i - 1] if csfs else None
@@ -287,7 +308,10 @@ class Service:
                                           configuration=text[0] if text else None,
                                           coupling=text[1] if text else None))
                     rows.append(dict(file=path.name, block=b.nb, index=lv.pos, J=lv.J,
-                                     parity=lv.parity, energy_hartree=lv.energy,
+                                     parity=lv.parity, energy_hartree=lv.energy, ncf=b.ncf,
+                                     csf_file=os.path.basename(csf_path) if csf_path else None,
+                                     lsj_file=os.path.basename(lsj_path) if lsj_path else None,
+                                     core_orbitals=core_orbitals,
                                      purity_percent=100 * top[0][1] ** 2 if top else 0,
                                      components=parts, lsj=labels.get((b.nb, lv.pos))))
         return dict(levels=rows, truncated=truncated)
@@ -345,8 +369,8 @@ class Service:
         rows = []
         for name in names:
             path = self.path(str(root / name))
-            for o in wfn.read_w(path):
-                rows.append(dict(file=path.name, name=o.name, n=o.n, kappa=o.kappa, energy=o.energy,
-                                 points=len(o.r), norm=o.norm(), mean_r=o.mean_r(), r_peak=o.r_peak(),
-                                 nodes=o.nodes(), expected_nodes=o.expected_nodes()))
-        return dict(orbitals=rows[:limit], truncated=len(rows) > limit)
+            for identity, properties in wfn.orbital_properties(path):
+                if len(rows) >= limit:
+                    return dict(orbitals=rows, truncated=True)
+                rows.append(dict(file=path.name, **identity, **properties))
+        return dict(orbitals=rows, truncated=False)

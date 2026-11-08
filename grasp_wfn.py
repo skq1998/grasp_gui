@@ -182,3 +182,146 @@ def find_w_files(directory):
         return []
     files = [n for n in names if os.path.isfile(os.path.join(directory, n)) and is_wfn_file(os.path.join(directory, n))]
     return sorted(files, key=natural_key)
+
+
+def indexed_w(path):
+    """逐记录定位波函数；记录范围、点数和尾标记均检查，不保留整个文件。"""
+    rows = []
+    with open(path, "rb") as f:
+        end = os.fstat(f.fileno()).st_size
+
+        def record():
+            head = f.read(4)
+            if len(head) != 4:
+                raise ValueError("truncated wavefunction record")
+            size, = struct.unpack("<i", head)
+            start = f.tell()
+            if size < 0 or start + size + 4 > end:
+                raise ValueError("invalid wavefunction record")
+            f.seek(size, 1)
+            if f.read(4) != head:
+                raise ValueError("invalid wavefunction record marker")
+            return start, size
+
+        start, size = record()
+        f.seek(start)
+        if size < 6 or f.read(6) != b"G92RWF":
+            raise ValueError("not a GRASP radial wave function file (G92RWF)")
+        f.seek(start + size + 4)
+        while f.tell() < end:
+            start, size = record()
+            if size != 20:
+                raise ValueError("invalid orbital header")
+            f.seek(start)
+            n, kappa, energy, count = struct.unpack("<iidi", f.read(size))
+            if count < 1 or not 0 <= (kappa if kappa > 0 else -kappa - 1) < len(L_LETTERS):
+                raise ValueError("invalid orbital quantum numbers or grid")
+            f.seek(start + size + 4)
+            pq, size = record()
+            if size != 8 + 16 * count:
+                raise ValueError("invalid orbital radial arrays")
+            grid, size = record()
+            if size != 8 * count:
+                raise ValueError("invalid orbital grid")
+            orbital = Orbital(n, kappa, energy, 0, [], [], [])
+            rows.append(dict(n=n, kappa=kappa, energy=energy, points=count, name=orbital.name,
+                             P=pq + 8, Q=pq + 8 + 8 * count, r=grid))
+    return rows
+
+
+def _values(f, offset, positions):
+    out = []
+    for i in positions:
+        f.seek(offset + i * 8)
+        raw = f.read(8)
+        if len(raw) != 8:
+            raise ValueError("wavefunction changed while reading")
+        out.append(struct.unpack("<d", raw)[0])
+    return out
+
+
+def sampled_w(path, names=None, points=1000):
+    """在原网格参数上作线性重采样；每条曲线最多请求点数，不传输原文件。"""
+    if type(points) is not int or not 2 <= points <= 10000:
+        raise ValueError("points must be between 2 and 10000")
+    result = []
+    with open(path, "rb") as f:
+        for row in indexed_w(path):
+            if names is not None and row["name"] not in names:
+                continue
+            count = row["points"]
+            number = min(points, count)
+            targets = [i * (count - 1) / max(number - 1, 1) for i in range(number)]
+            needed = sorted({j for x in targets for j in (int(x), min(int(x) + 1, count - 1))})
+            out = {key: row[key] for key in ("name", "n", "kappa", "energy", "points")}
+            for key in ("r", "P", "Q"):
+                values = dict(zip(needed, _values(f, row[key], needed)))
+                out[key] = [(1 - (x - int(x))) * values[int(x)] +
+                            (x - int(x)) * values[min(int(x) + 1, count - 1)] for x in targets]
+            result.append(out)
+    return result
+
+
+def orbital_properties(path):
+    """分块积分与两遍节点统计；使用与 Orbital 相同的网格、阈值和 Simpson 规则。"""
+    with open(path, "rb") as f:
+        for row in indexed_w(path):
+            count = row["points"]
+            positions = sorted({0, min(1, count - 1), min(2, count - 1), min(3, count - 1), count // 2, count - 1})
+            samples = dict(zip(positions, _values(f, row["r"], positions)))
+            grid = None
+            if count >= 4 and samples[1] > 0 and samples[2] / samples[1] > 1:
+                h = math.log(samples[2] / samples[1] - 1)
+                if h > 0:
+                    rnt = samples[1] / math.expm1(h)
+                    if all(abs(rnt * math.expm1(i * h) - samples[i]) <= 1e-8 * max(samples[i], 1e-30)
+                           for i in (count // 2, count - 1)):
+                        grid = rnt, h
+            norm = mean = maximum = node_maximum = 0.0
+            peak = samples[0]
+            previous = None
+            m = count - 1 if (count - 1) % 2 == 0 else count - 2
+            for start in range(0, count, 8192):
+                amount = min(8192, count - start)
+                arrays = []
+                for key in ("r", "P", "Q"):
+                    f.seek(row[key] + start * 8)
+                    arrays.append(struct.unpack(f"<{amount}d", f.read(amount * 8)))
+                for i, (r, p, q) in enumerate(zip(*arrays), start):
+                    density = p * p + q * q
+                    if abs(p) > maximum:
+                        maximum, peak = abs(p), r
+                    if i > 0:
+                        node_maximum = max(node_maximum, abs(p))
+                    if grid:
+                        factor = (1 if i in (0, m) else 4 if i % 2 else 2) / 3 if i <= m else 0
+                        if count - 1 != m and i >= m:
+                            factor += 0.5
+                        factor *= (r + grid[0]) * grid[1]
+                        norm += density * factor
+                        mean += r * density * factor
+                    elif previous is not None:
+                        old_r, old_density = previous
+                        norm += (r - old_r) * (density + old_density) / 2
+                        mean += (r - old_r) * (r * density + old_r * old_density) / 2
+                    previous = r, density
+            nodes, kept, sign, amplitude = 0, None, None, 0.0
+            for start in range(1, count, 8192):
+                amount = min(8192, count - start)
+                f.seek(row["P"] + start * 8)
+                for p in struct.unpack(f"<{amount}d", f.read(amount * 8)):
+                    current = p > 0
+                    if sign is None:
+                        sign = current
+                    if p and current != sign:
+                        if amplitude >= node_maximum * 0.05:
+                            nodes += int(kept is not None and kept != sign)
+                            kept = sign
+                        sign, amplitude = current, abs(p)
+                    else:
+                        amplitude = max(amplitude, abs(p))
+            if amplitude >= node_maximum * 0.05:
+                nodes += int(kept is not None and kept != sign)
+            l = row["kappa"] if row["kappa"] > 0 else -row["kappa"] - 1
+            yield dict((k, row[k]) for k in ("name", "n", "kappa", "energy", "points")), dict(
+                norm=norm, mean_r=mean, r_peak=peak, nodes=nodes, expected_nodes=row["n"] - l - 1)

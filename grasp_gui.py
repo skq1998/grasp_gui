@@ -18,6 +18,19 @@ if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
 
+if __name__ == "__main__" and sys.argv[1:] == ["--version"]:
+    import grasp_core
+    print("GRASP GUI " + grasp_core.VERSION)
+    sys.exit(0)
+
+if __name__ == "__main__" and sys.argv[1:2] == ["remote"]:
+    import grasp_remote
+    sys.exit(grasp_remote.main(sys.argv[2:]))
+
+if __name__ == "__main__" and sys.argv[1:2] == ["_askpass"]:
+    import grasp_askpass
+    sys.exit(grasp_askpass.main())
+
 if __name__ == "__main__" and sys.argv[1:2] == ["mcp"]:
     import grasp_mcp
     sys.exit(grasp_mcp.main(sys.argv[2:]))
@@ -150,6 +163,7 @@ class MainWindow(QMainWindow):
         self.cur_workdir = os.path.abspath(workdir)
         self.run = None
         self.calc = None
+        self.remote_windows = []
         self.panels = {}           # 已创建的查看器面板：种类 -> 面板 (第一次切换到该标签页时创建)
         self.pending = {}          # 重新创建面板后要恢复的勾选文件：种类 -> [路径]
         gc.PANEL_FACTORIES.update(wfn=wfn_panel, levels=self.make_level_panel)
@@ -245,6 +259,7 @@ class MainWindow(QMainWindow):
         act.triggered.connect(self.pick_workdir)
         fm.addMenu(gc.recent_menu(fm, self.change_workdir, T("最近的工作目录"), self.pick_workdir))
         fm.addSeparator()
+        fm.addAction(T("连接服务器…")).triggered.connect(self.connect_server)
         fm.addAction(T("退出")).triggered.connect(self.close)
         vm = mb.addMenu(T("视图"))
         for text, keys, step in [("放大字体", [QKeySequence.ZoomIn, "Ctrl+="], 1),
@@ -273,6 +288,12 @@ class MainWindow(QMainWindow):
             act.triggered.connect(lambda _=False, c=code: self.set_language(c))
             group.addAction(act)
             lm.addAction(act)
+
+    def connect_server(self):
+        from remote_panel import connect_window
+        win = connect_window(self)
+        if win is not None:
+            self.remote_windows.append(win)
 
     def make_level_panel(self, d):
         p = level_panel(d, lambda: self.run.values())
@@ -350,6 +371,8 @@ class MainWindow(QMainWindow):
         if not self.calc.shutdown(stop):
             event.ignore()
             return
+        for win in self.remote_windows:
+            win.close()
         for p in self.panels.values():
             p.shutdown()
         for w in list(gc.PANEL_WINDOWS):

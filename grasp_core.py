@@ -975,6 +975,78 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "用配置更新当前目录…": "Update current directory from configuration…",
     "清空工作目录…": "Clear working directory…",
     "此目录没有工作目录记录。仍要查看并选择待删除内容吗？": "This directory has no working-directory record. Still inspect and select items to delete?",
+    # SSH 远程连接
+    "SSH 登录": "SSH login",
+    "SSH 主机确认": "SSH host confirmation",
+    "SSH 提示": "SSH notification",
+    "请通过管理员或其他可信渠道核对主机指纹；一致后再输入 yes 或指纹，不确定请取消。":
+        "Verify the host fingerprint with your administrator or another trusted channel. "
+        "Enter yes or the fingerprint only if it matches; otherwise cancel.",
+    "服务器端程序请填写完整路径或 ~/ 路径": "Enter a full server executable path or a ~/ path",
+    "连接服务器…": "Connect to server…",
+    "连接服务器": "Connect to server",
+    "SSH 主机（沿用 ~/.ssh/config）": "SSH host (uses ~/.ssh/config)",
+    "SSH 控制目录必须属于当前用户且权限为 700": "The SSH control directory must belong to you with mode 700",
+    "SSH 登录或服务器握手超时": "SSH login or server handshake timed out",
+    "SSH 连接已关闭": "SSH connection closed",
+    "SSH 连接已断开": "SSH connection lost",
+    "上一级": "Parent directory",
+    "使用此目录": "Use this directory",
+    "使用用户 scope": "Use user scope",
+    "参数": "Parameters",
+    "启动或停止的结果无法确认；重连后请先核对状态，不要直接重复操作":
+        "Cannot confirm start/stop; check the state after reconnecting before repeating the operation",
+    "在新窗口中打开径向波函数": "Open radial wave functions in a new window",
+    "在新窗口中打开能级图": "Open levels in a new window",
+    "密钥或 ssh-agent 优先；密码和验证码仅在 OpenSSH 输入框中输入，不保存。":
+        "Prefer keys or ssh-agent; enter passwords and verification codes only in the OpenSSH prompt. They are "
+        "never saved.",
+    "已复制 Slurm 脚本，请核对服务器设置后提交。": "Slurm script copied; check the server settings before submitting.",
+    "断线与计算": "Disconnection and calculations",
+    "断线会结束计算，请由用户选择用户 scope、Slurm 或明确照常启动":
+        "Disconnection will end the calculation; choose a user scope, Slurm, or explicitly start normally",
+    "服务器 {h} 延迟 {n} ms": "Server {h}: latency {n} ms",
+    "服务器 {h}:{p}": "Server {h}:{p}",
+    "服务器握手失败，请检查程序路径并安装或更新服务器端":
+        "Server handshake failed; check the executable path and install or update the server program",
+    "服务器未开启 lingering，不能使用用户 scope": "Lingering is disabled on the server; a user scope cannot be used",
+    "服务器目录": "Server directory",
+    "服务器端程序": "Server executable",
+    "服务器退出登录会结束计算。可使用用户 scope（须开启 lingering），导出 Slurm，或明确选择照常启动。":
+        "Logging out will end the calculation. Use a user scope (requires lingering), export Slurm, or explicitly "
+        "start normally.",
+    "本机 OpenSSH 低于 8.4，仅支持密钥或 ssh-agent 登录":
+        "Local OpenSSH is older than 8.4; only key or ssh-agent authentication is supported",
+    "正在从 {h} 读取…": "Reading from {h}…",
+    "没有运行记录": "No run recorded",
+    "照常启动": "Start normally",
+    "用户 scope 失败时可导出 Slurm，或重新选择照常启动；请先核对运行状态。":
+        "If a user scope fails, export Slurm or explicitly start normally; check the run state first.",
+    "组成尚在读取": "Composition loading",
+    "自动尝试 ~/.local/bin/grasp_gui 和 PATH；也可填完整路径": "Tries ~/.local/bin/grasp_gui then PATH; or enter the full path",
+    "请手动安装或更新服务器端，并在此设置完整路径；程序不会自动上传。":
+        "Install or update the server program manually and set its full path here; it is never uploaded "
+        "automatically.",
+    "请输入有效的 SSH 主机或 user@host": "Enter a valid SSH host or user@host",
+    "读取更多组成": "Load more components",
+    "读取期间远程文件已改变，请刷新": "Remote files changed while reading; refresh",
+    "远程协议不兼容，请更新服务器端程序": "Incompatible remote protocol; update the server program",
+    "远程文件请在服务器目录中选择": "Select remote files in the server directory",
+    "远程模式只查看已算跃迁；计算请运行服务器上的流程。": "Remote mode displays existing transitions; use the server pipeline to compute them.",
+    "远程流程": "Remote pipeline",
+    "远程流程包含可运行任意程序的自定义命令。确认运行吗？":
+        "The remote pipeline contains custom commands that can run arbitrary programs. Run it?",
+    "远程流程只读；可启动、停止和查看，修改请在服务器上完成。":
+        "Remote pipeline is read-only; start, stop and view it here; edit it on the server.",
+    "远程目录中文件过多，请选择更小的目录": "Too many remote directory entries; choose a smaller directory",
+    "远程结果已截断，请选择更少的文件": "Remote results truncated; select fewer files",
+    "远程结果过大，请减少文件或行数": "Remote result too large; request fewer files or rows",
+    "远程请求超时，正在重新连接": "Remote request timed out; reconnecting",
+    "远程运行": "Remote run",
+    "远程模式不导出原始 GRASP 跃迁文件；可导出 CSV 或能级图。":
+        "Remote mode cannot export original GRASP transition files; export CSV or a level diagram instead.",
+    "连接 / 刷新": "Connect / refresh",
+    "重新连接": "Reconnect",
     # 共享配置
     "导入配置文件…": "Import configuration file…",
     "导出配置…": "Export configuration…",

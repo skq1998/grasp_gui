@@ -143,7 +143,7 @@ def command():
     return [sys.executable, os.path.abspath(__file__)]
 
 
-def launch(workdir, jobs, cfg, started_by=None):
+def launch(workdir, jobs, cfg, started_by=None, user_scope=False, stderr=None):
     """在后台启动运行进程。返回 Popen (界面用它回收进程)；目录中已有运行进程时抛出 RuntimeError。"""
     probe = connect(workdir)
     if probe:
@@ -156,8 +156,12 @@ def launch(workdir, jobs, cfg, started_by=None):
             request["started_by"] = started_by
         json.dump(request, f, ensure_ascii=False)
     # 新会话：关闭终端、ssh 断开时不会收到 SIGHUP；输出全部经由通道和 RUN_LOG
-    return subprocess.Popen(command() + [workdir], cwd=workdir, env=core.child_env(), stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    argv = command() + [workdir]
+    if user_scope:
+        argv = ["systemd-run", "--user", "--scope", "--quiet", "--", *argv]
+    return subprocess.Popen(argv, cwd=workdir, env=core.child_env(), stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=stderr if stderr is not None else subprocess.DEVNULL,
+                            start_new_session=True)
 
 
 # ---------------------------------------------------------------------------
