@@ -911,7 +911,8 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "示例不存在：{name}": "Unknown example: {name}",
     "程序页不存在：{step}": "Unknown program page: {step}",
     "结果太大，请减少文件、能级或成分数量": "Result too large; request fewer files, levels or components",
-    "绘图需要 Qt；当前服务器没有图形库": "Plotting requires Qt; this server has no graphics library",
+    "绘图需要 Qt；当前服务器没有图形库，请使用桌面版或旧系统版": (
+        "Plotting requires Qt; this server has no graphics library. Use the desktop or legacy build."),
     "自定义命令默认拒绝；请由用户用 --allow-custom 启动服务": (
         "Custom commands are refused by default; the user must start the service with --allow-custom"),
     "覆盖外部记录": "Overwrite external record",
@@ -975,6 +976,12 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "用配置更新当前目录…": "Update current directory from configuration…",
     "清空工作目录…": "Clear working directory…",
     "此目录没有工作目录记录。仍要查看并选择待删除内容吗？": "This directory has no working-directory record. Still inspect and select items to delete?",
+    # 无界面的服务器入口
+    "这是服务器版，不能打开窗口；请使用桌面版或旧系统版。": (
+        "This is the server build and cannot open windows. Use the desktop or legacy build."),
+    "服务器版命令：remote、mcp、check、script、steps、reference、_run；--version 显示程序和协议版本。": (
+        "Server commands: remote, mcp, check, script, steps, reference, _run; "
+        "--version shows the application and protocol versions."),
     # SSH 远程连接
     "SSH 登录": "SSH login",
     "SSH 主机确认": "SSH host confirmation",

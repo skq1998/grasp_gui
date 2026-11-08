@@ -189,3 +189,17 @@ References: [OpenSSH ssh](https://man.openbsd.org/ssh.1),
 [ssh_config](https://man.openbsd.org/ssh_config),
 [systemd-run](https://www.freedesktop.org/software/systemd/man/latest/systemd-run.html),
 [logind.conf](https://www.freedesktop.org/software/systemd/man/latest/logind.conf.html).
+
+
+## Headless server package / 无界面服务器版
+
+`grasp_gui-server` is the CLI-only entry point: `remote`, `mcp`, `check`, `script`, `steps`, `reference`
+and `_run` use the same implementations as the desktop build. `--version` reports the application version and
+remote protocol version; `--lang en` selects English. Opening a window exits with code 2 and directs the user
+to the desktop or legacy build. MCP remains disabled until the user enables it; plotting tools require Qt and
+return a clear error in this build. There are no automatic downloads or server-initiated network connections.
+
+服务器版使用独立的标准库入口 `grasp_server.py`，不导入界面。上述命令与普通版共用实现；
+`--version` 同时显示程序和远程协议版本，`--lang en` 可切换英文。窗口命令返回 2，提示改用桌面版或旧系统版；
+MCP 开关仍由用户控制，绘图工具在没有 Qt 时返回明确错误。目录版构建及手动安装见
+[legacy/README.md](https://github.com/skq1998/grasp_gui/blob/legacy/legacy/README.md)。

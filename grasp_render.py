@@ -17,7 +17,7 @@ def render(service, kind, directory, files=None, limit=200, output=None):
         from PySide6.QtGui import QColor, QImage, QPageSize, QPainter, QPdfWriter
         from PySide6.QtWidgets import QApplication
     except ImportError as e:
-        raise RuntimeError(T("绘图需要 Qt；当前服务器没有图形库")) from e
+        raise RuntimeError(T("绘图需要 Qt；当前服务器没有图形库，请使用桌面版或旧系统版")) from e
     _app = QApplication.instance() or QApplication([])
     root = service.directory_files(directory)
     width, height = 1200, 800

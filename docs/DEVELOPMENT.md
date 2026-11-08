@@ -459,6 +459,12 @@ Coupling 是独立外部程序：`COUPLING_BINDIR=/path/to/coupling/bin GRASP_BI
 
 ## 发布流程
 
+服务器版使用独立入口 `grasp_server.py`，不导入 Qt；命令复用配置、remote、MCP 和后台运行模块。
+发布前先在含最新 main 的 legacy 源码树运行 `legacy/build_server.sh`，生成目录版压缩包及 sha256。
+目录版直接从安装目录加载库，避免集群 `/tmp` 的 noexec 限制；不采用每次解压的单文件形式。
+先在 glibc 2.17、`/tmp` noexec 的容器中核验配置命令、后台流程、SSH remote/MCP 和窗口错误提示，
+再构建普通版与旧系统版。服务器版的脚本和安装说明单独维护在 legacy 目录中。
+
 1. 在 main 上提交，用 `git archive <提交>` 导出干净的代码，运行 `./build.sh`。
 2. 冒烟测试：在清空的环境下用中英文界面各启动一次，并在没有字体的环境下再启动一次。
 3. 旧系统版：把 main 合并到 `legacy`，用该提交的干净代码运行 `legacy/build.sh`，在旧系统容器中测试。
