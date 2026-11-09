@@ -626,6 +626,31 @@ asks default-No, changes only desktop preferences, and never deletes server data
 可以再次确认上传”，保留本机修改，等待用户重新确认。其他变化仍提示冲突；绝不自动重发写入。
 副本常驻来源标识，本机缺少输入标明“由服务器检查”；本机直接运行另有默认否确认。
 
+## Direct server configuration import / 直接导入到服务器
+
+The connection browser and an empty remote Calculation tab offer **Create calculation here…**.
+In the remote tab this entry remains hidden while loading and after a failed load; only a successfully loaded
+empty pipeline makes it visible.
+The existing configuration dialog accepts examples, local files and clipboard text; remote mode hides
+**Update current working directory**, suggests `<remote directory>/<sanitized title>`, and offers **Create and run**.
+Program availability is checked on the server, without creating a local working directory or association.
+The shared upload preview lists pipeline steps, missing programs/inputs, attachments and custom commands.
+Optional **Also upload local input files…** selects an existing directory; ordinary file defaults/rsync apply.
+Custom commands have a separate confirmation and the final host/path confirmation defaults to No.
+Success opens the new remote directory; **Create and run** invokes the usual Workstation/Slurm confirmation.
+Lost replies trigger fingerprint verification and never automatic replay. Older servers show update guidance.
+
+连接目录浏览和无流程的远程计算页提供“在此新建计算…”。远程页读取中或读取失败时隐藏该入口，只有成功读到空流程才显示。
+复用配置选择窗口：示例、文件、剪贴板均可；隐藏“更新当前工作目录”，
+默认服务器子目录取经清理的配置标题，可选“新建并运行”。缺少程序/输入由服务器检查。复用上传清单，可选现有本机输入目录；
+缺少外部输入也可稍后上传。创建目标必须不存在或为空，最终主机/路径确认默认否，自定义命令另行确认。
+不创建本机计算目录或关联；写入核对状态仅留在当前窗口。关闭后重新浏览服务器目录核对结果。
+成功后打开新目录；从空远程窗口发起时沿用 SSH 连接替换原视图。运行仍经过普通工作站/Slurm 预检与确认。
+回复丢失不自动重发，旧服务器明确提示更新。
+
+Screenshots / 截图：[configuration English](images/en_remote_import_config.png) / [配置中文](images/zh_remote_import_config.png)；
+[preview English](images/en_remote_import_preview.png) / [预览中文](images/zh_remote_import_preview.png)。
+
 ## Saved state / 保存的内容
 
 | Where | What |

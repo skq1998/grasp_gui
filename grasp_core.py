@@ -97,6 +97,18 @@ SLURM_DEFAULTS = dict(job="grasp", partition="", nodes="1", ntasks="32", time="2
 LANG = "zh"
 
 EN = {
+    # 直接导入服务器 (#48)
+    "在此新建计算…": "Create calculation here…",
+    "配置将直接写入服务器上的新建或空目录；程序和输入由服务器检查。不会创建本机工作目录。":
+        "Write the configuration directly to a new or empty server directory. Programs and inputs are checked "
+        "on the server. No local working directory is created.",
+    "新建并运行": "Create and run",
+    "预览服务器新建…": "Preview server creation…",
+    "确认并继续…": "Confirm and continue…",
+    "同时从本机上传输入文件…": "Also upload local input files…",
+    "选择输入文件所在目录": "Choose the directory containing input files",
+    "服务器缺少程序：{names}": "Missing programs on server: {names}",
+    "附带文件：{names}": "Attached files: {names}",
     # 能量零点 (#50)
     "能量零点": "Energy zero",
     "按计算组": "By calculation group",
