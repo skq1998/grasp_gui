@@ -225,8 +225,8 @@ def test_cancelled_broken_pipe_is_reported_as_cancel(tmp_path, monkeypatch):
 
 
 @pytest.mark.gui
-@pytest.mark.parametrize("version,bundled,prompt", [("2.7.9", True, True), ("2.9.0", True, False),
-                                                   ("2.10.0", True, False), ("2.7.9", False, False)])
+@pytest.mark.parametrize("version,bundled,prompt", [("2.7.9", True, True), (core.VERSION, True, False),
+                                                   ("99.0.0", True, False), ("2.7.9", False, False)])
 def test_connection_offers_only_bundled_upgrades(qapp, monkeypatch, package, version, bundled, prompt):
     from PySide6.QtWidgets import QMessageBox
     from remote_panel import ConnectDialog
