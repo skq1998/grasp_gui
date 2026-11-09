@@ -118,6 +118,53 @@ no-accounting Cancelled display has unit coverage and should be rechecked with t
 负责人已在 Slurm 24.11.5 下完成真实验收：无记账和带 slurmdbd 各 3 passed，MPI 单进程文件位置已核对。
 本次纳入其已验证的夹具修正，并补齐无记账时用户取消的状态显示；后者仍请用更新后的断言复验。
 
+### Create directly on the server / 直接在服务器新建
+
+After browsing a server directory, choose **Create calculation here…** in the connection dialog, or in a
+remote Calculation tab with no pipeline. The configuration selector accepts built-in examples, a local JSON
+file, or clipboard text (including fenced JSON). The default destination is a child of the browsed directory,
+using a sanitized configuration title; edit it to choose another absent/empty server directory.
+**Update current working directory** is hidden. No local calculation directory or local-copy association is created.
+
+选好主机、服务器类型并浏览目录后，点“在此新建计算…”，从示例、配置文件或剪贴板选择配置。默认目标为当前服务器目录下
+经清理的配置标题，可自行修改；已有非空目录会被拒绝。程序是否可用按服务器保存的 GRASP 路径及 PATH 检查，不受本机安装影响。
+
+The existing upload dialog previews the pipeline, missing server programs/inputs, attached files and custom
+commands. **Also upload local input files…** optionally selects an existing local input directory and uses the
+ordinary input table/rsync flow: small files checked, large/generated files unchecked, server names retained.
+Missing external inputs may be supplied later through the remote File menu. Custom commands need a separate
+confirmation; the final host/path confirmation defaults to No. The record is created before file transfer.
+A failed transfer retains the record and offers a checked retry. Successful creation opens the new remote directory;
+from an empty remote window it replaces that view using the same SSH connection.
+
+预览显示服务器缺少的程序/输入、流程、附带文件和自定义命令。“同时从本机上传输入文件…”可选现有输入目录，沿用文件表和 rsync；
+也可先创建流程，稍后从远程窗口“文件 → 从本机上传…”补齐输入。自定义命令单独确认，最终确认默认否，先写记录再传文件。
+勾选“新建并运行”后仍走普通工作站或 Slurm 的运行预检和确认，不会直接跳过调度器或运行确认。
+
+**Create and run** opens the ordinary run-plan/confirmation flow for the chosen Workstation or Slurm type.
+If a create reply is lost, read the server pipeline and compare its fingerprint; never resend automatically.
+An absent/empty target must be proved before a new user-confirmed retry. Pending verification lives only in this
+creation dialog; after closing it, browse the server directory to inspect the outcome. Servers lacking
+`workdir_write_v1`, or the preview's additive `missing_programs` response field, show an update instruction before writes.
+Existing local import/upload remains compatible with older preview responses; no RPC or configuration format changes.
+
+新建回复丢失时先读取流程核对指纹，不自动重发；只有再次证明目标仍为空，才允许用户重新确认。待核对信息仅在当前新建窗口中，
+关闭后应重新浏览服务器目录确认结果。旧服务器缺少能力或程序检查字段时提示更新，拒绝直接新建；原有本机导入和上传流程不变。
+
+Screenshots / 截图：configuration / 配置 [English](images/en_remote_import_config.png) / [中文](images/zh_remote_import_config.png)；
+preview / 预览 [English](images/en_remote_import_preview.png) / [中文](images/zh_remote_import_preview.png)。
+
+Optional real SSH acceptance / 可选真实 SSH 验收：沿用下文的专用 SSH fixture，安装本分支服务器后运行
+`GRASP_REMOTE_EDIT_TEST=1 python3 -m pytest tests/test_remote_import_ssh.py -v`。两项测试覆盖剪贴板 example1 直接新建运行，
+以及选择已有本机 isodata 输入、rsync 上传后运行，均比较参考能量；只在显式指定的验收目录中新建。
+
+The maintainer ran the two direct-import cases plus the three remote-edit cases against a restricted sshd
+fixture using the branch merged with main, server source and the official 2.9.0 old-server package:
+**5 passed**, GRASP `9006157` ([review evidence](https://github.com/skq1998/grasp_gui/pull/49#pullrequestreview-5829004138)).
+This evidence precedes the confirmation/entry-visibility review fixes; repeat against the updated head before merging.
+维护者在受限 sshd 中，以合入 main 的源码和官方 2.9.0 旧端验收：新建两项、编辑三项共 **5 passed**，GRASP `9006157`。
+该记录早于本轮确认提示及入口显示修订，更新后的提交仍需维护者复测。
+
 ### Local editing and upload / 在本机编辑并上传
 
 Remote pipelines remain read-only in the remote viewer. Use the existing desktop Calculation tab for editing;
@@ -301,6 +348,14 @@ before the fixed greeting `GRASP_GUI_REMOTE 1`, then sends `hello` with `protoco
 Compatibility is determined by the protocol number; update the server manually if incompatible.
 The hello reply also lists supported `server_types`; Slurm classification requires the `slurm` capability.
 Requests and replies are newline-delimited UTF-8 JSON; request IDs match replies and replies may arrive out of order.
+`levels` and `view(kind=levels)`, including the brief preview, return per-level `zero_group` and `zero_warning`.
+The server reads the matching `.csum` through the common Hamiltonian parser; no new request or protocol number
+is needed. The existing directory signature includes `.csum` size/mtime, so changing only the summary refreshes
+remote grouping. Older servers without these fields are shown as unknown for `.cm`, without local file reads.
+
+`levels` 和 `view(kind=levels)`（含预览）逐行返回哈密顿量组及警告；由服务器读取 `.csum`，不增加请求或改变协议号。
+目录签名已有 `.csum` 大小/修改时间，单独更新总结文件也使远程缓存失效；旧端缺字段时按未知组提示，不查本机文件。
+
 Two server workers permit pipelined reads; run/stop are serialized. Server code uses only the Python standard library.
 
 ```json
@@ -313,7 +368,7 @@ Two server workers permit pipelined reads; run/stop are serialized. Server code 
 |---|---|
 | `hello` | Protocol/version; returns server protocol/version, executable and home |
 | `list_dir` | Directory; names, sizes, mtimes, directories and content-detected types; up to 5000 entries |
-| `levels` | Directory, optional files/limit/components; jj/LSJ level metadata and components |
+| `levels` | Directory, optional files/limit/components; jj/LSJ metadata/components and additive `zero_group`/`zero_warning` |
 | `transitions` | Directory, optional files/limit; existing λ, A, gf, S, computed-only branching ratios |
 | `orbitals` | Directory, optional files/limit; properties computed on the original grid |
 | `wavefunctions` | Directory, optional files/names; points 2–10000, at most 100 sampled curves |
@@ -323,7 +378,7 @@ Two server workers permit pipelined reads; run/stop are serialized. Server code 
 | `view` | `kind: levels` or `wfn`; a whole view in one request, optional file/name selection and known signature |
 | `pipeline` | Read-only saved jobs and revision |
 | `get_pipeline` | Read-only shared configuration, bounded attached text inputs, warnings and revision |
-| `preview_upload` | Read-only new/update validation, changes, input checks, pending/existing files; no directory creation |
+| `preview_upload` | Read-only new/update validation, changes, input checks, pending/existing files, additive `missing_programs` from server bindir/PATH; no directory creation |
 | `create_workdir` | Mutation: checked configuration and explicit custom-command authorization; absent/empty target under lock |
 | `update_workdir` | Mutation: revision, configuration and explicit custom authorization; locked conflict and idle checks |
 | `run_plan` | Revision and custom commands; optional `server_type: slurm` returns server-side Slurm defaults |

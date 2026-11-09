@@ -145,8 +145,19 @@ def test_summary_byte_limit_components_then_earlier_layers(tmp_path):
     text = summary.render(data, ["levels"], max_bytes=5000)
     assert len(text.encode("utf-8")) <= 5000 and "省略主要成分" in text
     data["levels"] = [dict(copy.deepcopy(data["levels"][0]), file=f"layer{i}.cm") for i in range(30)]
+    for i, layer in enumerate(data["levels"]):
+        for j, row in enumerate(layer["levels"]):
+            row.update(zero_group="DC" if i % 2 else "DC+VP", energy_hartree=-100 + i + j / 10)
     text = summary.render(data, ["levels", "layer_changes"], max_bytes=3000)
     assert len(text.encode("utf-8")) <= 3000 and "省略较早或未关联的结果" in text
+    blocks = [json.loads(block.split("\n```", 1)[0]) for block in text.split("```json\n")[1:]]
+    retained = [row for layer in blocks[1] for row in layer["levels"]]
+    expected = {group: min(row["energy_hartree"] for row in retained if row["zero_group"] == group)
+                for group in {row["zero_group"] for row in retained}}
+    assert blocks[0]["relative_zero_hartree"] == expected
+    for row in retained:
+        assert row["relative_cm"] == pytest.approx(
+            (row["energy_hartree"] - expected[row["zero_group"]]) * mix.HARTREE_CM)
     with pytest.raises(ValueError):
         summary.render(data, ["configuration"], max_bytes=100)
 
@@ -155,6 +166,9 @@ def test_large_summary_uses_bounded_source_reads(tmp_path, monkeypatch):
     import builtins
 
     path = make_files(tmp_path, ncf=200000, nev=4)
+    path.with_suffix(".csum").write_text(
+        "Speed of light = 1.370359991390D+02 atomic units.\n"
+        "H (Dirac Coulomb) will be diagonalised by itself.\nRadial grid:\n")
     requested = []
     original = builtins.open
 

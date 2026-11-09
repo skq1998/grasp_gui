@@ -18,12 +18,13 @@ from gui_common import button
 class TransferDialog(QDialog):
     transferred = Signal(object)
     transferFailed = Signal(str)
-    def __init__(self, source, directory, local=None, names=None, parent=None):
+    def __init__(self, source, directory, local=None, names=None, parent=None, *, upload=None):
         super().__init__(parent)
-        self.setWindowTitle(T("从本机上传…") if local is not None else T("下载到本机…"))
+        upload = local is not None if upload is None else upload
+        self.setWindowTitle(T("从本机上传…") if upload else T("下载到本机…"))
         self.resize(860, 650)
         self.source, self.directory, self.local, self.names = source, directory, local, names
-        self.upload, self.rows, self.busy, self.closed = local is not None, [], False, False
+        self.upload, self.rows, self.busy, self.closed = upload, [], False, False
         self.job, self.events, self.generation = None, queue.Queue(), 0
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(T("服务器 {h}:{p}", h=source.client.host, p=directory)))

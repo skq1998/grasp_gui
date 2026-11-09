@@ -140,12 +140,14 @@ class Operations(service.Service):
                 changes = plan["text"]
                 kept = [f["name"] for f in plan["files"] if f["kind"] == "conflict"]
             transfer.safe_targets(root, names)
-            checked = summary.check_files(str(root), cfg["jobs"], run=core.saved_run_settings(), path_check=self.path)
+            run = core.saved_run_settings()
+            checked = summary.check_files(str(root), cfg["jobs"], run=run, path_check=self.path)
             planned = names + [f["name"] for f in cfg.get("files", [])]
             pending = [row for row in checked["missing"] if any(fnmatch.fnmatchcase(n, row["file"]) for n in planned)]
             checked["missing"] = [row for row in checked["missing"] if row not in pending]
             checked.update(pending=pending, issues=checked["invalid"] + checked["missing"])
             return dict(directory=str(root), revision=revision, changes=changes, kept_files=kept, checked=checked,
+                        missing_programs=config.missing_programs(cfg, run["bindir"]),
                         custom_commands=config.custom_commands(cfg), warnings=warnings,
                         existing=[n for n in names if (root / n).exists()])
 

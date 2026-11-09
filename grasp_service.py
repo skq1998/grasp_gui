@@ -321,6 +321,7 @@ class Service:
         for name in names:
             path = self.path(str(root / name))
             blocks = mix.open_mix(path, summary=not brief, k=max(components, 1), cancel=cancel, progress=progress)
+            hamiltonian = mix.hamiltonian(path, self.path)
             csf_path = None if brief else mix.find_csf_for(str(path))
             csfs = mix.open_csfs(csf_path, cancel, progress) if csf_path and components and not brief else None
             lsj_path, labels = (None, {}) if brief else mix.find_lsj_for(str(path), blocks)
@@ -338,7 +339,7 @@ class Service:
                         parts.append(dict(csf=i, coefficient=c, weight=c * c,
                                           configuration=text[0] if text else None,
                                           coupling=text[1] if text else None))
-                    rows.append(dict(file=path.name, block=b.nb, index=lv.pos, J=lv.J,
+                    rows.append(dict(hamiltonian, file=path.name, block=b.nb, index=lv.pos, J=lv.J,
                                      parity=lv.parity, energy_hartree=lv.energy, ncf=b.ncf,
                                      csf_file=os.path.basename(csf_path) if csf_path else None,
                                      lsj_file=os.path.basename(lsj_path) if lsj_path else None,

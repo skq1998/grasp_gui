@@ -8,6 +8,7 @@ import datetime
 import difflib
 import json
 import os
+from pathlib import PurePosixPath
 import queue
 import re
 import threading
@@ -313,16 +314,19 @@ class ConfigDialog(QDialog):
     """选择一个配置，默认导入空目录，也可预览后更新当前目录。
     entries：[dict(cfg, warnings, path)]；剪贴板条目另带 clipboard=True，按外部配置确认。"""
 
-    def __init__(self, parent, entries, bindir, current_dir=None):
+    def __init__(self, parent, entries, bindir, current_dir=None, *, remote_directory=None):
         super().__init__(parent)
         self.setWindowTitle(T("导入配置"))
         self.resize(960, 620)
         self.entries, self.bindir = list(entries), bindir
         self.current_dir, self.new_target = current_dir, ""
+        self.remote_directory = remote_directory
         lay = QVBoxLayout(self)
         note = QLabel(T("配置只包含各程序的参数和计算流程 (以及少量附带的输入文件)，不含计算结果。导入到一个空目录后，"
                         "点“▶ 运行全部”即可从头计算；各程序页显示该程序在流程中最后一次使用的参数。"))
         note.setWordWrap(True)
+        if remote_directory is not None:
+            note.setText(T("配置将直接写入服务器上的新建或空目录；程序和输入由服务器检查。不会创建本机工作目录。"))
         lay.addWidget(note)
         split = QSplitter()
         left = QWidget()
@@ -347,6 +351,7 @@ class ConfigDialog(QDialog):
         self.update.setEnabled(current_dir is not None)
         self.update.toggled.connect(self.update_mode)
         lay.addWidget(self.update)
+        self.update.setVisible(remote_directory is None)
         row = QHBoxLayout()
         row.addWidget(QLabel(T("导入到目录")))
         self.dir = QLineEdit()
@@ -354,10 +359,16 @@ class ConfigDialog(QDialog):
         row.addWidget(self.dir, 1)
         self.browse = button("浏览…", self.pick)
         row.addWidget(self.browse)
+        self.browse.setVisible(remote_directory is None)
         lay.addLayout(row)
+        self.run_after = QCheckBox(T("新建并运行"))
+        self.run_after.setVisible(remote_directory is not None)
+        lay.addWidget(self.run_after)
         bar = QHBoxLayout()
         bar.addStretch()
         self.ok = button("导入", self.accept)
+        if remote_directory is not None:
+            self.ok.setText(T("预览服务器新建…"))
         self.ok.setDefault(True)
         self.ok.setEnabled(bool(self.entries))
         bar.addWidget(self.ok)
@@ -428,7 +439,7 @@ class ConfigDialog(QDialog):
                 (T("导出自"), d.get("created_by")), (T("流程"), T("{n} 步", n=len(d["jobs"]))),
                 (T("用到的程序"), ", ".join(grasp_config.programs(d)))]
         html.append("<p>" + "<br>".join(f"<b>{k}:</b> {esc(v)}" for k, v in meta if v) + "</p>")
-        missing = grasp_config.missing_programs(d, self.bindir)
+        missing = grasp_config.missing_programs(d, self.bindir) if self.remote_directory is None else []
         if missing:
             html.append(f"<p style='color:#c00000'><b>{T('在 bin 目录和 PATH 中找不到')}:</b> "
                         f"{esc(', '.join(missing))}<br>{T('流程运行到这些程序时会出错。')}</p>")
@@ -459,7 +470,13 @@ class ConfigDialog(QDialog):
             html.append("</ul>")
         self.info.setHtml("".join(html))
         if not self.dir_edited and not self.update.isChecked():
-            if e.get("clipboard"):
+            if self.remote_directory is not None:
+                name = grasp_config.text(d, "title") or d.get("id") or "calc"
+                stem = re.sub(r"[^\w.-]+", "_", name).strip("._") or "calc"
+                # 留出文件名长度余量；不读取本机目录，也不自行覆盖服务器目标。
+                stem = stem.encode("utf-8")[:120].decode("utf-8", errors="ignore")
+                self.dir.setText(str(PurePosixPath(self.remote_directory) / stem))
+            elif e.get("clipboard"):
                 name = str(d.get("id") or grasp_config.text(d, "title") or "clipboard")
                 stem = re.sub(r"[^\w.-]+", "_", name).strip("._") or "clipboard"
                 self.dir.setText(free_dir(os.path.join(CALC_ROOT, stem)))
@@ -474,7 +491,8 @@ class ConfigDialog(QDialog):
             return
         e = self.entry()
         commands = grasp_config.custom_commands(e["cfg"])
-        if (e["path"] is not None or e.get("clipboard")) and commands and QMessageBox.question(
+        external = e["path"] is not None or e.get("clipboard")
+        if self.remote_directory is None and external and commands and QMessageBox.question(
                 self, T("导入配置"), T("这个配置含有 {n} 条自定义命令 (见右侧)，运行流程时会执行它们。确定导入吗？",
                                       n=len(commands))) != QMessageBox.Yes:
             return
@@ -496,6 +514,9 @@ class ConfigDialog(QDialog):
             self.dir_edited = True
 
     def target(self):
+        if self.remote_directory is not None:
+            target = self.dir.text().strip()
+            return target if target.startswith(("/", "~")) else str(PurePosixPath(self.remote_directory) / target)
         return os.path.abspath(os.path.expanduser(self.dir.text().strip()))
 
 

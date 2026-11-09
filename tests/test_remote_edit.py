@@ -141,3 +141,18 @@ def test_stdio_write_capability_and_mutation_roundtrip(tmp_path, cfg):
         assert "error" in peer.call("update_workdir", directory=root, revision="stale", configuration=cfg)
     finally:
         peer.close()
+
+
+def test_preview_checks_programs_using_server_run_settings(tmp_path, cfg, monkeypatch):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    monkeypatch.setattr(core, "saved_run_settings", lambda: dict(bindir=str(bindir), np=1))
+    monkeypatch.setenv("PATH", "")
+    operation = remote.Operations()
+    root = str(tmp_path / "server")
+    assert operation.preview_upload(root, cfg)["missing_programs"] == ["rnucleus"]
+    program = bindir / "rnucleus"
+    program.write_text("#!/bin/sh\nexit 0\n")
+    program.chmod(0o755)
+    assert operation.preview_upload(root, cfg)["missing_programs"] == []
+    assert not Path(root).exists()

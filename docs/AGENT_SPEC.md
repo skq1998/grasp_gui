@@ -108,7 +108,7 @@ fixed order; the complete configuration is an optional extra and comes last:
 
 | Section / 部分 | JSON content / 内容 |
 |---|---|
-| Levels / 能级与主要成分 | Ordered result files; J, parity, index, Hartree, relative cm⁻¹, purity, top 3 jj components, LSJ labels |
+| Levels / 能级与主要成分 | Ordered result files; J, parity, index, Hartree, `zero_group`, relative cm⁻¹ within that Hamiltonian group, purity, top 3 jj components, LSJ labels |
 | Layer changes / 能级随层的变化 | Per-group (odd/even) matches by J, parity, index; Hartree and consecutive-layer differences in cm⁻¹ |
 | SCF convergence / SCF 收敛情况 | Log path, iteration count, last 3 iterations, `converged`; `sum`: final self-consistency and generalised occupation of every orbital from `name.sum`, `new` for orbitals added since the previous rmcdhf of the same group |
 | CSF counts / 各态的 CSF 数 | `.c` files, counts for each J/parity block / 各态每个 J、宇称块的 CSF 数 |
@@ -143,8 +143,14 @@ path in that source. A running or partial log remains inconclusive.
 Results use the indexed readers. Layers follow producer steps in the pipeline, **not filename sorting**.
 Missing levels are marked unmatched; matching by J/parity/index does not guarantee the same physical state
 through crossings. Repeated writes to the same result filename retain only its last producer; older values
-cannot be recovered. Files without a known producer are shown without inferring a group or layer. Relative
-energies use the lowest included energy as zero. Each symmetry block defaults to the first 5 levels
+cannot be recovered. Files without a known producer are shown without inferring a pipeline group or layer.
+Relative energies always use the lowest included energy **within each Hamiltonian group** as zero.
+Every level has `zero_group`; the first block's `relative_zero_hartree` is a group-name → Hartree-zero mapping,
+recomputed from the retained levels after summary trimming. Pipeline odd/even groups are separate from these
+Hamiltonian groups: matching settings share a zero across parities. `.m` is DC; `.cm` uses the matching `.csum`
+header's speed of light, Breit frequency factor, VP, NMS, SMS and SE flags. All-off rci belongs to DC.
+Missing/unreadable/malformed `.csum`, or one over 300 seconds older than its `.cm`, yields `unknown` and a warning;
+all unknown files share an explicitly uncertain zero. This does not establish that their Hamiltonians agree. Each symmetry block defaults to the first 5 levels
 (adjustable 1–200), with an explicit omitted count; partially written files are marked.
 
 The text limit is **200 KiB of UTF-8**. Leading components are omitted first, followed by earlier or
@@ -155,8 +161,12 @@ export the full configuration separately when needed.
 摘要整体是 Markdown，各部分用 JSON 代码块。首块含时间、省略清单、读入警告和证据边界。各步状态以最近可对应的记录
 为准：会话内记录核对参数指纹，后台存档仅能按唯一连续标题对应，会明确说明未核验参数；重启后不能恢复更早的运行历史，
 无记录标为 unknown。收敛 true/false/null 分别表示有据可判的收敛、未收敛、无法判断；读取日志仅保留最后三次迭代，
-不把正常退出直接当作收敛。层序取自流程，缺失标记不对应，同名覆盖无法恢复旧值，未关联文件不猜组别；能级交叉时仍需核验
-物理态身份。相对能量统一以已包含的最低能量为零。每块能级有省略计数，尚未写完的混合系数文件注明 partial。
+不把正常退出直接当作收敛。层序取自流程，缺失标记不对应，同名覆盖无法恢复旧值，未关联文件不猜流程组别；能级交叉时仍需核验
+物理态身份。相对能量始终在各哈密顿量组内，以已包含的最低能量为零；裁剪后按剩余能级重新计算。
+每行 `zero_group` 为哈密顿量组，首块 `relative_zero_hartree` 为“组名 → 零点总能量”的映射。
+哈密顿量组与流程中的偶/奇宇称组不同：相同设置跨宇称共用零点。`.m` 为 DC，`.cm` 从同名 `.csum` 读取光速、
+Breit 频率因子及 VP/NMS/SMS/SE 开关；全部关闭的 rci 属于 DC。
+`.csum` 缺失、不可读、损坏或比 `.cm` 早超过 300 秒时归入 unknown 并警告；未知文件共用一个不保证可比的零点。每块能级有省略计数，尚未写完的混合系数文件注明 partial。
 200 KiB 上限先省主要成分、再省较早或未关联结果，并列明；完整配置不截断，放不下时需少选内容或单独导出配置。
 
 ## Minimal example / 最小示例

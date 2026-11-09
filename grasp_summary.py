@@ -408,6 +408,9 @@ def collect(workdir, cfg, jobs, history=(), per_block=5, cancel=None, progress=N
             csf = mix.find_csf_for(str(path), cancel, progress)
             csfs = mix.open_csfs(csf, cancel, progress) if csf else None
             _, labels = mix.find_lsj_for(str(path), blocks)
+            hamiltonian = mix.hamiltonian(path)
+            if hamiltonian["zero_warning"]:
+                result["warnings"].append(dict(file=path.name, error=hamiltonian["zero_warning"]))
             rows = []
             for block in blocks:
                 selected = block.levels[:per_block]
@@ -416,6 +419,7 @@ def collect(workdir, cfg, jobs, history=(), per_block=5, cancel=None, progress=N
                 for lv in selected:
                     top = lv.top_components(3)
                     rows.append(dict(J=lv.J, parity=lv.parity, index=lv.pos, energy_hartree=lv.energy,
+                                     zero_group=hamiltonian["zero_group"],
                                      purity_percent=100 * top[0][1] ** 2 if top else None,
                                      components=[dict(csf=i, coefficient=c, weight=c*c,
                                                       configuration=texts.get(i - 1, (None, None))[0],
@@ -426,13 +430,18 @@ def collect(workdir, cfg, jobs, history=(), per_block=5, cancel=None, progress=N
                                          omitted_levels=sum(max(0, len(b.levels) - per_block) for b in blocks)))
         except (OSError, ValueError, IndexError, StopIteration, struct.error) as e:
             result["warnings"].append(dict(file=path.name, error=str(e)))
-    energies = [r["energy_hartree"] for layer in result["levels"] for r in layer["levels"]]
-    if energies:
-        minimum = min(energies)
-        for layer in result["levels"]:
-            for row in layer["levels"]:
-                row["relative_cm"] = (row["energy_hartree"] - minimum) * mix.HARTREE_CM
+    result["relative_zero_hartree"] = relative_levels(result["levels"])
     return result
+
+
+def relative_levels(layers):
+    """摘要裁剪后也按剩余能级重新计算各哈密顿量组的零点。"""
+    rows = [row for layer in layers for row in layer["levels"]]
+    zeros = mix.energy_zeros((row.get("zero_group", "unknown"), row["energy_hartree"]) for row in rows)
+    for row in rows:
+        group = row.setdefault("zero_group", "unknown")
+        row["relative_cm"] = (row["energy_hartree"] - zeros[group]) * mix.HARTREE_CM
+    return zeros
 
 
 def layer_changes(layers):
@@ -466,11 +475,7 @@ def render(data, sections=None, max_bytes=MAX_BYTES):
     omissions = []
 
     def text():
-        energies = [r["energy_hartree"] for layer in data["levels"] for r in layer["levels"]]
-        zero = min(energies) if energies else None
-        for layer in data["levels"]:
-            for row in layer["levels"]:
-                row["relative_cm"] = (row["energy_hartree"] - zero) * mix.HARTREE_CM
+        zero = relative_levels(data["levels"])
         lines = ["# GRASP GUI / " + T("结果摘要"), "",
                  "```json", json.dumps(dict(generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
                                              omissions=omissions, warnings=data["warnings"],

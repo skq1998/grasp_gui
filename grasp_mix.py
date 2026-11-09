@@ -13,15 +13,119 @@
 """
 
 import array
+from decimal import Decimal, DecimalException
 import os
+from pathlib import Path
 import re
+import stat
 import struct
 import sys
 
 import grasp_index as index
+from grasp_core import T
 
 HARTREE_CM = 219474.6313632     # 1 a.u. 能量 = 219474.63 cm⁻¹
 HARTREE_EV = 27.211386245988
+
+# compas/grasp 9006157: lib9290/setcon.f90:25；rci90/strsum.f90:96-114,172-175。
+DEFAULT_LIGHT_SPEED = Decimal("137.035999139")
+NUMBER = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[DEde][+-]?\d+)?"
+
+
+def unknown_hamiltonian():
+    return dict(zero_group="unknown", zero_warning=T("无法确定哈密顿量，零点可能不可比"))
+
+
+def parse_hamiltonian(text):
+    """只接受 serial/MPI strsum 写出的完整物理项段，未知或截断的段不猜成 DC。"""
+    speeds = list(re.finditer(r"Speed of light\s*=\s*(" + NUMBER + r")\s+atomic units\.", text))
+    if len(speeds) != 1:
+        raise ValueError("missing or ambiguous speed of light")
+    speed = Decimal(speeds[0][1].replace("D", "E").replace("d", "e")).normalize()
+    if not speed.is_finite() or speed <= 0:
+        raise ValueError("invalid speed of light")
+    rest = text[speeds[0].end():]
+    if "Radial grid:" not in rest:
+        raise ValueError("incomplete Hamiltonian header")
+    effects = " ".join(rest.split("Radial grid:", 1)[0].split())
+    self_energy = ("Diagonal contributions from H (Self Energy) will be estimated "
+                   "from a screened hydrogenic approximation.")
+    se = effects.endswith(self_energy)
+    if se:
+        effects = effects[:-len(self_energy)].strip()
+    terms, frequency = set(), None
+    if effects != "H (Dirac Coulomb) will be diagonalised by itself.":
+        prefix, suffix = "To H (Dirac Coulomb) is added ", " the total will be diagonalised."
+        if not effects.startswith(prefix) or not effects.endswith(suffix):
+            raise ValueError("invalid Hamiltonian terms")
+        added = effects[len(prefix):-len(suffix)]
+        if not added.endswith(";"):
+            raise ValueError("incomplete Hamiltonian terms")
+        names = {"H (Vacuum Polarisation)": "VP", "H (Normal Mass Shift)": "NMS",
+                 "H (Specific Mass Shift)": "SMS"}
+        for piece in added[:-1].split(";"):
+            piece = piece.strip()
+            breit = re.fullmatch(r"H \(Transverse\) --- factor multiplying the photon frequency: (" + NUMBER + ")",
+                                 piece)
+            if breit:
+                name = "Breit"
+                frequency = Decimal(breit[1].replace("D", "E").replace("d", "e")).normalize()
+                if not frequency.is_finite():
+                    raise ValueError("invalid Breit frequency")
+            else:
+                name = names.get(piece)
+            if name is None or name in terms:
+                raise ValueError("unknown or repeated Hamiltonian term")
+            terms.add(name)
+    if se:
+        terms.add("SE")
+    labels = ["DC"]
+    for name in ("Breit", "VP", "NMS", "SMS", "SE"):
+        if name in terms:
+            labels.append(f"Breit(f={frequency})" if name == "Breit" and frequency != 1 else name)
+    group = "+".join(labels)
+    if speed != DEFAULT_LIGHT_SPEED:
+        group += f"(c={speed})"
+    return dict(zero_group=group, zero_warning="")
+
+
+def hamiltonian(path, path_check=None):
+    """从同名 .csum 读取哈密顿量；.m/rmix.out 属于纯 DC，不依赖流程记录。"""
+    path = Path(path)
+    if path.suffix == ".m" or path.name == "rmix.out":
+        return dict(zero_group="DC", zero_warning="")
+    if path.suffix != ".cm":
+        return unknown_hamiltonian()
+    summary = path.with_suffix(".csum")
+    try:
+        if path_check:
+            summary = Path(path_check(str(summary)))
+        before = summary.stat()
+        if not stat.S_ISREG(before.st_mode) or path.stat().st_mtime - before.st_mtime > 300:
+            return unknown_hamiltonian()
+        # 只读文件头；大文件不读入内存，特殊文件不阻塞查看器。
+        fd = os.open(summary, os.O_RDONLY | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                return unknown_hamiltonian()
+            text = stream.read(256 * 1024).decode("ascii")
+        after = summary.stat()
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            return unknown_hamiltonian()
+        return parse_hamiltonian(text)
+    except (OSError, ValueError, DecimalException):
+        return unknown_hamiltonian()
+
+
+def energy_zeros(values, unified=False):
+    """(哈密顿量组名, 总能量) -> 各组零点；显式统一模式保留原来的全局最低值。"""
+    zeros = {}
+    for group, energy in values:
+        zeros[group] = min(zeros.get(group, energy), energy)
+    if unified and zeros:
+        lowest = min(zeros.values())
+        return {group: lowest for group in zeros}
+    return zeros
 
 
 class Level:
@@ -581,6 +685,7 @@ def load_result_files(paths, limit, directory=None, cancel=None, progress=None):
         try:
             saved = index.stamp(path)
             blocks = open_mix(path, summary=True, cancel=cancel, progress=progress, k=limit)
+            blocks.hamiltonian = hamiltonian(path)
             csf_path = find_csf_for(path, cancel, progress)
             csfs, csf_saved = None, None
             if csf_path:

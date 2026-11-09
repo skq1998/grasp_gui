@@ -22,24 +22,26 @@ def render(service, kind, directory, files=None, limit=200, output=None):
     root = service.directory_files(directory)
     width, height = 1200, 800
     if kind == "plot_levels":
-        from level_panel import LevelDiagram, PARITY_COLORS
+        from level_panel import LevelDiagram, PARITY_COLORS, energy_axis
         import grasp_mix as mix
 
         rows = service.levels(directory, files, limit)["levels"]
         if not rows:
             raise ValueError(T("没有可绘制的能级"))
-        e0 = min(r["energy_hartree"] for r in rows)
+        zeros = mix.energy_zeros((row["zero_group"], row["energy_hartree"]) for row in rows)
         columns = {}
         for row in rows:
+            e0 = zeros[row["zero_group"]]
             group = row["file"], row["block"]
             title = row["J"] + ("+" if row["parity"] > 0 else "−")
             col = columns.setdefault(group, dict(file=row["file"], title=title, levels=[]))
             key = row["file"], row["block"], row["index"]
             col["levels"].append(dict(key=key, y=(row["energy_hartree"] - e0) * mix.HARTREE_CM,
-                                      label=str(row["index"]), color=PARITY_COLORS[row["parity"]], info=""))
+                                      label=str(row["index"]), color=PARITY_COLORS[row["parity"]],
+                                      info=T("计算组：{group}", group=row["zero_group"])))
         widget = LevelDiagram()
         widget.resize(width, height)
-        widget.set_columns(list(columns.values()), "cm⁻¹")
+        widget.set_columns(list(columns.values()), "cm⁻¹", energy_axis("cm⁻¹"))
         draw = lambda painter: widget.draw(painter, width, height)
     else:
         from wfn_panel import PlotWidget
