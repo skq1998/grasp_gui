@@ -208,6 +208,8 @@ class MainWindow(QMainWindow):
         if self.calc is None:
             self.calc = CalcPanel(self.run, self.cur_workdir)
             self.calc.message.connect(self.statusBar().showMessage)
+            self.calc.copyChanged.connect(lambda text: self.setWindowTitle(T("GRASP 图形界面") +
+                                          (" · " + text if text else "")))
             # 运行进度放在常驻标签中：其他页的消息和菜单提示只替换左侧的临时消息
             self.progress_label = QLabel()
             self.statusBar().addPermanentWidget(self.progress_label)

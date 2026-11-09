@@ -39,7 +39,7 @@ def check_files(workdir, jobs, start=0, run=None, offset=0, path_check=None):
     root = Path(workdir) if workdir is not None else None
     available, removed, origins = set(), set(), {}
     missing, skipped, invalid = [], [], []
-    names = {p.name for p in root.iterdir() if p.is_file()} if root is not None else set()
+    names = {p.name for p in root.iterdir() if p.is_file()} if root is not None and root.is_dir() else set()
     reported = set()
 
     def require(name, number, title, errors):
@@ -179,6 +179,11 @@ def run_status(jobs, workdir, history=()):
     keys = [job_key(j) for j in jobs]
     records = []
     state = bg.status(workdir)
+    import grasp_slurm
+    if grasp_slurm.status(workdir, state):
+        for row in rows:
+            row["basis"] = T("Slurm 作业只记录调度状态，不能据此判定每步计算成功")
+        return rows
     if state:
         titles = state.get("titles", [])
         current = [j.get("title", "") for j in jobs]

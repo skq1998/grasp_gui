@@ -16,6 +16,11 @@ GRASP2018 的图形界面：在表单中填写各程序的参数，界面自动�
 [MCP service / MCP 服务](docs/MCP.md)：headless local/SSH access, **off by default / 默认关闭**。
 
 [SSH remote access / SSH 远程连接](docs/REMOTE.md)：analyse results on the server, view and control runs on your desktop / 服务器分析结果，桌面查看与启停；可通过系统 rsync 显式上传/下载选中的文件（默认排除大文件）。
+
+Remote hosts can be classified as workstations (background runs) or Slurm clusters (submit, monitor and cancel
+batch jobs). / 远程主机可分类为工作站（后台直跑）或 Slurm 集群（批作业提交、状态查询与取消）。
+Edit a fetched server pipeline with the normal local forms, or upload a new local calculation; revision checks
+protect remote updates. / 可取出服务器流程到本机编辑，或上传新计算；按修订号检查冲突，再确认上传与运行。
 Selected files can be uploaded/downloaded with system rsync; large files are excluded by default.
 
 ## Screenshots / 截图

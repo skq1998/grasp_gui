@@ -10,6 +10,7 @@ import grasp_config as config
 import grasp_core as core
 import grasp_session as sessions
 import grasp_summary as summary
+import grasp_slurm as slurm
 import grasp_workdir as work
 from grasp_core import T
 
@@ -206,19 +207,49 @@ class Service:
         path = self.path(str(root / bg.RUN_STATE))
         if path.exists() and not path.is_file():
             raise ValueError(T("工作目录记录的格式有误"))
-        return dict(state=bg.status(str(root)))
+        background = bg.status(str(root))
+        return dict(state=slurm.status(root, background) or background)
+
+    def log_path(self, directory, state=None):
+        root = self.path(directory, directory=True)
+        state = self.status(directory)["state"] if state is None else state
+        name = root / bg.RUN_LOG
+        if (state or {}).get("backend") == "slurm":
+            if state.get("record_invalid"):
+                return root / (".grasp_gui_slurm_" + state["record_revision"] + ".log")
+            record = slurm.read(root)
+            if record is None:
+                raise ValueError(T("Slurm 作业记录无效"))
+            name = slurm.log_file(root, record)
+        self.path(str(name))
+        if name.is_symlink():
+            raise ValueError(T("工作目录记录不能是符号链接"))
+        return name
 
     def tail_log(self, directory, lines=100):
         root = self.path(directory, directory=True)
-        path = self.path(str(root / bg.RUN_LOG))
+        path = self.log_path(directory)
         if path.exists() and not path.is_file():
             raise ValueError(T("工作目录记录的格式有误"))
-        text = bg.log_tail(str(root), min(lines, 1000))
+        text = ""
+        if path.name == bg.RUN_LOG:
+            text = bg.log_tail(str(root), min(lines, 1000))
+        elif path.exists():
+            with path.open("rb") as stream:
+                stream.seek(0, 2)
+                stream.seek(max(0, stream.tell() - MAX_TEXT))
+                text = "\n".join(stream.read().decode("utf-8", "replace").splitlines()[-min(lines, 1000):])
         return dict(text=text[-MAX_TEXT:], truncated=len(text) > MAX_TEXT)
+
+    def clear_slurm_record(self, directory, revision, confirmed=False):
+        root = self.path(directory, directory=True)
+        return slurm.clear(root, revision, confirmed)
 
     def stop(self, directory):
         root = self.path(directory, directory=True)
         st = self.status(directory)["state"]
+        if (st or {}).get("backend") == "slurm":
+            return slurm.cancel(root)
         if st and st.get("remote") and st.get("status") == "running":
             raise ValueError(T("计算在另一台机器上运行，请在那台机器上停止"))
         connection = bg.connect(str(root))

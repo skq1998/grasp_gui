@@ -19,7 +19,7 @@ CJK = re.compile(r"[一-鿿]")
 STDLIB_ONLY = ["grasp_core", "grasp_config", "grasp_bg", "grasp_wfn", "grasp_mix", "grasp_trans",
                "grasp_index", "grasp_workdir", "grasp_session", "grasp_service", "grasp_mcp", "grasp_render",
                "grasp_remote", "grasp_ssh", "grasp_askpass", "grasp_summary", "grasp_server", "grasp_transfer",
-               "grasp_install"]
+               "grasp_install", "grasp_slurm", "grasp_remote_edit"]
 
 
 def t_literals():

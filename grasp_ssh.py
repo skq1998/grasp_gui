@@ -26,7 +26,7 @@ class ServerUnavailable(ConnectionError):
 
 
 class UnknownOutcome(ConnectionError):
-    """连接丢失后不能自动重发启动/停止；用户先核对重新查询的状态。"""
+    """连接丢失后不能自动重发修改请求；用户先核对重新查询的状态。"""
 
 
 def hosts(path=None, seen=None):
@@ -313,6 +313,10 @@ class Client:
             else:
                 if not item["future"].done():
                     item["future"].set_exception(UnknownOutcome(
+                        T("清除记录的结果无法确认；重连后请先核对状态，不要直接重复操作")
+                        if item["method"] == "clear_slurm_record" else
+                        T("写入结果未确认；先读取服务器流程核对，不能重发。")
+                        if item["method"] in ("create_workdir", "update_workdir") else
                         T("启动或停止的结果无法确认；重连后请先核对状态，不要直接重复操作")))
                 uncertain.add(item["args"].get("directory"))
         self.pending.clear()
@@ -365,8 +369,12 @@ class Client:
                     except queue.Empty:
                         now = time.monotonic()
                         for item in self.pending.values():
-                            base = 180 if item["method"] in (
-                                "view", "levels", "composition", "wavefunctions", "summary", "transfer_files") else 30
+                            # Slurm 调度器可比分析请求更慢，不能先于服务器的 sbatch 超时断线。
+                            slow = item["method"] in ("view", "levels", "composition", "wavefunctions", "summary",
+                                "transfer_files", "watch", "run_status", "stop", "clear_slurm_record",
+                                "get_pipeline", "preview_upload", "create_workdir", "update_workdir")
+                            slow |= item["method"] == "run" and item["args"].get("server_type") == "slurm"
+                            base = 180 if slow else 30
                             if now - item["sent"] > base + 20 * self.rtt:
                                 raise TimeoutError(T("远程请求超时，正在重新连接"))
                         continue

@@ -13,6 +13,7 @@ import grasp_bg as bg
 import grasp_config as config
 import grasp_core as core
 import grasp_session as sessions
+import grasp_slurm as slurm
 from grasp_core import T
 
 BACKUPS = 5
@@ -20,6 +21,9 @@ BACKUPS = 5
 
 def idle(workdir):
     state = bg.status(workdir)
+    scheduled = slurm.status(workdir, state)
+    if scheduled and scheduled.get("active", True):
+        raise ValueError(T("已有 Slurm 作业或提交结果未确认，请先核对状态。"))
     if state and state.get("status") == "running":
         raise ValueError(T("已有任务在运行，请等待或先停止。"))
     connection = bg.connect(workdir)

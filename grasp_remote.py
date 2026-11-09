@@ -1,14 +1,16 @@
-"""SSH stdio 服务：仅传结构化分析结果，无 Qt、监听端口或出站网络。"""
+"""SSH stdio 服务：结构化分析和任务控制；无 Qt 或监听端口，Slurm 调度调用系统客户端。"""
 
 import argparse
 import base64
 import codecs
+import fnmatch
 import inspect
 import json
 import os
 from pathlib import Path
 import pwd
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -28,7 +30,8 @@ MAX_FRAME = 32 << 20
 COMPRESS_AT = 16384
 READ_ONLY = {"hello", "list_dir", "levels", "transitions", "orbitals", "wavefunctions", "composition",
              "run_status", "tail_log", "pipeline", "run_plan", "export_script", "view", "watch", "summary",
-             "transfer_files"}
+             "transfer_files", "get_pipeline", "preview_upload"}
+MUTATIONS = {"run", "stop", "clear_slurm_record", "create_workdir", "update_workdir"}
 
 
 def pack(data):
@@ -78,7 +81,73 @@ class Operations(service.Service):
         executable = os.environ.get("GRASP_GUI_REMOTE_EXECUTABLE") or (
             sys.executable if getattr(sys, "frozen", False) else sys.argv[0])
         return dict(protocol=PROTOCOL, version=core.VERSION, executable=os.path.abspath(executable),
-                    home=str(Path.home()))
+                    home=str(Path.home()), server_types=["workstation", "slurm"], capabilities=["workdir_write_v1"])
+
+    def get_pipeline(self, directory):
+        root, data, revision = self.record(directory)
+        with sessions.locked(root):
+            root, data, revision = self.record(directory)
+            files, warnings, size = [], [], 0
+            for name in sorted(config.load_inputs(str(root)) or []):
+                path = self.path(str(root / name))
+                try:
+                    if (root / name).is_symlink():
+                        raise ValueError(T("工作目录记录不能是符号链接"))
+                    text = config.read_text_file(path)
+                    size += len(text.encode())
+                    if size > config.MAX_FILES_TOTAL:
+                        raise ValueError(T("附带输入文件超过总大小限制"))
+                    files.append(dict(name=name, text=text))
+                except (OSError, ValueError) as error:
+                    warnings.append(dict(file=name, error=str(error)))
+            cfg = config.export(data.get("pipeline", []), dict(title=root.name))
+            if files:
+                cfg["files"] = files
+            return dict(directory=str(root), revision=revision, config=cfg, warnings=warnings)
+
+    def create_workdir(self, directory, configuration, allow_custom=False):
+        if type(allow_custom) is not bool:
+            raise ValueError("confirmation must be boolean")
+        root = self.path(directory)
+        return service.Service("/", allow_custom=allow_custom).create_workdir(str(root), configuration)
+
+    def update_workdir(self, directory, revision, configuration, allow_custom=False):
+        if type(allow_custom) is not bool:
+            raise ValueError("confirmation must be boolean")
+        root = self.path(directory, directory=True)
+        return service.Service("/", allow_custom=allow_custom).update_workdir(str(root), revision, configuration)
+
+    def preview_upload(self, directory, configuration, revision=None, uploads=None):
+        import grasp_summary as summary
+        import grasp_transfer as transfer
+        import grasp_workdir as work
+        cfg, warnings = config.check(configuration)
+        root = self.path(directory)
+        names = [] if uploads is None else uploads
+        if not isinstance(names, list) or len(names) > 50000:
+            raise ValueError("invalid upload names")
+        names = [transfer.relative(name) for name in names]
+        with sessions.locked(root):
+            if revision is None:
+                if root.exists() and (not root.is_dir() or any(root.iterdir())):
+                    raise ValueError(T("目标目录不是空的；已有流程请先在本机取出编辑。"))
+                work.idle(root)
+                changes, kept = T("新建服务器流程：{n} 步", n=len(cfg["jobs"])), []
+            else:
+                if self.record(str(root))[2] != revision:
+                    raise sessions.Conflict(T("服务器流程已改变，请重新取出；可先导出本机修改。"))
+                plan = work.prepare_update(root, cfg)
+                changes = plan["text"]
+                kept = [f["name"] for f in plan["files"] if f["kind"] == "conflict"]
+            transfer.safe_targets(root, names)
+            checked = summary.check_files(str(root), cfg["jobs"], run=core.saved_run_settings(), path_check=self.path)
+            planned = names + [f["name"] for f in cfg.get("files", [])]
+            pending = [row for row in checked["missing"] if any(fnmatch.fnmatchcase(n, row["file"]) for n in planned)]
+            checked["missing"] = [row for row in checked["missing"] if row not in pending]
+            checked.update(pending=pending, issues=checked["invalid"] + checked["missing"])
+            return dict(directory=str(root), revision=revision, changes=changes, kept_files=kept, checked=checked,
+                        custom_commands=config.custom_commands(cfg), warnings=warnings,
+                        existing=[n for n in names if (root / n).exists()])
 
     def list_dir(self, directory):
         root = self.path(directory, directory=True)
@@ -136,9 +205,16 @@ class Operations(service.Service):
     def run_status(self, directory):
         return self.status(directory)
 
-    def run_plan(self, directory):
+    def run_plan(self, directory, server_type="workstation"):
         _, data, revision = self.record(directory)
         cfg = config.export(data.get("pipeline", []), {})
+        if server_type == "slurm":
+            settings = dict(core.SLURM_DEFAULTS, **core.load_config().get("slurm", {}))
+            settings["bindir"] = core.default_bindir()
+            return dict(revision=revision, custom_commands=config.custom_commands(cfg), server_type="slurm",
+                        slurm=settings, logout_kills=False, lingering=False)
+        if server_type != "workstation":
+            raise ValueError("invalid server type")
         linger = False
         try:
             result = subprocess.run(["loginctl", "show-user", pwd.getpwuid(os.getuid()).pw_name,
@@ -148,9 +224,10 @@ class Operations(service.Service):
         except (OSError, subprocess.SubprocessError):
             pass  # 无 systemd 的服务器不提供 scope 选项，仍可按普通方式运行。
         return dict(revision=revision, custom_commands=config.custom_commands(cfg),
-                    logout_kills=bg.logout_kills(), lingering=linger)
+                    logout_kills=bg.logout_kills(), lingering=linger, run_settings=core.saved_run_settings())
 
-    def run(self, directory, revision, start=1, allow_custom=False, user_scope=False, accept_logout=False):
+    def run(self, directory, revision, start=1, allow_custom=False, user_scope=False, accept_logout=False,
+            server_type="workstation", slurm=None):
         for flag in (allow_custom, user_scope, accept_logout):
             if type(flag) is not bool:
                 raise ValueError("confirmation must be boolean")
@@ -159,6 +236,43 @@ class Operations(service.Service):
         with sessions.locked(root):
             if self.record(directory)[2] != revision:
                 raise sessions.Conflict(T("工作目录记录已被其他程序修改，请重新载入"))
+            if server_type == "slurm":
+                import grasp_slurm
+                import grasp_workdir
+                import grasp_summary
+                _, data, _ = self.record(directory)
+                jobs = data.get("pipeline", [])
+                if not 1 <= start <= len(jobs) or not isinstance(slurm, dict):
+                    raise ValueError("invalid Slurm submission")
+                cfg = config.export(jobs, {}, validate=False)
+                service.Service("/", allow_custom=allow_custom).custom(cfg)
+                settings = {k: str(slurm.get(k, v)).strip() for k, v in core.SLURM_DEFAULTS.items()}
+                # 该入口只提交单个普通作业；数组会改变取消和状态归属，不能悄悄当成单作业。
+                if re.search(r"(?:^|\s)(?:-*array(?:=|\s)|-a(?:\d|\s|=))", settings["extra"]):
+                    raise ValueError(T("此处不支持 Slurm 作业数组"))
+                if not all(re.fullmatch(r"[1-9][0-9]*", settings[k]) for k in ("nodes", "ntasks")):
+                    raise ValueError(T("Slurm 节点数和每节点进程数必须为正整数"))
+                count = int(settings["nodes"]) * int(settings["ntasks"])
+                if count > 100000:
+                    raise ValueError(T("Slurm 总进程数不能超过 100000"))
+                temporary = settings["mpitmp"] or "$SLURM_SUBMIT_DIR/tmp_mpi"
+                variables = dict(SLURM_SUBMIT_DIR=str(root), HOME=str(Path.home()))
+                temporary = re.sub(r"\$\{(SLURM_SUBMIT_DIR|HOME)\}|\$(SLURM_SUBMIT_DIR|HOME)(?![A-Za-z0-9_])",
+                                   lambda match: variables[match[1] or match[2]], temporary)
+                if temporary.startswith("~/"):
+                    temporary = str(Path.home() / temporary[2:])
+                run = dict(bindir=settings["bindir"], np=count if settings["mpirun"] else 1,
+                           mpi=bool(settings["mpirun"]), mpitmp=temporary, nice=False)
+                checked = grasp_summary.check_files(str(root), cfg["jobs"], start=start - 1,
+                                                     run=run, path_check=self.path)
+                if checked["invalid"] or checked["missing"]:
+                    raise service.PreflightError(checked)
+                grasp_workdir.idle(root)
+                selected = [config.make_job(j) for j in cfg["jobs"][start - 1:]]
+                script = grasp_slurm.batch_script(selected, settings)
+                return grasp_slurm.submit(root, script, bg.status(str(root)))
+            if server_type != "workstation" or slurm is not None:
+                raise ValueError("invalid server type")
             plan = self.run_plan(directory)
             if user_scope and not plan["lingering"]:
                 raise ValueError(T("服务器未开启 lingering，不能使用用户 scope"))
@@ -281,7 +395,8 @@ class Server:
 
     def watch(self, directory):
         root = self.operation.path(directory, directory=True)
-        path = root / bg.RUN_LOG
+        state = self.operation.status(directory)["state"]
+        path = self.operation.log_path(directory, state)
         offset, inode, text = 0, None, ""
         if path.is_file():
             with path.open("rb") as f:
@@ -291,9 +406,9 @@ class Server:
                 f.seek(max(0, offset - service.MAX_TEXT))
                 text = f.read(offset - f.tell()).decode("utf-8", "replace")
                 text = "".join(text.splitlines(keepends=True)[-100:])
-        state = self.operation.status(directory)["state"]
         self.watching = dict(directory=directory, offset=offset, state=state,
-                             run=((state or {}).get("start"), (state or {}).get("pid")), inode=inode,
+                             run=((state or {}).get("start"), (state or {}).get("pid"),
+                                  (state or {}).get("job_id")), inode=inode,
                              decoder=codecs.getincrementaldecoder("utf-8")("replace"))
         return dict(state=state, text=text, truncated=offset > service.MAX_TEXT)
 
@@ -304,14 +419,14 @@ class Server:
                 continue
             try:
                 state = self.operation.status(item["directory"])["state"]
-                identity = (state or {}).get("start"), (state or {}).get("pid")
+                identity = (state or {}).get("start"), (state or {}).get("pid"), (state or {}).get("job_id")
                 new_run = identity != item["run"]
                 if state != item["state"]:
                     if new_run:
                         item["offset"] = 0
                     item["run"], item["state"] = identity, state
                     self.send(dict(event="state", directory=item["directory"], state=state))
-                path = self.operation.path(str(Path(item["directory"]) / bg.RUN_LOG))
+                path = self.operation.log_path(item["directory"], state)
                 if not path.is_file():
                     continue
                 st = path.stat()
@@ -339,7 +454,7 @@ class Server:
             ident = request.get("id")
             try:
                 method, args = request["method"], request.get("args", {})
-                if method not in READ_ONLY | {"run", "stop"} or not isinstance(args, dict):
+                if method not in READ_ONLY | MUTATIONS or not isinstance(args, dict):
                     raise ValueError("unsupported remote method or arguments")
                 if type(ident) not in (int, str):
                     raise ValueError("invalid request id")
@@ -350,7 +465,7 @@ class Server:
                 if method == "view":
                     args = dict(args, emit=lambda value: self.send(dict(event="progress", id=ident, **value)))
                 inspect.signature(function).bind(**args)
-                if method in ("run", "stop"):
+                if method in MUTATIONS:
                     with self.mutations:
                         result = function(**args)
                 else:

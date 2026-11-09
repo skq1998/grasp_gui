@@ -25,6 +25,7 @@ import sys
 import tempfile
 
 import grasp_core as core
+import grasp_session as sessions
 from grasp_core import T
 
 FORMAT = "grasp-gui-config"
@@ -284,6 +285,11 @@ def save_inputs(workdir, names):
 
 def install(cfg, workdir):
     """在 workdir (不存在或为空) 中写入附带文件和目录记录；目录非空时抛出 FileExistsError。"""
+    with sessions.locked(workdir):
+        return _install(cfg, workdir)
+
+
+def _install(cfg, workdir):
     cfg, _ = check(cfg)
     if os.path.isdir(workdir) and os.listdir(workdir):
         raise FileExistsError(T("目录不是空的：{p}", p=workdir))

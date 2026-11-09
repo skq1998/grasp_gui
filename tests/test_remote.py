@@ -238,7 +238,7 @@ def test_user_scope_requires_explicit_logout_choice(tmp_path, monkeypatch):
     assert command[0][1]["stdin"] == subprocess.DEVNULL
 
 
-@pytest.mark.parametrize("method", ["list_dir", "run"])
+@pytest.mark.parametrize("method", ["list_dir", "run", "clear_slurm_record", "create_workdir", "update_workdir"])
 def test_disconnect_retries_only_reads_and_bounds_reconnects(tmp_path, method):
     marker = tmp_path / "called"
     code = "\n".join([
@@ -258,7 +258,7 @@ def test_disconnect_retries_only_reads_and_bounds_reconnects(tmp_path, method):
                         cache=ssh.Cache(method, root=tmp_path / "cache"))
     try:
         future = client.request(method, dict(directory=str(tmp_path)))
-        if method == "run":
+        if method != "list_dir":
             with pytest.raises(ssh.UnknownOutcome):
                 future.result(timeout=15)
             assert client.request("run_status", dict(directory=str(tmp_path))).result(timeout=15)["state"] is None
