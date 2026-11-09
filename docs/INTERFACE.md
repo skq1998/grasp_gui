@@ -80,7 +80,12 @@ MCP 打开时，打开该来源的计算会在输出区显示来源；关闭时�
 **File → Connect to server… (文件 → 连接服务器…)** opens an SSH dialog: editable aliases from ssh_config,
 server executable (default discovery or full path), directory, Connect/refresh, Parent directory, file metadata,
 and Use this directory. Double-click directories to browse. Host-specific executable/directory preferences persist;
-credentials do not. Errors show the server diagnostic and manual installation guidance. Password/verification-code
+credentials do not.
+**Server type (服务器类型)** selects Workstation (existing background execution) or Slurm cluster (batch submission,
+scheduler state and cancellation); it is saved per host. Unclassified profiles require an explicit choice; the dialog
+explains that login nodes should not run calculations directly. Slurm needs
+a supporting server build; selecting it against an older build asks the user to update instead of running directly.
+Errors show the server diagnostic and manual installation guidance. Password/verification-code
 prompts use OpenSSH ASKPASS; old OpenSSH supports keys only. First-contact host-key confirmation shows the full
 prompt/fingerprint with a visible input field and a verification reminder; passwords remain hidden. Hardware-key
 notifications have no input or reply and close when ssh finishes the operation. Details and installation: [REMOTE.md](REMOTE.md).
@@ -98,6 +103,32 @@ Results summary on the remote Levels tab uses the same dialog, with server-gener
 state. Changing sections/level count requests a new summary. The dialog title shows the source; save chooses a
 local file, starting in the desktop home directory. Cancel/older responses do not alter the clipboard or preview.
 Closing the remote window closes its viewers and connection; it does not stop a background calculation.
+
+For Slurm, **Submit Slurm job (提交 Slurm 作业)** reviews resource settings and asks for default-No confirmation.
+The state shows the job ID and scheduler state; pending/running/unknown jobs disable submission. Stop uses
+scancel only after verifying the saved job identity. The log belongs to that submission and reopens on a new
+desktop connection. Missing queue/accounting information stays Unknown; it never becomes Completed merely
+because the login-node process is absent. Resource settings persist per host; job identity persists on the server.
+Lost submission replies recover by the saved queue comment. When accounting is unavailable after leaving the
+queue, an atomic EXIT marker may establish script exit (`BATCH_EXITED`). After successful scancel,
+a saved cancellation request plus a 130/143 exit marker displays Cancelled without accounting;
+other failures and successful completion retain their own states. The request alone is not a terminal result.
+Unknown/malformed records expose **I have checked; clear this job record…**: default-No confirmation,
+a fresh server queue check and revision check,
+then archival, with logs/scripts retained. Clearing does not cancel a job or establish success. Failed checks leave
+the record unchanged. Valid records copied from a different directory are ignored in the copy.
+选择“工作站”沿用后台直跑；选择“Slurm 集群”后通过资源设置及默认否确认提交 sbatch，按作业 ID 查询调度状态，
+停止调用 scancel。排队、运行或状态未知时禁止重复提交；更换电脑或登录节点后，打开同一集群的原目录可恢复状态和日志。
+类型和资源偏好按主机保存在本机，作业记录保存在服务器。调度状态不表示每步物理计算均成功。
+**Edit locally… (在本机编辑…)** fetches the shared pipeline and revision into a local working directory, defaulting
+to the same `~/grasp_calcs/remote/<host>/<directory>/` location as downloads. An unrelated nonempty local directory
+is refused. Re-fetching the same copy asks default-No before replacing pipeline edits; local input conflicts remain.
+The main window opens its original Calculation tab, with a persistent Server copy host:/path label and title.
+Old servers without `workdir_write_v1` show an update instruction and receive no write requests.
+远程“在本机编辑…”取出流程、附带小输入和修订号，用本机原计算页编辑；不提供第二套远程表单或新标签页。
+无作业号时按队列 comment 找回；离队且无记账时可用 EXIT 标记判定脚本退出。未知/损坏状态显示“我已核对，清除此作业记录…”，
+默认否确认后由服务器重查队列和记录修订号，通过后归档原记录，保留日志与脚本。清除不取消任务，也不代表计算成功。
+路径不匹配的有效记录不属于当前目录，不影响副本使用。新连接提示说明集群登录节点不宜直接运行计算。
 
 “连接服务器”对话框可选 SSH 别名或手输 user@host、设置程序完整路径、浏览目录；成功使用目录后保存每台主机的
 程序位置与目录，不保存密码。连接失败显示原始诊断和手动安装提示。远程窗口及独立查看器显示服务器来源，计算流程
@@ -589,6 +620,27 @@ cannot handle paths longer than 128 characters; the GUI then falls back to the s
   occupations they are replaced by the abbreviation, with a live preview. Core orbitals of the CSF file count.
 * **CSV**: UTF-8, NIST-style configurations (`[Ne]3s.3p`) and terms (`1P*`).
 
+### Upload local pipeline / 上传本机流程
+
+The pipeline run-button group also contains **Upload to server… (上传到服务器…)** and **Upload and run…
+(上传并运行…)**. Unlinked directories select a host and a new/empty target using the connection browser plus
+an editable target field. Linked copies reconnect to their saved host/directory. The upload dialog reuses the
+rsync file table, threshold and progress. Small inputs default on; generated outputs, large files, internal
+records and server-existing names default off/excluded. Existing server files are retained in this workflow.
+
+The dialog previews server changes/input checks before its default-No confirmation; custom commands have a
+separate default-No confirmation. It saves the record before transferring files. Failed transfer keeps the record
+and association and offers retry; the next attempt checks the current server revision again. Upload and run
+opens the remote window and invokes its ordinary run-confirmation flow after the pipeline loads, once only.
+Conflict offers **Fetch server pipeline again**; users can export local edits first. **Unlink local copy…**
+asks default-No, changes only desktop preferences, and never deletes server data.
+
+本机计算页流程运行按钮旁增加“上传到服务器…”和“上传并运行…”。新目录先选主机和新建/空目标；关联副本沿用主机与路径。
+确认前显示服务器预览、选中的输入、待上传/缺失与冲突文件；默认否，自定义命令单独确认。先写记录再传输入，同名服务器文件保留。
+失败后提示补传，不删记录。丢失回答先核对：配置一致则关联；旧修订号未变或新建目标经检查仍为空时，提示“写入未执行，
+可以再次确认上传”，保留本机修改，等待用户重新确认。其他变化仍提示冲突；绝不自动重发写入。
+副本常驻来源标识，本机缺少输入标明“由服务器检查”；本机直接运行另有默认否确认。
+
 ## Saved state / 保存的内容
 
 | Where | What |
@@ -598,6 +650,11 @@ cannot handle paths longer than 128 characters; the GUI then falls back to the s
 | `<workdir>/.grasp_gui.json.bak-<timestamp>` | original session records before updating/restoring; latest five retained / 更新及恢复前的记录备份，保留五份 |
 | `<workdir>/.grasp_gui_inputs.json` | validated attached-input basenames for cleanup after restarting / 附带输入基名清单，重启后清理仍会保留这些输入 |
 | `<workdir>/.grasp_gui_run.json`, `.grasp_gui_run.log` | state and output of the last run (background runs) |
+| `<workdir>/.grasp_gui_slurm.json` | Slurm submission identity, job ID and returned cluster; restored across desktop connections |
+| `<workdir>/.grasp_gui_slurm_<token>.sh`, `.log` | preserved batch script and its Slurm output |
+| `<workdir>/.grasp_gui_slurm_<token>.done` | atomic token/job ID/exit-status marker; optional for older version-1 submissions |
+| `<workdir>/.grasp_gui_slurm.json.cleared.<id>` | archived original bytes after confirmed queue/revision checks |
+| `~/.config/grasp_gui.json` → `remote_copies` | local path → host, remote directory, revision; pending write fingerprint for reconnect verification |
 | `<workdir>/.grasp_gui/tr/` | cached transition calculations |
 | `<workdir>/.grasp_gui/marked.json` | transitions drawn as arrows |
 

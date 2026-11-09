@@ -4,7 +4,7 @@ from pathlib import Path
 import queue
 import threading
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QMessageBox, QProgressBar, QSpinBox, QTableWidget,
                                QTableWidgetItem, QVBoxLayout)
@@ -16,6 +16,8 @@ from gui_common import button
 
 
 class TransferDialog(QDialog):
+    transferred = Signal(object)
+    transferFailed = Signal(str)
     def __init__(self, source, directory, local=None, names=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(T("从本机上传…") if local is not None else T("下载到本机…"))
@@ -192,6 +194,10 @@ class TransferDialog(QDialog):
         if QMessageBox.question(self, self.windowTitle(), text, QMessageBox.Yes | QMessageBox.No,
                                 QMessageBox.No) != QMessageBox.Yes:
             return
+        self.begin_transfer(rows)
+
+    def begin_transfer(self, rows):
+        """调用者已确认清单；流程上传在写入记录成功后复用同一传输。"""
         profiles = core.load_config().get("remote_hosts", {})
         profiles.setdefault(self.source.client.host, {}).update(
             rsync=self.rsync.text().strip(), transfer_threshold_mb=self.threshold.value())
@@ -235,6 +241,9 @@ class TransferDialog(QDialog):
                                         T("已按所选规则处理 {n} 个文件", n=value["count"]))
                     if kind == "done":
                         self.progress.setValue(100)
+                        self.transferred.emit(value)
+                    else:
+                        self.transferFailed.emit(str(value))
                 if self.parent() and hasattr(self.parent(), "statusBar"):
                     self.parent().statusBar().showMessage(self.status.text())
         except queue.Empty:

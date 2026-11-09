@@ -4,7 +4,201 @@
 
 桌面版选“文件 → 连接服务器…”。服务器只运行 `grasp_gui remote`，不需要显示设备、Qt 导入或另装 Python
 (使用独立可执行文件时)。结果文件留在服务器，分析结果和重新取样后的曲线通过同一次 SSH 登录的标准输入输出传回。
-不使用 X11、TCP/agent 转发、反向隧道、监听端口或服务器向外连接；不自动检查更新或上传程序。
+不使用 X11、TCP/agent 转发、反向隧道或监听端口；不自动检查更新或上传程序。
+Slurm 类型通过服务器已有的 Slurm 命令访问集群调度/记账服务，不访问互联网。
+
+### Server type / 服务器类型
+
+Choose **Workstation (工作站)** or **Slurm cluster (Slurm 集群)** in the connection dialog. The choice is saved
+per SSH host, alongside the existing executable/directory preferences. New and previously unclassified profiles
+ask for a type once before using the directory.
+The choice is explicit: the presence of Slurm client binaries alone does not classify a computer.
+The dialog explains why: cluster login nodes should not run calculations directly.
+
+| Type / 类型 | Submit / 提交 | State / 状态 | Stop / 停止 |
+|---|---|---|---|
+| Workstation / 工作站 | Existing background runner / 原后台进程 | Server process and saved state / 服务器进程及记录 | Background stop / 后台停止 |
+| Slurm cluster / Slurm 集群 | Confirmed `sbatch --parsable` | `squeue`, then `sacct` after leaving the queue | `scancel` for the recorded job |
+
+选择 Slurm 后，“提交 Slurm 作业”打开资源设置：分区、节点、每节点进程数、时限、内存、GRASP 路径、模块命令等。
+这些值按主机保存在本机；脚本使用服务器已有的流程和输入文件，最终确认默认否。不会在提交失败时退回登录节点直跑。
+工作站沿用原来的后台运行和退出登录处理。旧客户端设置无需迁移；使用 Slurm 前需更新到支持此功能的服务器端。
+
+For Slurm, review the resource dialog and confirm submission (default No). Parameters are stored per host on
+the desktop; paths and module commands refer to the server/compute nodes. The server uses its saved pipeline,
+checks the revision and required inputs, and saves the generated script and submission intent before calling
+sbatch. `sbatch`, `squeue` and `scancel` must be available in the server session. Completed-job state also needs
+`sacct` and working cluster accounting. There is no fallback to running on the login node.
+
+The server directory stores `.grasp_gui_slurm.json` (job ID, returned cluster, submission time and identity),
+plus `.grasp_gui_slurm_<token>.sh` and a separate `.log`. Use the same account, Slurm cluster and shared
+directory from another computer or login node to recover the job state and log; no original desktop process
+or login-node PID is needed. SSH profiles, classification and resource preferences are local to each desktop.
+Only the recorded job is tracked; this is not a list of all jobs in the user's queue.
+
+排队、运行、收尾和暂停期间不能重复提交同一目录，也不能更新或清理该目录。状态栏显示 Slurm 作业 ID 和原始状态，
+包括 PENDING、RUNNING、COMPLETING、CANCELLED、FAILED、TIMEOUT、OUT_OF_MEMORY 等。
+日志按独立文件恢复并持续显示。Slurm 状态在服务器端缓存：活动作业至少间隔 15 秒查询；错误和结束状态至少间隔 60 秒，
+不随每 0.2 秒的本地日志检查反复调用调度器。取消会先核对队列中的作业标识，再发送 scancel，随后等待调度器确认结果。
+
+Disappearance from squeue is **not** success. Accounting delay, missing sacct, unavailable accounting, query
+failure or mismatched job identity shows Unknown and blocks a new submission. Explicit sbatch rejection can
+be corrected and retried; a timeout or unreadable submission reply is never retried automatically. Instead,
+the server searches the current user's queue for the exact `grasp-gui:<token>` comment and saves the recovered
+job ID. sbatch has a 60-second timeout; queue/accounting commands have 30 seconds, and the desktop allows time
+for these operations.
+
+New submissions install an EXIT trap before any batch commands. It atomically writes
+`.grasp_gui_slurm_<token>.done` containing the token, job ID and shell exit status. After the job leaves the
+queue, validated accounting takes precedence; unavailable/delayed accounting can fall back to this marker.
+The state then reports `BATCH_EXITED`, identifying script exit evidence rather than a scheduler completion
+record. A killed node or SIGKILL may prevent the marker; absence is still Unknown. Existing version-1 records
+without markers remain readable. Job arrays are not supported by this submission dialog.
+After a successful scancel request, an optional `cancel_requested` flag is persisted in the version-1 record.
+A later exit marker with status 130/143 then displays Cancelled even without accounting; the same exit codes
+without this flag remain Failed. The request alone never establishes a terminal state, and accounting remains authoritative.
+
+未知状态提供“我已核对，清除此作业记录…”：人工核对后默认否确认，服务器在目录锁内核对记录修订号，
+重新查询当前用户队列，确认没有同 token 的作业后把原记录改名为 `.grasp_gui_slurm.json.cleared.<id>`。
+原字节、脚本、日志和结束标记保留；这既不取消作业，也不把计算标为成功。损坏的记录会显示错误，并提供同一入口；
+如果无法识别 token，必须确认该用户队列为空才能归档。查询失败时拒绝清除，需先恢复 Slurm 客户端/调度连接。
+
+Slurm 的 COMPLETED/退出码 0 仅表示作业正常退出，不证明物理结果正确；逐步运行摘要不会把调度状态当作每步成功的证据。
+本机日志和现有后台记录的格式不变；Slurm 使用独立记录。关闭远程窗口只断开查看，不会 scancel 作业。
+
+Screenshots / 截图：[English](images/en_server_type.png) / [中文](images/zh_server_type.png)。
+Resources / 资源设置：[English](images/en_slurm_submit.png) / [中文](images/zh_slurm_submit.png)。
+Pending / 排队状态：[English](images/en_slurm_pending.png) / [中文](images/zh_slurm_pending.png)。
+Unknown / 未知状态：[English](images/en_slurm_unknown.png) / [中文](images/zh_slurm_unknown.png)。
+Clear confirmation / 归档确认：[English](images/en_slurm_clear.png) / [中文](images/zh_slurm_clear.png)。
+
+复制或重命名目录不会迁移调度器中的作业。格式正确但路径不匹配的记录视为不属于当前目录，不查询、取消原作业，
+也不阻止副本查看结果、更新或清理。原目录的状态不受影响。格式损坏仍显示错误，需要显式归档解除，不能静默忽略。
+
+For Unknown, **I have checked; clear this job record…** asks for default-No confirmation. The server checks
+the record revision under the directory lock and queries the queue again. It archives the original bytes only
+when no matching token remains; a malformed record without a readable token requires an empty user queue.
+Queue errors prevent clearing. Clearing is neither cancellation nor evidence of calculation success.
+A valid record for another directory is ignored in a copied/moved directory, leaving result viewing and updates usable.
+
+Command references: [sbatch](https://slurm.schedmd.com/sbatch.html),
+[squeue](https://slurm.schedmd.com/squeue.html), [sacct](https://slurm.schedmd.com/sacct.html),
+[scancel](https://slurm.schedmd.com/scancel.html).
+
+### Optional real Slurm acceptance / 可选真实 Slurm 验收
+
+`tools/slurm/` contains a single-node Docker fixture: slurmctld and slurmd in one container; the second mode
+also starts MariaDB/slurmdbd. Runtime uses a Docker `--internal` network, publishes no ports and mounts
+neither the Docker socket nor the host cgroup. Build installs test-only OS packages, without product/CI changes.
+The fixture uses Debian trixie / Slurm 24.11, with the cgroup plugin disabled; an existing named network must
+also be internal, or the runner stops.
+
+With Docker available, provide a GRASP source checkout (standard `compas/grasp` commit `9006157` is the reference)
+and a report directory outside this repository:
+
+```sh
+bash tools/slurm/run.sh /path/to/grasp-source /path/to/slurm-reports
+```
+
+GRASP source and this checkout are mounted read-only; compilation is inside the disposable container, including
+MPI. The fixture does not modify Fortran source; source SHA and local changes are printed in the logs. Supply
+any locally required allocation patch explicitly and retain it with the acceptance evidence. Both modes build
+from the same supplied source; allow several minutes and sufficient compiler/GRASP memory.
+
+The opt-in `tests/test_slurm_live.py` covers held/PENDING → RUNNING → example1 completion with reference energies,
+running-job cancellation, no-accounting completion via EXIT marker, actual sacct evidence with accounting,
+and `mpirun -np 1` producing `000/mcp000.30`. Accounting mode removes the completion marker before requiring
+sacct evidence. Cancellation without a marker exercises explicit archival after the queue is empty.
+Without `GRASP_SLURM_TEST=1` these tests skip. The maintainer ran the corrected fixture with Slurm 24.11.5:
+**3 passed without accounting and 3 passed with slurmdbd**, including reference energies, cancellation and
+the single-rank MPI file location. See the [acceptance review](https://github.com/skq1998/grasp_gui/pull/46#pullrequestreview-5820086033).
+These fixture corrections are now included here. The development environment still lacks Docker; the added
+no-accounting Cancelled display has unit coverage and should be rechecked with the updated fixture assertion.
+
+负责人已在 Slurm 24.11.5 下完成真实验收：无记账和带 slurmdbd 各 3 passed，MPI 单进程文件位置已核对。
+本次纳入其已验证的夹具修正，并补齐无记账时用户取消的状态显示；后者仍请用更新后的断言复验。
+
+### Local editing and upload / 在本机编辑并上传
+
+Remote pipelines remain read-only in the remote viewer. Use the existing desktop Calculation tab for editing;
+no additional workspace tabs or remote editor are introduced. This requires a server advertising
+`capabilities: ["workdir_write_v1"]`. Missing capability disables the edit button and gives an explicit
+Install / update server message before any upload request. Protocol/GREETING remain 1; `server_types` is unchanged.
+
+1. **New calculation:** in a local Calculation tab, choose **Upload to server…** or **Upload and run…** beside
+   the pipeline run buttons. The existing connection dialog selects the host and browses an existing parent;
+   the target field can name a new directory. Targets must be absent or empty. An existing pipeline must first
+   be fetched through Edit locally; unrelated files are never overwritten to create a pipeline.
+2. **Fetch an existing calculation:** choose **Edit locally…** in the remote Calculation tab. The editable local
+   path defaults to `~/grasp_calcs/remote/<host>/<server-directory>/`. The server returns shared configuration,
+   small attached inputs and a revision. A local path containing unrelated data is refused; fetching the same
+   linked copy again asks default-No before discarding pipeline edits. Existing local input conflicts are retained.
+3. **Edit:** use the normal program forms, pipeline actions, validation and preview. A persistent
+   **Server copy host:/path** label and main-window title identify the copy. Local missing inputs are labelled
+   **To be checked on the server**, while invalid parameters remain errors. Running the copy on this computer
+   requires a separate default-No confirmation.
+4. **Upload:** review the server-side changes, selected inputs, pending uploads, missing inputs and custom
+   commands. Small local files are selected by default; generated outputs, large files and existing server files
+   are not. Internal `.grasp*` files are excluded. Custom commands require their own confirmation, and the final
+   upload confirmation defaults to No. Shared attached text files travel with the record; selected other inputs
+   use the existing rsync transport after the record has been saved.
+5. **Run:** Upload and run opens the usual remote window and `run_plan` confirmation flow, using the selected
+   host's workstation or Slurm mode. Required inputs are checked again with the actual run settings. Uploading
+   a record with unresolved missing inputs does not bypass the final run preflight.
+
+**Conflict handling:** preview is read-only. The write locks the directory and checks its revision and idle
+state again. A changed revision, active background calculation, queued/running Slurm job or unknown Slurm
+submission refuses the write. Use **Fetch server pipeline again**, exporting local edits first if needed.
+Server files with the same name are retained in this workflow, including shared-input conflicts; use the separate
+file-transfer dialog when an intentional replacement is needed. A failed rsync leaves the saved record and link
+intact and explains how to retry the inputs. It never removes the server record to make a retry possible.
+
+**Unconfirmed writes:** create/update are mutations and are never replayed after disconnect. A pending intent
+is saved in local preferences. On reconnect, `get_pipeline` compares the actual server pipeline and attached
+configuration inputs with the pending configuration. An equal configuration establishes the new revision;
+it still asks for confirmation before retrying input transfer or applying later local edits. If the server revision
+is unchanged from the saved baseline, the update was not applied: pending is cleared and the local edits remain
+available for a new user confirmation. When a new calculation has no record, a separate locked read-only preview
+must prove that its target is absent/empty before enabling a manually confirmed create retry. Neither case sends
+a write automatically. Changed revisions/content, nonempty targets and failed checks remain conflicts.
+Closing and reopening the uploader retains pending verification; all retried writes repeat server-side checks.
+Unlink local copy asks default-No and changes only local preferences, leaving the server untouched.
+
+中文操作：本机计算页的“上传到服务器…”新建计算；远程计算页的“在本机编辑…”取出已有流程，继续使用原程序页修改。
+关联信息只保存在用户设置 `remote_copies`（主机、服务器路径、修订号，以及待核对写入的指纹），不改变 `.grasp_gui.json`。
+主窗口标题与计算页常驻显示服务器副本来源。本机缺少的结果/输入标为“由服务器检查”，本机直接运行副本另有默认否确认。
+上传先预览差异并确认，再在锁内核对修订号和运行状态，先建/更新记录再传输入。记录或任务状态冲突时拒绝覆盖，提供重新取出。
+同名服务器文件保留；传输失败只需补传，不删除记录。丢失回答先核对：配置一致则关联；修订号仍等于保存值则提示“写入未执行，
+可以再次确认上传”，保留本机修改。新建没有记录时须先证明目标仍为空，才允许用户重新确认创建。均不自动重发；其他变化保持冲突。
+选择“上传并运行…”后仍走现有工作站/Slurm 的确认和最终输入检查。
+
+Screenshots: [target EN](images/en_remote_edit_target.png) / [目标中文](images/zh_remote_edit_target.png),
+[upload EN](images/en_remote_edit_upload.png) / [上传中文](images/zh_remote_edit_upload.png),
+[confirmation EN](images/en_remote_edit_confirm.png) / [确认中文](images/zh_remote_edit_confirm.png),
+[linked copy EN](images/en_remote_edit_copy.png) / [副本中文](images/zh_remote_edit_copy.png),
+[confirmed retry EN](images/en_remote_edit_retry.png) / [重新确认中文](images/zh_remote_edit_retry.png).
+
+### Optional remote-edit SSH acceptance / 可选 SSH 写入验收
+
+Reuse the dedicated restricted sshd/rsync fixture below, install this branch's server build, then opt in:
+
+```sh
+export GRASP_REMOTE_EDIT_TEST=1
+# Also set GRASP_SSH_TEST_HOST, GRASP_SSH_TEST_DIRECTORY and optional CONFIG/PROGRAM as below.
+GRASP_BINDIR=/path/to/local/grasp/bin python3 -m pytest tests/test_remote_edit_ssh.py -v -ra
+```
+
+The directory must be the dedicated fixture root, never a production calculation root. Tests create unique
+`edit-*` subdirectories and retain them for inspection. They prepare isodata locally, upload it with rsync,
+run example1, fetch/edit/upload an rci setting, and compare energies against a direct SSH script with the same
+parameters. They also reject stale revisions and writes during a running fixture job. Set
+`GRASP_SSH_TEST_OLD_PROGRAM` to an old server executable for the old-capability check.
+Both local rsync/GRASP and server GRASP are required. No fixture means these three tests skip.
+The maintainer ran all three tests against this branch's server source in a restricted sshd fixture (MaxSessions 10,
+forwarding disabled), GRASP `9006157`, and the official 2.9.0 package as the old server: **3 passed**.
+See the [acceptance review](https://github.com/skq1998/grasp_gui/pull/47#pullrequestreview-5820086104).
+The current unexecuted-write recovery changes have local GUI coverage; the maintainer will repeat SSH acceptance
+before merging. This development environment still has no dedicated sshd container.
 
 ### 安装服务器端
 
@@ -23,8 +217,8 @@ mv -Tf "$HOME/.local/bin/grasp_gui.next" "$HOME/.local/bin/grasp_gui"
 默认依次尝试 `~/.local/bin/grasp_gui`、PATH。非交互 SSH 的 PATH/module 环境可能与终端不同，可在连接对话框
 指定完整路径；成功选择目录时按主机保存实际路径和目录 (`remote_hosts` 用户偏好)。找不到、不能启动或协议不兼容时，
 对话框显示原始错误输出，可明确选择安装捆绑版、使用已有路径或取消。手动更新后也可设置完整路径重试。
-示例中的版本目录需替换为所下载的版本，不覆盖仍运行的版本；管理员可统一安装到 `/opt` 或通过 module 提供路径。服务器上的 GRASP bin、MPI 等运行设置仍由服务器端
-原有配置决定；第一版不能在桌面修改。
+示例中的版本目录需替换为所下载的版本，不覆盖仍运行的版本；管理员可统一安装到 `/opt` 或通过 module 提供路径。
+工作站上的 GRASP bin、MPI 等运行设置由服务器端原有配置决定；Slurm 作业的路径、资源和模块命令在提交对话框中核对。
 
 ### 登录
 
@@ -90,7 +284,7 @@ OpenSSH 的 `confirm` 提示仍用默认“否”的确认框；`none` (如 FIDO
 接上后台状态；若连接在此之前退出，后台等待十秒后也会执行全部流程。重连重新读取状态和日志末尾，之后推送新增日志。
 只读请求可以重发；启动/停止若失去回答，界面提示结果未确认，重连先查询状态，**不自动再启动或停止**。
 
-服务器启动前调用 `logout_kills()` 检查 systemd-logind 的 KillUserProcesses。如果会随退出登录清理，默认取消；可选：
+工作站类型在启动前调用 `logout_kills()` 检查 systemd-logind 的 KillUserProcesses。如果会随退出登录清理，默认取消；可选：
 
 - 已开启 lingering 时，使用 `systemd-run --user --scope --quiet -- <后台程序> <目录>`，把计算放入用户管理器的 scope。
 - 导出 Slurm 脚本到剪贴板，核对服务器运行设置后自行提交。
@@ -105,6 +299,7 @@ lingering 由 `loginctl show-user <用户名> -p Linger --value` 检测 (三秒�
 The client starts `<executable> --version`, then `<executable> remote` on the same SSH command. It ignores stdout
 before the fixed greeting `GRASP_GUI_REMOTE 1`, then sends `hello` with `protocol: 1` and its application version.
 Compatibility is determined by the protocol number; update the server manually if incompatible.
+The hello reply also lists supported `server_types`; Slurm classification requires the `slurm` capability.
 Requests and replies are newline-delimited UTF-8 JSON; request IDs match replies and replies may arrive out of order.
 Two server workers permit pipelined reads; run/stop are serialized. Server code uses only the Python standard library.
 
@@ -127,10 +322,15 @@ Two server workers permit pipelined reads; run/stop are serialized. Server code 
 | `composition` | Directory, mixing file, block, index; up to 500 leading components |
 | `view` | `kind: levels` or `wfn`; a whole view in one request, optional file/name selection and known signature |
 | `pipeline` | Read-only saved jobs and revision |
-| `run_plan` | Revision, custom commands, logout-kill policy and lingering availability |
-| `run` | Revision, one-based start, explicit custom/logout/scope confirmations |
-| `stop` | Stop through the existing background socket |
-| `run_status` / `tail_log` | Existing state and bounded log tail |
+| `get_pipeline` | Read-only shared configuration, bounded attached text inputs, warnings and revision |
+| `preview_upload` | Read-only new/update validation, changes, input checks, pending/existing files; no directory creation |
+| `create_workdir` | Mutation: checked configuration and explicit custom-command authorization; absent/empty target under lock |
+| `update_workdir` | Mutation: revision, configuration and explicit custom authorization; locked conflict and idle checks |
+| `run_plan` | Revision and custom commands; optional `server_type: slurm` returns server-side Slurm defaults |
+| `clear_slurm_record` | Mutation: explicit `confirmed: true`, matching record revision, fresh queue check, then archival |
+| `run` | Revision, one-based start, explicit custom/logout/scope confirmations; Slurm also accepts reviewed `slurm` settings |
+| `stop` | Existing background stop, or verified scancel for the recorded Slurm job |
+| `run_status` / `tail_log` | Background/Slurm state and the matching bounded log tail |
 | `watch` | Initial state/log tail; subscribes this session to local server state/log changes |
 | `export_script` | Pipeline shell/Slurm script; does not submit it |
 
@@ -159,8 +359,9 @@ input does not accept the host key. Passwords, key passphrases and verification 
 `confirm` requests use a default-No confirmation; `none` requests display only a notification, without input or
 stdout, until ssh terminates the helper after the hardware-key operation. Source references are in the login
 section above.
-Older clients use keys only. Passwords are never saved or logged. No forwarding, server listening socket or outbound
-server connection is required; all traffic uses the desktop-initiated stdio session.
+Older clients use keys only. Passwords are never saved or logged. Analysis traffic uses the desktop-initiated
+stdio session, without forwarding or a server listening socket. Slurm clients additionally contact their
+configured cluster scheduler/accounting services.
 
 The source is shown as **Server host:/path**. The pipeline is read-only, with parameter/input previews, run/stop and
 pushed logs. Existing level and radial viewers render structured remote results; select **Load more components**
@@ -203,7 +404,7 @@ References: [OpenSSH ssh](https://man.openbsd.org/ssh.1),
 and `_run` use the same implementations as the desktop build. `--version` reports the application version and
 remote protocol version; `--lang en` selects English. Opening a window exits with code 2 and directs the user
 to the desktop or legacy build. MCP remains disabled until the user enables it; plotting tools require Qt and
-return a clear error in this build. There are no automatic downloads or server-initiated network connections.
+return a clear error in this build. There are no automatic downloads; Slurm mode uses the installed cluster clients.
 
 服务器版使用独立的标准库入口 `grasp_server.py`，不导入界面。上述命令与普通版共用实现；
 `--version` 同时显示程序和远程协议版本，`--lang en` 可切换英文。窗口命令返回 2，提示改用桌面版或旧系统版；
