@@ -5,10 +5,11 @@ from pathlib import Path, PurePosixPath
 import threading
 import uuid
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QFormLayout, QInputDialog, QLineEdit, QMessageBox, QPlainTextEdit
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QDialog, QFileDialog, QFormLayout, QInputDialog, QLineEdit, QMessageBox, QPlainTextEdit
 
 import grasp_core as core
+import grasp_config as config
 import grasp_remote_edit as edit
 import grasp_ssh as ssh
 import grasp_summary as summary
@@ -67,6 +68,7 @@ class TargetDialog(ConnectDialog):
     def __init__(self, parent, local, link=None):
         super().__init__(parent)
         self.setWindowTitle(T("选择流程上传目标"))
+        self.create_button.hide()
         self.local, self.link = local, link
         self.target = QLineEdit(link["directory"] if link else "")
         form = QFormLayout()
@@ -96,18 +98,23 @@ class TargetDialog(ConnectDialog):
 
 
 class UploadDialog(TransferDialog):
-    def __init__(self, panel, source, directory, configuration, link, run=False):
+    remoteCreated = Signal(str, bool)
+
+    def __init__(self, panel, source, directory, configuration, link, run=False, *, remote_only=False,
+                 own_source=True):
         self.panel, self.configuration, self.link = panel, configuration, link
         self.revision = (link or {}).get("revision")
-        self.local_directory = panel.cur_workdir
+        self.remote_only = remote_only
+        self.local_directory = None if remote_only else panel.cur_workdir
         self.ready, self.written, self.keep_source = False, False, False
         self.files_loaded, self.preview_generation = False, 0
         self.existing, self.generated = set(), edit.generated_files(configuration["jobs"])
         self.run_after = run
         self.pending = bool((link or {}).get("pending"))
         self.previous = link
-        super().__init__(source, directory, self.local_directory, parent=panel)
-        source.setParent(self)
+        super().__init__(source, directory, self.local_directory, parent=panel, upload=True)
+        if own_source:
+            source.setParent(self)
         self.setWindowTitle(T("上传并运行…") if run else T("上传到服务器…"))
         self.report = QPlainTextEdit()
         self.report.setReadOnly(True)
@@ -118,19 +125,61 @@ class UploadDialog(TransferDialog):
         self.unlink_button = button("解除本机关联…", self.unlink)
         self.layout().insertWidget(2, self.fetch_button)
         self.layout().insertWidget(3, self.unlink_button)
+        self.input_button = button("同时从本机上传输入文件…", self.choose_inputs)
+        self.input_button.setVisible(remote_only)
+        self.layout().insertWidget(4, self.input_button)
+        self.fetch_button.setVisible(not remote_only)
+        self.unlink_button.setVisible(not remote_only)
+        if remote_only:
+            self.setWindowTitle(T("在此新建计算…"))
+            self.start_button.setText(T("确认并继续…"))
         # 流程上传保留服务器同名文件；需要替换原始输入时使用已有的独立文件传输确认流程。
         self.policy.setCurrentIndex(self.policy.findData("skip"))
         self.policy.setEnabled(False)
         self.policy.setToolTip(T("上传流程时保留服务器同名文件。"))
         self.transferred.connect(self.completed_upload)
         self.transferFailed.connect(self.failed_upload)
-        self.finished.connect(lambda result: None if self.keep_source else source.close())
+        self.finished.connect(lambda result: None if self.keep_source or not own_source else source.close())
+
+    def saved_link(self):
+        return self.link if self.remote_only else edit.association(self.local_directory)
+
+    def save_link(self, value):
+        if self.remote_only:
+            self.link = value
+        else:
+            edit.bind(self.local_directory, value)
+
+    def refresh_link(self):
+        if not self.remote_only:
+            self.panel.refresh_remote_copy()
+
+    def choose_inputs(self):
+        path = QFileDialog.getExistingDirectory(self, T("选择输入文件所在目录"), str(Path.home()))
+        if path:
+            self.local = path
+            self.load()
+
+    def preview_text(self, value):
+        text = value["changes"] + "\n" + T("输入文件由服务器检查；实际运行前将再次检查。")
+        if self.remote_only:
+            text += "\n" + "\n".join(f"{i}. {config.make_job(job)['title']}"
+                                      for i, job in enumerate(self.configuration["jobs"], 1))
+            text += "\n" + T("服务器缺少程序：{names}", names=", ".join(value["missing_programs"]) or "—")
+            text += "\n" + T("附带文件：{names}",
+                               names=", ".join(f["name"] for f in self.configuration.get("files", [])) or "—")
+            text += "\n" + (summary.check_text(value["checked"]) if value["checked"]["issues"] else T("输入预检通过。"))
+            text += "\n" + T("待上传：{names}", names=", ".join(r["file"] for r in value["checked"]["pending"]) or "—")
+            if value["custom_commands"]:
+                text += "\n" + T("自定义命令") + "\n" + json.dumps(value["custom_commands"], ensure_ascii=False)
+        return text
 
     def controls(self, busy):
         super().controls(busy)
         self.policy.setEnabled(False)
         self.fetch_button.setEnabled(not busy)
         self.unlink_button.setEnabled(not busy)
+        self.input_button.setEnabled(not busy and not self.pending)
 
     def load(self):
         if self.busy:
@@ -143,7 +192,7 @@ class UploadDialog(TransferDialog):
         generation = self.generation
         def scan():
             try:
-                data = transfer.scan(self.local)
+                data = transfer.scan(self.local) if self.local else dict(files=[], skipped=[])
                 data["files"] = edit.input_rows(data["files"])
                 self.events.put(("files", (generation, data)))
             except (OSError, ValueError) as error:
@@ -167,7 +216,8 @@ class UploadDialog(TransferDialog):
         super().show_files(data)
         self.files_loaded = True
         if not self.pending:
-            self.preview([row["name"] for row in self.rows], self.show_preview)
+            rows = self.selected() if self.remote_only else self.rows
+            self.preview([row["name"] for row in rows], self.show_preview)
         else:
             self.reconcile()
 
@@ -186,6 +236,8 @@ class UploadDialog(TransferDialog):
     def show_preview(self, value, error):
         if self.closed:
             return
+        if not error and self.remote_only and "missing_programs" not in value:
+            error = ValueError(T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。"))
         if error:
             self.ready = False
             self.status.setText(str(error))
@@ -194,7 +246,7 @@ class UploadDialog(TransferDialog):
             self.target.setText(self.directory)
             self.existing = set(value["existing"])
             self.ready = self.files_loaded
-            self.report.setPlainText(value["changes"] + "\n" + T("输入文件由服务器检查；实际运行前将再次检查。"))
+            self.report.setPlainText(self.preview_text(value))
             self.reset_checks()
         self.changed()
 
@@ -209,15 +261,18 @@ class UploadDialog(TransferDialog):
         def checked(value, error):
             if self.closed:
                 return
+            if not error and self.remote_only and "missing_programs" not in value:
+                error = ValueError(T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。"))
             if error:
                 self.controls(False)
                 self.status.setText(str(error))
                 return
             report = value["checked"]
-            text = value["changes"] + "\n" + self.counts.text() + "\n" + "\n".join(r["name"] for r in rows)
-            text += "\n" + (summary.check_text(report) if report["issues"] else T("输入预检通过。"))
-            if report["pending"]:
-                text += "\n" + T("待上传：{names}", names=", ".join(r["file"] for r in report["pending"]))
+            text = self.preview_text(value) + "\n" + self.counts.text() + "\n" + "\n".join(r["name"] for r in rows)
+            if not self.remote_only:
+                text += "\n" + (summary.check_text(report) if report["issues"] else T("输入预检通过。"))
+                if report["pending"]:
+                    text += "\n" + T("待上传：{names}", names=", ".join(r["file"] for r in report["pending"]))
             kept = sorted(set(value["kept_files"]) | set(value["existing"]))
             text += "\n" + T("服务器同名文件将保留：{names}", names=", ".join(kept))
             if report["invalid"]:
@@ -238,9 +293,9 @@ class UploadDialog(TransferDialog):
             if self.written:
                 self.send_files(rows)
                 return
-            self.previous = edit.association(self.local_directory)
+            self.previous = self.saved_link()
             self.intent = uuid.uuid4().hex
-            edit.bind(self.local_directory, dict(host=self.source.client.host, directory=self.directory,
+            self.save_link(dict(host=self.source.client.host, directory=self.directory,
                       revision=self.revision, pending=True, fingerprint=edit.fingerprint(self.configuration),
                       intent=self.intent))
             args = dict(directory=self.directory, configuration=self.configuration, allow_custom=custom)
@@ -260,16 +315,15 @@ class UploadDialog(TransferDialog):
                 self.status.setText(T("写入结果未确认；先读取服务器流程核对，不能重发。"))
                 self.reconcile()
             else:
-                current = edit.association(self.local_directory)
+                current = self.saved_link()
                 if current and current.get("intent") == self.intent:
-                    edit.bind(self.local_directory, self.previous)
+                    self.save_link(self.previous)
                 self.status.setText(str(error))
             self.changed()
             return
         self.revision, self.written = value["revision"], True
-        edit.bind(self.local_directory, dict(host=self.source.client.host, directory=self.directory,
-                                           revision=self.revision))
-        self.panel.refresh_remote_copy()
+        self.save_link(dict(host=self.source.client.host, directory=self.directory, revision=self.revision))
+        self.refresh_link()
         self.send_files(rows)
 
     def send_files(self, rows):
@@ -283,7 +337,10 @@ class UploadDialog(TransferDialog):
         self.status.setText(T("流程已写入；已处理 {n} 个输入文件。", n=value["count"]))
         self.ready = False
         self.start_button.setEnabled(False)
-        if self.run_after:
+        if self.remote_only:
+            self.remoteCreated.emit(self.directory, self.run_after)
+            self.done(QDialog.Accepted)
+        elif self.run_after:
             parent = self.panel.window()
             win = RemoteWindow(self.source, self.directory, parent, run_after_load=True)
             self.source.setParent(win)
@@ -306,7 +363,7 @@ class UploadDialog(TransferDialog):
         def received(value, error):
             if self.closed:
                 return
-            saved = edit.association(self.local_directory) or self.link or {}
+            saved = self.saved_link() or self.link or {}
             if error and saved.get("revision") is None:
                 # 读取失败本身不能证明新建未执行；必须另行证明目标仍不存在或为空。
                 def empty_checked(preview, exc):
@@ -328,9 +385,8 @@ class UploadDialog(TransferDialog):
             self.revision, self.pending = value["revision"], False
             # 重新打开窗口时本机可能又有修改；核对上次写入不等于当前快照也已写入。
             self.written = edit.fingerprint(self.configuration) == saved.get("fingerprint")
-            edit.bind(self.local_directory, dict(host=self.source.client.host, directory=self.directory,
-                                               revision=self.revision))
-            self.panel.refresh_remote_copy()
+            self.save_link(dict(host=self.source.client.host, directory=self.directory, revision=self.revision))
+            self.refresh_link()
             self.status.setText(T("已核对上次写入；请再次确认当前上传内容。"))
             if self.files_loaded:
                 self.preview([row["name"] for row in self.rows], self.show_preview)
@@ -341,8 +397,8 @@ class UploadDialog(TransferDialog):
         self.revision = saved.get("revision")
         self.pending, self.written, self.ready = False, False, False
         link = dict(host=self.source.client.host, directory=self.directory, revision=self.revision)
-        edit.bind(self.local_directory, link if self.revision is not None else None)
-        self.panel.refresh_remote_copy()
+        self.save_link(link if self.revision is not None else None)
+        self.refresh_link()
         self.status.setText(T("写入未执行，可以再次确认上传。"))
         self.changed()
         if preview is not None:
@@ -367,8 +423,8 @@ class UploadDialog(TransferDialog):
         if QMessageBox.question(self, T("解除本机关联…"),
                 T("只解除本机副本关联，不改变服务器目录。结果未确认的请求须先人工核对。是否继续？"),
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            edit.bind(self.local_directory, None)
-            self.panel.refresh_remote_copy()
+            self.save_link(None)
+            self.refresh_link()
             self.done(QDialog.Rejected)
 
 

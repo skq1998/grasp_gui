@@ -101,6 +101,7 @@ class ConnectDialog(QDialog):
         self.setWindowTitle(T("连接服务器"))
         self.resize(780, 620)
         self.source, self.directory, self.entries = None, None, []
+        self.run_after_load = False
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.host = QComboBox()
@@ -146,6 +147,9 @@ class ConnectDialog(QDialog):
             self.status.setText(self.status.text() + "\n" + self.bundle_error)
         layout.addWidget(self.status)
         bar = QHBoxLayout()
+        self.create_button = button("在此新建计算…", self.create_calculation)
+        self.create_button.setEnabled(False)
+        bar.addWidget(self.create_button)
         bar.addStretch()
         self.use = button("使用此目录", self.accept)
         self.use.setEnabled(False)
@@ -174,6 +178,7 @@ class ConnectDialog(QDialog):
         source.close()
         self.source, self.directory = None, None
         self.use.setEnabled(False)
+        self.create_button.setEnabled(False)
         dialog = InstallDialog(source.client, self, remove)
         saved = core.load_config().get("remote_hosts", {}).get(source.client.host, {})
         dialog.root.setText(saved.get("install_root", dialog.root.text()))
@@ -207,6 +212,7 @@ class ConnectDialog(QDialog):
                 return
             self.source.notice.connect(self.status.setText)
         self.use.setEnabled(False)
+        self.create_button.setEnabled(False)
         self.connect_button.setEnabled(False)
         self.status.setText(T("正在从 {h} 读取…", h=host))
         self.source.submit("list_dir", dict(directory=self.path.text()), self.loaded)
@@ -242,6 +248,7 @@ class ConnectDialog(QDialog):
             item.setToolTip(f"{row['type']} · {row['size']} bytes")
             self.files.addItem(item)
         self.use.setEnabled(True)
+        self.create_button.setEnabled(True)
         version = self.source.server.get("version", core.VERSION)
         self.status.setText(T("服务器 {h}:{p}", h=self.source.client.host, p=self.directory))
         if (self.package is not None and install.older_version(version, core.VERSION)
@@ -263,17 +270,32 @@ class ConnectDialog(QDialog):
             self.path.setText(self.parent_path)
             self.connect_server()
 
-    def accept(self):
+    def valid_connection(self):
         if not self.source or not self.directory:
-            return
+            return False
         if self.server_type.currentData() not in ("workstation", "slurm"):
             self.status.setText(T("请选择服务器类型"))
-            return
+            return False
         if self.source.client.host != self.host.currentText().strip():
             self.status.setText(T("主机设置已更改，请重新连接"))
-            return
+            return False
         if self.server_type.currentData() == "slurm" and "slurm" not in self.source.server.get("server_types", []):
             self.status.setText(T("服务器端尚不支持 Slurm，请先更新服务器端程序。"))
+            return False
+        return True
+
+    def create_calculation(self):
+        if not self.valid_connection():
+            return
+        from remote_import_panel import create
+        self.source.server_type = self.server_type.currentData()
+        def opened(directory, run):
+            self.directory, self.run_after_load = directory, run
+            self.accept()
+        create(self, self.source, self.directory, opened)
+
+    def accept(self):
+        if not self.valid_connection():
             return
         profiles = core.load_config().get("remote_hosts", {})
         profiles.setdefault(self.source.client.host, {}).update(
@@ -284,6 +306,8 @@ class ConnectDialog(QDialog):
         super().accept()
 
     def reject(self):
+        if getattr(self, "import_dialog", None) is not None:
+            self.import_dialog.shutdown()
         if self.source:
             self.source.close()
         super().reject()
@@ -354,11 +378,14 @@ class RemoteLevels(LevelPanel):
     def apply_remote(self, data):
         checked = set(self.checked_paths())
         groups, compositions, csfs, labels, origins = {}, {}, {}, {}, {}
+        hamiltonians = {}
         for name in data.get("files", []):
             path = str(PurePosixPath(self.remote_directory) / name)
             groups[path], csfs[path], labels[path], origins[path] = {}, {}, {}, (None, None)
         for row in data.get("levels", []):
             path = str(PurePosixPath(self.remote_directory) / row["file"])
+            if "zero_group" in row:
+                hamiltonians[path] = dict(zero_group=row["zero_group"], zero_warning=row.get("zero_warning", ""))
             if path not in groups:
                 groups[path], csfs[path], labels[path] = {}, {}, {}
             origins[path] = row.get("csf_file"), row.get("lsj_file")
@@ -383,8 +410,13 @@ class RemoteLevels(LevelPanel):
             labels[path][(b.nb, lv.pos)] = row.get("lsj")
             compositions[(path, b.nb, lv.pos)] = [(p["csf"], p["coefficient"], p.get("configuration") or "",
                                                    p.get("coupling") or "") for p in parts]
-        self.read_data = {p: (list(bs.values()), csfs[p], origins[p][0], labels[p], origins[p][1])
-                          for p, bs in groups.items()}
+        self.read_data = {}
+        for path, bs in groups.items():
+            blocks = mix.Blocks(bs.values())
+            fallback = dict(zero_group="DC", zero_warning="") if path.endswith(".m") else mix.unknown_hamiltonian()
+            blocks.hamiltonian = hamiltonians.get(path, fallback)
+            self.read_data[path] = (blocks, csfs[path] if origins[path][0] else None,
+                                    origins[path][0], labels[path], origins[path][1])
         self.compositions = compositions
         self.remote_rows = data.get("transitions", [])
         if not checked:
@@ -578,6 +610,7 @@ class RemoteWaves(WfnPanel):
 
 class RemoteCalculation(QWidget):
     editRequested = Signal(str)
+    created = Signal(str, bool)
 
     def __init__(self, source, directory, run_after_load=False):
         super().__init__()
@@ -610,6 +643,9 @@ class RemoteCalculation(QWidget):
         self.state.setWordWrap(True)
         bar.addWidget(self.state, 1)
         layout.addLayout(bar)
+        self.create_button = button("在此新建计算…", self.create_calculation)
+        self.create_button.hide()
+        layout.addWidget(self.create_button)
         split = QSplitter()
         self.steps = QListWidget()
         self.steps.currentRowChanged.connect(self.show_job)
@@ -634,10 +670,12 @@ class RemoteCalculation(QWidget):
         self.load()
 
     def load(self):
+        self.create_button.hide()
         def loaded(value, error):
             if error:
                 return
             self.jobs, self.revision = value["jobs"], value["revision"]
+            self.create_button.setVisible(not self.jobs)
             self.steps.clear()
             self.steps.addItems([f"{i + 1}. {j.get('title', '')}" for i, j in enumerate(self.jobs)])
             self.steps.setCurrentRow(0)
@@ -656,6 +694,10 @@ class RemoteCalculation(QWidget):
             self.output.setPlainText(value["text"])
             self.show_state(value["state"])
         self.source.submit("watch", dict(directory=self.directory), watched)
+
+    def create_calculation(self):
+        from remote_import_panel import create
+        create(self, self.source, self.directory, self.created.emit)
 
     def edit_local(self):
         from remote_edit_panel import take_out
@@ -822,6 +864,8 @@ class RemoteWindow(QMainWindow):
         layout.addWidget(label)
         self.tabs = QTabWidget()
         self.calc = RemoteCalculation(source, directory, run_after_load)
+        self.keep_source = False
+        self.calc.created.connect(lambda path, run: QTimer.singleShot(0, lambda: self.open_created(path, run)))
         if parent and hasattr(parent, "open_path"):
             def open_local(path):
                 if getattr(parent, "cur_workdir", None) == path:
@@ -872,6 +916,16 @@ class RemoteWindow(QMainWindow):
         dialog.finished.connect(dialog.deleteLater)
         dialog.show()
 
+    def open_created(self, directory, run):
+        parent = self.parentWidget()
+        win = RemoteWindow(self.source, directory, parent, run_after_load=run)
+        self.created_window = win
+        if parent and hasattr(parent, "remote_windows"):
+            parent.remote_windows.append(win)
+        self.keep_source = True
+        win.show()
+        self.close()
+
     def open_view(self, kind):
         win = QMainWindow(self)
         win.setWindowTitle(self.label)
@@ -882,6 +936,8 @@ class RemoteWindow(QMainWindow):
         self.detached.append((win, panel))
 
     def closeEvent(self, event):
+        if getattr(self.calc, "import_dialog", None) is not None:
+            self.calc.import_dialog.shutdown()
         for dialog in list(self.transfer_dialogs):
             dialog.shutdown()
         for win, panel in self.detached:
@@ -889,7 +945,8 @@ class RemoteWindow(QMainWindow):
             win.close()
         self.waves.shutdown()
         self.levels.shutdown()
-        self.source.close()
+        if not self.keep_source:
+            self.source.close()
         event.accept()
 
 
@@ -897,6 +954,6 @@ def connect_window(parent):
     dialog = ConnectDialog(parent)
     if dialog.exec() != QDialog.Accepted:
         return None
-    win = RemoteWindow(dialog.source, dialog.directory, parent)
+    win = RemoteWindow(dialog.source, dialog.directory, parent, run_after_load=dialog.run_after_load)
     win.show()
     return win

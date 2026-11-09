@@ -41,6 +41,16 @@ UNITS = [("eV", "eV", mix.HARTREE_EV, "{:.5f}"), ("cm⁻¹", "cm⁻¹", mix.HART
 from grasp_mix import load_result_files as read_level_files, load_composition as read_composition
 
 
+def energy_axis(unit, unified=False, multiple=True, english=False):
+    if not multiple:
+        text = "相对能量 ({u})"
+    elif unified:
+        text = "相对能量 ({u})，所有计算组共用最低能级为零"
+    else:
+        text = "相对能量 ({u})，各计算组分别以最低能级为零"
+    return core.EN[text].format(u=unit) if english else T(text, u=unit)
+
+
 class NumItem(QTableWidgetItem):
     """显示格式化的文字，按数值排序。"""
 
@@ -98,6 +108,7 @@ class LevelDiagram(QWidget):
         super().__init__()
         self.columns = []          # dict(file, title, levels=[dict(key, y, label, color, info)])
         self.unit = "cm⁻¹"
+        self.axis = None
         self.yr = None
         self.hover = self.selected = None
         self.drag = None
@@ -114,8 +125,9 @@ class LevelDiagram(QWidget):
         self.setFocusPolicy(Qt.ClickFocus)      # 接收 Backspace
         self.setMinimumHeight(240)
 
-    def set_columns(self, columns, unit):
+    def set_columns(self, columns, unit, axis=None):
         self.columns, self.unit = columns, unit
+        self.axis = axis
         self.yr = None
         self.history = []
         self.hover = None
@@ -200,7 +212,7 @@ class LevelDiagram(QWidget):
         p.save()
         p.translate(14, rect.center().y())
         p.rotate(-90)
-        text = export["axis"] if export else T("相对能量 ({u})", u=self.unit)
+        text = export["axis"] if export else self.axis or T("相对能量 ({u})", u=self.unit)
         p.drawText(QPointF(-fm.horizontalAdvance(text) / 2, 0), text)
         p.restore()
         p.setPen(QColor("#999"))
@@ -736,6 +748,7 @@ class LevelPanel(Panel):
         self.levels = {}           # key -> (文件标签, 路径, Level)
         self.key_by_id = {}        # (绝对路径, 2J, 宇称, 序号) -> key
         self.current = None
+        self.zero_groups, self.energy_zeros, self.zero_warnings = {}, {}, []
         self.pair = None           # (上能级, 下能级)
         self.marked = []           # 图上标注的跃迁 [(上能级, 下能级)]，保存在 工作目录/.grasp_gui/marked.json
         self.plan = None           # (Workspace, 要算的跃迁类型)
@@ -758,6 +771,12 @@ class LevelPanel(Panel):
         self.unit.setCurrentIndex(min(max(core.load_config().get("level_unit", 0), 0), len(UNITS) - 1))
         self.unit.currentIndexChanged.connect(self.unit_changed)
         top.addWidget(self.unit)
+        top.addWidget(QLabel(T("能量零点")))
+        self.zero = QComboBox()
+        self.zero.addItems([T("按计算组"), T("统一取最低能级")])
+        self.zero.setCurrentIndex(min(max(core.load_config().get("level_zero", 0), 0), 1))
+        self.zero.currentIndexChanged.connect(self.zero_changed)
+        top.addWidget(self.zero)
         export = QPushButton(T("导出"))
         menu = QMenu(export)
         menu.addAction(T("能级图 (PNG / SVG / PDF)…")).triggered.connect(self.export_diagram)
@@ -907,6 +926,13 @@ class LevelPanel(Panel):
         core.save_config(level_unit=self.unit.currentIndex())    # 下次打开沿用
         self.redraw()
 
+    def zero_changed(self):
+        core.save_config(level_zero=self.zero.currentIndex())
+        self.render_levels()
+
+    def zero_for(self, key):
+        return self.energy_zeros[self.zero_groups[self.levels[key][1]]]
+
     def redraw(self, *_):
         paths = [self.files.item(i).data(Qt.UserRole) for i in range(self.files.count())
                  if self.files.item(i).checkState() == Qt.Checked]
@@ -916,6 +942,12 @@ class LevelPanel(Panel):
                 saved.append(index.stamp(path))
             except OSError:
                 saved.append([path, None, None])
+            if path.endswith(".cm"):
+                summary_path = os.path.splitext(path)[0] + ".csum"
+                try:
+                    saved.append(index.stamp(summary_path))
+                except OSError:
+                    saved.append([summary_path, None, None])
         stamp = self.dir.text(), saved
         if stamp != self.read_stamp:
             self.read_stamp = stamp
@@ -945,14 +977,24 @@ class LevelPanel(Panel):
             it.setForeground(QColor("black"))
             it.setToolTip(path)
             data.append((os.path.basename(path), path, *res))
-        energies = [lv.energy for _, _, blocks, *_ in data for b in blocks for lv in b.levels]
-        e0 = min(energies) if energies else 0.0
+        self.zero_groups, self.zero_warnings = {}, []
+        for fname, path, blocks, *_ in data:
+            fallback = dict(zero_group="DC", zero_warning="") if path.endswith(".m") else mix.unknown_hamiltonian()
+            metadata = getattr(blocks, "hamiltonian", fallback)
+            self.zero_groups[path] = metadata["zero_group"]
+            if metadata["zero_warning"]:
+                self.zero_warnings.append(fname)
+        self.energy_zeros = mix.energy_zeros(
+            ((self.zero_groups[path], lv.energy) for _, path, blocks, *_ in data for b in blocks for lv in b.levels),
+            unified=bool(self.zero.currentIndex()))
 
         self.levels = {}
         self.key_by_id = {}
         self.workspaces = {}
         columns, rows = [], []
         for fname, path, blocks, csfs, csf_path, lsj, lsj_path in data:
+            group = self.zero_groups[path]
+            e0 = self.energy_zeros.get(group, 0.0)
             for b in blocks:
                 col = dict(file=fname, title=self.jp(b), levels=[])
                 for lv in b.levels:
@@ -962,13 +1004,15 @@ class LevelPanel(Panel):
                     label, purity = self.leading(lv, csfs, lsj.get((b.nb, lv.pos)))
                     rel = (lv.energy - e0) * factor
                     info = (f"{fname}   J^π = {self.jp(b)}   #{lv.pos}\n"
+                            + T("计算组：{group}", group=group) + "\n" +
                             f"{T('能量')}: {efmt.format(rel)} {unit_label}   ({lv.energy:.9f} a.u.)\n"
                             f"{T('主要组成')}: {label}  ({purity:.1f} %)")
                     col["levels"].append(dict(key=key, y=rel, label=label, color=PARITY_COLORS[b.parity], info=info))
                     rows.append((fname, self.jp(b), lv.pos, rel, lv.energy, purity, label, key))
                 if col["levels"]:
                     columns.append(col)
-        self.diagram.set_columns(columns, unit_label)
+        self.diagram.set_columns(columns, unit_label,
+                                 energy_axis(unit_label, bool(self.zero.currentIndex()), len(self.energy_zeros) > 1))
         self.fill_levels(rows, unit_label, efmt)
         if self.current not in self.levels:
             self.current = None
@@ -979,6 +1023,8 @@ class LevelPanel(Panel):
         self.load_transitions()
         self.load_marked()
         self.show_composition()
+        if self.zero_warnings:
+            self.status(T("无法确定哈密顿量，零点可能不可比") + "：" + ", ".join(self.zero_warnings))
 
     @staticmethod
     def jp(block):
@@ -1035,7 +1081,7 @@ class LevelPanel(Panel):
             return
         fname, path, lv, csfs, lsj, csf_path, lsj_path = self.levels[self.current]
         unit_label, factor, efmt = self.unit_info()
-        e0 = min(v[2].energy for v in self.levels.values())
+        e0 = self.zero_for(self.current)
         self.title.setText(f"<b>{fname}</b> &nbsp; J<sup>π</sup> = {self.jp(lv.block)} &nbsp; #{lv.pos} &nbsp; "
                            f"{efmt.format((lv.energy - e0) * factor)} {unit_label} &nbsp; ({lv.energy:.9f} a.u.)")
         wmin = self.min_w.value() / 100
@@ -1228,15 +1274,14 @@ class LevelPanel(Panel):
         if not path:
             return
         unit_label, factor, efmt = self.unit_info()
-        e0 = min(v[2].energy for v in self.levels.values())
         visible = {lv["key"] for c in self.diagram.columns for lv in c["levels"]}
         labels = {}
         if opts["labels"] or opts["energy"]:
             for key in visible:
                 d = self.level_desc(key)
-                e = efmt.format((d["energy"] - e0) * factor) if opts["energy"] else None
+                e = efmt.format((d["energy"] - self.zero_for(key)) * factor) if opts["energy"] else None
                 labels[key] = self.rich_label(d, e) if opts["labels"] else [(e, "n")]
-        axis = (f"Relative energy ({unit_label})" if opts["english"] else T("相对能量 ({u})", u=unit_label))
+        axis = energy_axis(unit_label, bool(self.zero.currentIndex()), len(self.energy_zeros) > 1, opts["english"])
         arrows = []
         if opts["transitions"]:
             for u, l in self.marked:
@@ -1289,7 +1334,8 @@ class LevelPanel(Panel):
         self.status(T("已导出 {p}", p=path))
 
     LEVEL_HEADER = ["file", "J", "2J", "parity", "index", "configuration", "configuration_full", "term", "E_total_au", "E_rel_au",
-                    "E_rel_cm-1", "E_rel_eV", "purity_percent", "leading_component", "lsj_label", "leading_csf_jj"]
+                    "E_rel_cm-1", "E_rel_eV", "purity_percent", "leading_component", "lsj_label", "leading_csf_jj",
+                    "zero_group", "E_zero_au"]
 
     def open_summary(self):
         """结果摘要 (给 agent)：本目录的能级、层间变化、收敛情况等；完整配置是可选的附加部分。"""
@@ -1315,16 +1361,17 @@ class LevelPanel(Panel):
         path = self.export_path(T("导出能级数据…"), "levels.csv", "CSV (*.csv)")
         if not path:
             return
-        e0 = min(v[2].energy for v in self.levels.values())
         rows = []
         for key in sorted(self.levels, key=lambda k: self.levels[k][2].energy):
             d = self.level_desc(key)
+            e0 = self.zero_for(key)
             rel = d["energy"] - e0
             leading = self.leading(self.levels[key][2], self.levels[key][3], self.levels[key][4])[0]
             rows.append([d["file"], d["J"], d["twoj"], "+" if d["parity"] > 0 else "-", d["pos"],
                          config_text(d), mix.config_ascii(d["full"]), mix.term_ascii(d["term"], d["parity"]), f"{d['energy']:.10f}",
                          f"{rel:.10f}", f"{rel * mix.HARTREE_CM:.4f}", f"{rel * mix.HARTREE_EV:.6f}",
-                         f"{d['purity']:.3f}", leading, d["lsj_label"], d["jj"]])
+                         f"{d['purity']:.3f}", leading, d["lsj_label"], d["jj"],
+                         self.zero_groups[self.levels[key][1]], f"{e0:.10f}"])
         self.write_csv(path, self.LEVEL_HEADER, rows)
 
     def write_csv(self, path, header, rows):
@@ -1736,7 +1783,8 @@ class LevelPanel(Panel):
                     self.loading = False
                     self.read_data = result
                     self.render_levels()
-                    self.status(T("读入完成"))
+                    if not self.zero_warnings:
+                        self.status(T("读入完成"))
                 elif token == self.composition_token:
                     self.compositions = {token[2]: result}
                     self.show_composition()
