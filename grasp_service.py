@@ -318,10 +318,12 @@ class Service:
         root = self.directory_files(directory)
         names = files if files is not None else mix.find_mix_files(str(root))
         rows = []
-        truncated = False
+        result = dict(levels=rows, truncated=False)
         for name in names:
             path = self.path(str(root / name))
             blocks = mix.open_mix(path, summary=not brief, k=max(components, 1), cancel=cancel, progress=progress)
+            if blocks.partial:
+                result.setdefault("partial_files", []).append(path.name)
             hamiltonian = mix.hamiltonian(path, self.path)
             csf_path = None if brief else mix.find_csf_for(str(path))
             csfs = mix.open_csfs(csf_path, cancel, progress) if csf_path and components and not brief else None
@@ -330,7 +332,8 @@ class Service:
             for b in blocks:
                 for lv in b.levels:
                     if len(rows) >= limit:
-                        return dict(levels=rows, truncated=True)
+                        result["truncated"] = True
+                        return result
                     import grasp_index
                     grasp_index.checkpoint(cancel)
                     top = lv.top_components(max(components, 1)) if not brief else []
@@ -347,7 +350,7 @@ class Service:
                                      core_orbitals=core_orbitals,
                                      purity_percent=100 * top[0][1] ** 2 if top else 0,
                                      components=parts, lsj=labels.get((b.nb, lv.pos))))
-        return dict(levels=rows, truncated=truncated)
+        return result
 
     def transitions(self, directory, files=None, limit=200):
         import json

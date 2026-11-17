@@ -378,6 +378,11 @@ before the fixed greeting `GRASP_GUI_REMOTE 1`, then sends `hello` with `protoco
 Compatibility is determined by the protocol number; update the server manually if incompatible.
 The hello reply also lists supported `server_types`; Slurm classification requires the `slurm` capability.
 Requests and replies are newline-delimited UTF-8 JSON; request IDs match replies and replies may arrive out of order.
+`levels` and `view(kind=levels)` include optional `partial_files` (file names) when mixing files are still being
+written, including files with no complete levels yet. It is omitted when all files are complete. The remote
+viewer marks their tooltips/status; older responses without this field still work. Summary retains per-file
+`partial`. `levels` / `view` 的可选 `partial_files` 列出未写完的文件（包括尚无完整能级的文件），完整时不增加该字段；
+远程页显示相应提示，旧回答兼容，摘要仍保留逐文件 `partial`，协议号不变。
 `levels` and `view(kind=levels)`, including the brief preview, return per-level `zero_group` and `zero_warning`.
 The server reads the matching `.csum` through the common Hamiltonian parser; no new request or protocol number
 is needed. The existing directory signature includes `.csum` size/mtime, so changing only the summary refreshes

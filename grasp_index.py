@@ -17,7 +17,7 @@ import warnings
 
 STRIDE = 256
 TOP_K = 500
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 CHUNK = 1024 * 1024
 # 小文件的 spawn 开销高于系数分析；阈值依据源码和 onefile 的实测。
 PARALLEL_MIN_COEFFICIENTS = 4_000_000
@@ -183,8 +183,13 @@ def valid_cache(data, kind, saved):
                             or sum(n for _, n in rec["parts"]) != rec["size"]
                             or any(p < 0 or n < 0 or p + n > saved[1] for p, n in rec["parts"])):
                         return False
-        if kind == "mix" and (len(data["header"]) != 6 or len(data["blocks"]) != data["header"][5]):
-            return False
+        if kind == "mix":
+            header, blocks = data["header"], data["blocks"]
+            if len(header) != 6 or len(blocks) > header[5]:
+                return False
+            if len(blocks) < header[5] and not data.get("partial"):
+                if header[3] <= 0 or sum(b["nev"] for b in blocks) != header[3]:
+                    return False
         return True
     except (ValueError, KeyError, TypeError, IndexError, struct.error):
         return False
@@ -263,8 +268,17 @@ def mix_index(path, cancel=None):
             checkpoint(cancel)
             try:
                 r = next(recs)
+            except StopIteration:
+                # SCF 可完全省略未计算的块；仅在干净的记录边界用总能级数判断是否写完。
+                partial = counts[3] <= 0 or sum(b["nev"] for b in blocks) != counts[3]
+                break
+            except ValueError:
+                partial = True
+                break
+            try:
                 nb, ncf, nev, twoj1, parity = struct.unpack("<5i", body(f, r, 20))
-                if ncf < 0 or nev < 0 or twoj1 < 1 or parity not in (-1, 1):
+                empty = nev == 0 and twoj1 == parity == 999
+                if ncf < 0 or nev < 0 or not empty and (twoj1 < 1 or parity not in (-1, 1)):
                     raise ValueError("invalid mixing block header")
                 block = dict(nb=nb, ncf=ncf, nev=nev, twoj1=twoj1, parity=parity, records=[r])
                 if nev:

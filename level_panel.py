@@ -14,7 +14,7 @@ import shutil
 import struct
 import threading
 
-from PySide6.QtCore import QEvent, QMarginsF, QPointF, QRect, QRectF, QSize, QSizeF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QMarginsF, QPointF, QRect, QRectF, QSize, QSizeF, QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import (QColor, QFont, QFontDatabase, QFontMetricsF, QImage, QPainter, QPen, QPolygonF,
                            QTextCursor)
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
@@ -962,6 +962,9 @@ class LevelPanel(Panel):
     def render_levels(self):
         unit_label, factor, efmt = self.unit_info()
         data = []
+        previous_partial = getattr(self, "partial_files", [])
+        self.partial_files = []
+        signals = QSignalBlocker(self.files)  # 提示 / 颜色不是用户勾选；不能再触发 itemChanged 重入重绘。
         for i in range(self.files.count()):
             it = self.files.item(i)
             if it.checkState() != Qt.Checked:
@@ -975,8 +978,13 @@ class LevelPanel(Panel):
                 it.setToolTip(T("无法读取：{e}", e=res))
                 continue
             it.setForeground(QColor("black"))
-            it.setToolTip(path)
+            tooltip = path
+            if getattr(res[0], "partial", False):
+                tooltip += "\n" + T("文件尚未写完，仅显示完整块中的能级。")
+                self.partial_files.append(os.path.basename(path))
+            it.setToolTip(tooltip)
             data.append((os.path.basename(path), path, *res))
+        signals.unblock()
         self.zero_groups, self.zero_warnings = {}, []
         for fname, path, blocks, *_ in data:
             fallback = dict(zero_group="DC", zero_warning="") if path.endswith(".m") else mix.unknown_hamiltonian()
@@ -1023,8 +1031,13 @@ class LevelPanel(Panel):
         self.load_transitions()
         self.load_marked()
         self.show_composition()
+        warnings = []
+        if self.partial_files:
+            warnings.append(T("文件尚未写完：{files}", files=", ".join(self.partial_files)))
         if self.zero_warnings:
-            self.status(T("无法确定哈密顿量，零点可能不可比") + "：" + ", ".join(self.zero_warnings))
+            warnings.append(T("无法确定哈密顿量，零点可能不可比") + "：" + ", ".join(self.zero_warnings))
+        if warnings or previous_partial:
+            self.status("；".join(warnings))
 
     @staticmethod
     def jp(block):
