@@ -1406,7 +1406,6 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "目标进程数": "Target processes",
     "找不到保存的 H 矩阵 (在 {d} 中)：请先用“只构造并保存 H 矩阵”运行 rci_block_csfg。": "No saved H matrix (in {d}): run rci_block_csfg with \"only build and save the H matrix\" first.",
     "保存的 H 矩阵是 {k} 个 MPI 进程的 (在 {d} 中)，重启必须使用相同的进程数：请把 MPI 进程数设为 {k}，或先用 rdistHmatrix_csfg 重新分配给 {np} 个进程。": "The saved H matrix is for {k} MPI processes (in {d}); a restart must use the same number: set the MPI processes to {k}, or first redistribute it to {np} processes with rdistHmatrix_csfg.",
-    "文件尚未写完，只显示已完成的块": "The file is not complete yet; only the finished blocks are shown",
     # 零阶 / 一阶划分
     "零阶 / 一阶划分：零阶空间以外的 CSF 按一阶微扰处理": "Zero/first-order partition: CSFs outside the zero-order space treated as first-order perturbations",
     "先用 rcsfzerofirst 把零阶空间的 CSF 排在各块最前面": "first put the zero-order CSFs at the top of each block with rcsfzerofirst",
@@ -1432,6 +1431,9 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "先用 rcsfgzerofirst_csfg 把零阶空间排在各块最前面": "First use rcsfgzerofirst_csfg to move the zero-order space to the beginning of each block",
     "各块 ICCUT 从此 .g 列表统计 CSFG 数，不是展开后的 CSF 数；每块至少一个": "ICCUT counts CSFGs in each block of this .g list, not expanded CSFs; at least one per block",
     "块 {s}：零阶空间有 {n} 个 CSFG，比 {f} 的 {ncf} 个还多。": "Block {s}: the zero-order space has {n} CSFGs, more than the {ncf} of {f}.",
+    # 跳过的块与未写完的混合系数文件 (#57)
+    "文件尚未写完，仅显示完整块中的能级。": "File is incomplete; only levels from complete blocks are shown.",
+    "文件尚未写完：{files}": "Incomplete files: {files}",
 }
 
 

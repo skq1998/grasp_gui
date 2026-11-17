@@ -381,11 +381,13 @@ class RemoteLevels(LevelPanel):
         checked = set(self.checked_paths())
         groups, compositions, csfs, labels, origins = {}, {}, {}, {}, {}
         hamiltonians = {}
+        partial = {str(PurePosixPath(self.remote_directory) / name): True for name in data.get("partial_files", [])}
         for name in data.get("files", []):
             path = str(PurePosixPath(self.remote_directory) / name)
             groups[path], csfs[path], labels[path], origins[path] = {}, {}, {}, (None, None)
         for row in data.get("levels", []):
             path = str(PurePosixPath(self.remote_directory) / row["file"])
+            partial[path] = partial.get(path, False) or row.get("partial", False)
             if "zero_group" in row:
                 hamiltonians[path] = dict(zero_group=row["zero_group"], zero_warning=row.get("zero_warning", ""))
             if path not in groups:
@@ -415,6 +417,7 @@ class RemoteLevels(LevelPanel):
         self.read_data = {}
         for path, bs in groups.items():
             blocks = mix.Blocks(bs.values())
+            blocks.partial = partial.get(path, False)
             fallback = dict(zero_group="DC", zero_warning="") if path.endswith(".m") else mix.unknown_hamiltonian()
             blocks.hamiltonian = hamiltonians.get(path, fallback)
             self.read_data[path] = (blocks, csfs[path] if origins[path][0] else None,

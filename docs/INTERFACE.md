@@ -575,11 +575,24 @@ is writable, viewing still works without a disk cache. A changed source invalida
 are rebuilt, and entries for deleted sources are removed on the next directory scan. These caches contain no
 copies of the full calculation files and can be deleted to reclaim space.
 
+Skipped symmetry blocks are matched to the CSF list by their original block numbers. An rci empty-block
+header and an omitted rmcdhf block do not hide later levels. A file ending at a complete block is considered
+complete only when the number of levels agrees with its header; truncated records remain incomplete.
+Incomplete files show **File is incomplete; only levels from complete blocks are shown** in the file tooltip
+and **Incomplete files: …** in the status bar. These hints disappear when a refreshed file is complete.
+Remote views use the server's partial-file metadata; summary output retains its per-file `partial` flag.
+
 中文：大型混合系数和 CSF 文件在后台建立索引，状态栏显示读取进度；切换文件或目录会取消旧请求，界面保持响应。
 选中能级时只解析所需的 CSF，阈值改变时复用已读数据。小混合文件串行分析，避免启动进程池的延迟；大文件至多用四个本地分析进程。
 索引和主要成分摘要保存在工作目录的 `.grasp_gui/index/`；
 只读目录改用用户的 `~/.cache/grasp_gui/index/<目录哈希>/`，两处都不可写时仍可查看，但不保留磁盘缓存。
 源文件变化时缓存失效，损坏时重建，源文件删除后在下次扫描清理；缓存不含完整结果文件的副本，可直接删除。
+
+跳过的对称块按原始块号与 CSF 配对，rci 的空块头和 rmcdhf 省略的块不会丢掉后面的能级。文件在完整块后结束时，
+还须按文件头的能级总数核对是否完整；记录被截断仍视为未写完。未写完的文件在文件提示框中显示
+“文件尚未写完，仅显示完整块中的能级。”，状态栏列出“文件尚未写完：…”；刷新后完整时提示消失。
+远程页使用服务器返回的未写完文件信息，摘要保留逐文件 `partial` 标志。
+[中文截图](images/zh_incomplete_levels.png) / [English screenshot](images/en_incomplete_levels.png)。
 
 ```
 Refresh  Energy unit [eV▾]  Energy zero [By calculation group▾]  Export▾  ☐ Show all computed transitions of the selected level        Tips

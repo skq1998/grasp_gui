@@ -212,6 +212,8 @@ def open_mix(path, summary=False, workers=None, cancel=None, progress=None, k=in
     blocks = Blocks()
     blocks.partial = bool(data.get("partial"))
     for meta in data["blocks"]:
+        if not meta["nev"] and meta["twoj1"] == meta["parity"] == 999:
+            continue  # 空块只在索引中保留原块号；999 对应的 J / 宇称没有物理意义。
         b = Block(meta["nb"], meta["ncf"], meta["twoj1"], meta["parity"])
         for i in range(meta["nev"]):
             coeffs = Coefficients(data["stamp"], meta["records"][-1], i * b.ncf * 8, b.ncf)
@@ -236,8 +238,8 @@ def read_mix(path):
 
 
 def mix_symmetries(path):
-    """混合系数文件中各块的 (2J, 宇称)，按块的顺序。"""
-    return [(b.twoj1 - 1, b.parity) for b in open_mix(path)]
+    """有能级的原始块号 → (2J, 宇称)，不能以文件中的位置代替块号。"""
+    return {b.nb: (b.twoj1 - 1, b.parity) for b in open_mix(path)}
 
 
 def _record(body):
@@ -245,7 +247,7 @@ def _record(body):
     return n + body + n
 
 
-def write_mix_subset(src, dst, keep):
+def write_mix_subset(src, dst, keep, *, nw=None):
     """重写总计数和块号；所选记录按原始字节流复制，支持续记录。"""
     if os.path.realpath(src) == os.path.realpath(dst) or (os.path.exists(dst) and os.path.samefile(src, dst)):
         raise ValueError("source and destination must differ")
@@ -253,6 +255,8 @@ def write_mix_subset(src, dst, keep):
     selected = [b for b in data["blocks"] if (b["twoj1"] - 1, b["parity"]) in keep]
     counts = list(data["header"])
     counts[1] = sum(b["ncf"] for b in selected)
+    if nw is not None:
+        counts[2] = nw
     counts[3] = sum(b["nev"] for b in selected)
     counts[4] = sum(b["ncf"] * b["nev"] for b in selected)
     counts[5] = len(selected)
@@ -277,18 +281,31 @@ def write_mix_subset(src, dst, keep):
     return len(selected)
 
 
-def write_csf_subset(src, dst, positions):
+def write_csf_subset(src, dst, positions, *, prune=False):
     """按索引跳到所选块，流式复制并保留旧写法的换行和分隔符。"""
     if os.path.realpath(src) == os.path.realpath(dst) or (os.path.exists(dst) and os.path.samefile(src, dst)):
         raise ValueError("source and destination must differ")
     data = index.csf_index(src)
     kept = [data["blocks"][i] for i in sorted(positions)]
+    used = set()
+    if prune:
+        # lodcslBio 会剔除所选 CSF 中全部空占据的外层轨道；mix 文件头的 NW 必须同步。
+        for b in kept:
+            for configuration, _ in CsfBlock(data["stamp"], b):
+                used.update(re.findall(r"(\d+[a-z]-?)\([1-9]\d*\)", configuration))
+    nw, peel = 0, False
     with open(src, "rb") as source, open(dst, "w") as out:
         for line in source:
             text = line.decode("utf-8").rstrip("\r\n")
+            if prune and peel and not text.endswith(":"):
+                text = "".join(text[i:i + 5] for i in range(0, len(text), 5) if text[i:i + 5].strip() in used)
+            if not text.endswith(":"):
+                nw += len(text.split())
             out.write(text + "\n")
             if text.startswith("CSF(s):"):
                 break
+            if text.startswith("Peel subshells:"):
+                peel = True
         for i, b in enumerate(kept):
             if i:
                 out.write(" *\n")
@@ -299,6 +316,7 @@ def write_csf_subset(src, dst, positions):
                     raise ValueError("truncated CSF file")
                 out.write(line.decode("utf-8").rstrip("\r\n") + "\n")
     index.unchanged(data["stamp"])
+    return nw if prune else None
 
 
 class CsfBlock:
@@ -446,7 +464,8 @@ def is_csf_file(path):
 
 def _mix_signature(path):
     data = index.mix_index(path)
-    blocks = [Block(b["nb"], b["ncf"], b["twoj1"], b["parity"]) for b in data["blocks"]]
+    blocks = [Block(b["nb"], b["ncf"], b["twoj1"], b["parity"]) for b in data["blocks"]
+              if b["twoj1"] != 999 or b["parity"] != 999]
     return data["header"][2], tuple((b.ncf, b.J, "+" if b.parity > 0 else "-") for b in blocks)
 
 
@@ -478,10 +497,13 @@ def csf_signature(path):
 
 
 def find_csf_for(mix_path, cancel=None, progress=None):
-    """找与混合系数文件对应的 CSF 文件：特征 (轨道数、各块的 CSF 数与 J^π) 必须一致。
+    """按原始块号配对轨道数、CSF 数与 J^π；跳过的空块只检查 CSF 数。
     先试同名的 .c，再试 rcsf.inp / rcsf.out，最后在目录中所有 CSF 文件里找 (新的优先)。"""
-    sig = mix_signature(mix_path)
-    if not sig:
+    try:
+        data = index.mix_index(mix_path, cancel)
+    except (OSError, ValueError, StopIteration, struct.error):
+        return None
+    if not data["blocks"]:
         return None
     d, base = os.path.split(mix_path)
     stem = os.path.splitext(base)[0]
@@ -498,7 +520,21 @@ def find_csf_for(mix_path, cancel=None, progress=None):
         seen.add(p)
         if is_csf_file(p):
             try:
-                if _csf_signature(p, cancel, progress) == sig:
+                csf = index.csf_index(p, cancel, progress)
+                if csf["nw"] != data["header"][2]:
+                    continue
+                matches = True
+                for b in data["blocks"]:
+                    if not 1 <= b["nb"] <= len(csf["blocks"]):
+                        matches = False
+                        break
+                    candidate = csf["blocks"][b["nb"] - 1]
+                    block = Block(b["nb"], b["ncf"], b["twoj1"], b["parity"])
+                    if (b["ncf"] != candidate["ncf"] or b["nev"] and
+                            (block.J, "+" if block.parity > 0 else "-") != tuple(candidate["jp"])):
+                        matches = False
+                        break
+                if matches:
                     return p
             except (OSError, ValueError, StopIteration, struct.error, UnicodeDecodeError, IndexError):
                 continue

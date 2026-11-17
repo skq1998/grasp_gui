@@ -199,7 +199,7 @@ class Workspace:
 
     # ---- 计算 ----
     def prepare(self, subset=None):
-        """建立一次计算的子目录：全部 J^π 时链接原文件，否则写出只含所需块的 .c 和 .cm。
+        """建立计算子目录；缺块或选定 J^π 时同步重写 .c / .cm 的块序。
         输入文件改变后先清空旧结果。返回子目录名。"""
         m = self.manifest()
         if not m:
@@ -214,16 +214,18 @@ class Workspace:
             link(side.w, os.path.join(rdir, f"{role}.w"))
             keep = {tuple(x) for x in subset[role]} if subset else None
             sym = mix.mix_symmetries(side.mix)
-            if keep is None or keep >= set(sym):
+            selected = [nb for nb, jp in sym.items() if keep is None or jp in keep]
+            if selected == list(range(1, len(mix.open_csfs(side.csf)) + 1)):
                 link(side.csf, os.path.join(rdir, f"{role}.c"))
                 link(side.mix, os.path.join(rdir, f"{role}.cm"))
             else:
                 for name in (f"{role}.c", f"{role}.cm"):
                     if os.path.lexists(os.path.join(rdir, name)):
                         os.remove(os.path.join(rdir, name))
-                mix.write_mix_subset(side.mix, os.path.join(rdir, f"{role}.cm"), keep)
-                mix.write_csf_subset(side.csf, os.path.join(rdir, f"{role}.c"),
-                                     [i for i, x in enumerate(sym) if x in keep])
+                chosen = {sym[nb] for nb in selected}
+                nw = mix.write_csf_subset(side.csf, os.path.join(rdir, f"{role}.c"),
+                                          [nb - 1 for nb in selected], prune=True)
+                mix.write_mix_subset(side.mix, os.path.join(rdir, f"{role}.cm"), chosen, nw=nw)
         if self.same:                        # 同一组轨道：不需要变换
             link(self.sides["a"].w, os.path.join(rdir, "a.bw"))
             link(os.path.join(rdir, "a.cm"), os.path.join(rdir, "a.cbm"))

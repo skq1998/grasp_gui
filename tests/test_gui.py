@@ -358,8 +358,10 @@ def test_level_diagram_wheel_scrolls_and_pinch_zooms(qapp):
 
 def test_level_diagram_box_zoom(qapp):
     """右键 (或 Ctrl + 左键) 拖出的框放大到其能量范围；单击右键或 Backspace 回到上一个视图，双击复原。"""
-    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
     from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
     from level_panel import PARITY_COLORS, LevelDiagram
 
     d = LevelDiagram()
@@ -374,7 +376,10 @@ def test_level_diagram_box_zoom(qapp):
 
     def drag(button, modifiers, y0, y1):
         QTest.mousePress(d, button, modifiers, QPoint(x, int(y0)))
-        QTest.mouseMove(d, QPoint(x + 5, int(y1)))
+        # Qt 5 的 offscreen 下 QTest.mouseMove 只移动光标，须显式发送带按键的移动事件。
+        p = QPoint(x + 5, int(y1))
+        QApplication.sendEvent(d, QMouseEvent(QEvent.MouseMove, QPointF(p), QPointF(d.mapToGlobal(p)),
+                                            Qt.NoButton, button, modifiers))
         QTest.mouseRelease(d, button, modifiers, QPoint(x + 5, int(y1)))
 
     drag(Qt.RightButton, Qt.NoModifier, top, bottom)
