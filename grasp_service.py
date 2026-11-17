@@ -135,21 +135,21 @@ class Service:
             text = core.shell_script(jobs, settings["bindir"], str(root), mpi, settings["mpitmp"])
         return dict(text=text[:MAX_TEXT], truncated=len(text) > MAX_TEXT)
 
-    def run(self, directory, start=1, force=False, *, started_by="mcp", user_scope=False):
+    def run(self, directory, start=1, force=False, *, end=None, started_by="mcp", user_scope=False):
         root, data, _ = self.record(directory)
         jobs = data.get("pipeline", [])
-        if not 1 <= start <= len(jobs):
-            raise ValueError(T("起始步骤超出流程范围"))
+        first, last = summary.run_bounds(len(jobs), start, end)
+        total = len(jobs)
         if type(force) is not bool:
             raise ValueError("force must be boolean")
-        cfg = config.export(jobs, dict(title=root.name), validate=False)
+        cfg = config.export(jobs[first:last], dict(title=root.name), validate=False)
         self.custom(cfg)
         settings = dict(core.saved_run_settings(), cwd=str(root))
-        checked = summary.check_files(str(root), cfg["jobs"], start=start - 1, run=settings, path_check=self.path)
+        checked = summary.check_files(str(root), cfg["jobs"], offset=first, run=settings, path_check=self.path)
         if checked["invalid"] or checked["missing"] and not force:
             raise PreflightError(checked)
         # 表单参数是依据，不能让记录中伪造的 prog/pre 绕过自定义命令限制。
-        jobs = [config.make_job(j) for j in cfg["jobs"][start - 1:]]
+        jobs = [config.make_job(j) for j in cfg["jobs"]]
         for name in (bg.RUN_REQUEST, bg.RUN_STATE, bg.RUN_STATE + ".tmp", bg.RUN_LOG):
             path = self.path(str(root / name))
             if path.exists() and not path.is_file():
@@ -186,7 +186,8 @@ class Service:
             self.handshake(connection).close()
         finally:
             connection.close()
-        return dict(started=True, directory=str(root), from_step=start, started_by=started_by)
+        return dict(started=True, directory=str(root), from_step=start, to_step=last,
+                    total_steps=total, started_by=started_by)
 
     def handshake(self, connection):
         """先读初始状态，后台才能确认客户端已连上；不能连上后立刻关闭。"""

@@ -218,7 +218,7 @@ def test_user_scope_requires_explicit_logout_choice(tmp_path, monkeypatch):
     op = remote.Operations()
     directory = str(tmp_path / "calc")
     revision = op.record(directory)[2]
-    monkeypatch.setattr(op, "run_plan", lambda directory: dict(logout_kills=True, lingering=False))
+    monkeypatch.setattr(op, "run_plan", lambda directory, **kw: dict(logout_kills=True, lingering=False))
     with pytest.raises(ValueError, match="scope"):
         op.run(directory, revision)
     with pytest.raises(ValueError, match="lingering"):
@@ -226,8 +226,8 @@ def test_user_scope_requires_explicit_logout_choice(tmp_path, monkeypatch):
     launched = []
     monkeypatch.setattr(service.Service, "run", lambda self, *a, **kw: launched.append(kw))
     op.run(directory, revision, accept_logout=True)
-    assert launched == [dict(started_by="remote", user_scope=False)]
-    monkeypatch.setattr(op, "run_plan", lambda directory: dict(logout_kills=True, lingering=True))
+    assert launched == [dict(end=None, started_by="remote", user_scope=False)]
+    monkeypatch.setattr(op, "run_plan", lambda directory, **kw: dict(logout_kills=True, lingering=True))
     op.run(directory, revision, user_scope=True)
     assert launched[-1]["user_scope"] is True
     command = []

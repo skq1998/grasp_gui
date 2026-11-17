@@ -30,6 +30,31 @@ checks the revision and required inputs, and saves the generated script and subm
 sbatch. `sbatch`, `squeue` and `scancel` must be available in the server session. Completed-job state also needs
 `sacct` and working cluster accounting. There is no fallback to running on the login node.
 
+### Continuous run ranges / 连续分段运行
+
+Workstation and Slurm pipeline lists support Shift/Ctrl selection. **Run from selected** starts at the first
+selected step; **Run to selected** runs steps 1 through the last selected step; **Run selected steps** runs
+only the consecutive selection. Noncontiguous selections disable these selection-based run actions.
+Both `run_plan` and `run` accept optional one-based inclusive `start` (default 1) and `end` (default last step),
+requiring `1 ≤ start ≤ end ≤ pipeline length`. Preflight, name validation and custom-command authorization
+cover only that span; inputs produced before it must already exist. Slurm resource settings and final
+confirmation display the span, and the submitted batch script includes only those steps. Exported scripts
+still include the whole pipeline. Slurm records and background request/state formats are unchanged.
+Custom-command confirmations and preflight reports retain the pipeline's step numbers, even for a range
+starting after step 1. Workstation failure/stop captions also use pipeline numbers and identify the range.
+
+The server advertises `run_range_v1` in hello capabilities. Without it, the two new buttons show an update
+tooltip and remain disabled; Run all/from selected keep their old requests (no `end`, no `run_plan.start`).
+
+工作站和 Slurm 均支持连续多选：“从选中开始”从首个选中步骤到末尾；“运行到选中”从第 1 步到最后选中步骤；
+“运行选中的步骤”只执行选区。不连续时禁用按选区运行的按钮。`start`、`end` 都从 1 开始，包含终点，
+不传时分别取 1 和流程末步；越界报错。预检、名称及自定义命令确认仅覆盖该段，前置输出须已存在。
+Slurm 资源对话框及最终确认显示范围，实际提交脚本仅含该段；导出仍是完整流程，记录格式不变。
+自定义命令确认和预检报告使用流程中的步号；工作站分段失败或停止时，提示也使用流程序号并标明范围。
+旧服务器缺少 `run_range_v1` 时提示更新并禁用两个新按钮，保留原有运行全部/从选中开始的请求格式。
+Screenshots / 截图：[中文](images/zh_remote_run_range.png) / [English](images/en_remote_run_range.png).
+Slurm resource dialog / 资源对话框：[中文](images/zh_slurm_run_range.png) / [English](images/en_slurm_run_range.png).
+
 The server directory stores `.grasp_gui_slurm.json` (job ID, returned cluster, submission time and identity),
 plus `.grasp_gui_slurm_<token>.sh` and a separate `.log`. Use the same account, Slurm cluster and shared
 directory from another computer or login node to recover the job state and log; no original desktop process
@@ -86,6 +111,11 @@ Command references: [sbatch](https://slurm.schedmd.com/sbatch.html),
 [scancel](https://slurm.schedmd.com/scancel.html).
 
 ### Optional real Slurm acceptance / 可选真实 Slurm 验收
+
+Range acceptance submits example1 twice, stopping after the first rmcdhf, checking that later results do not
+exist, then comparing reference energies after the remaining steps. 另有分段验收：首段结束后检查后续结果尚未生成，
+第二次提交剩余步骤后核对参考能量。The restricted SSH fixture also covers this split in
+`tests/test_remote_edit_ssh.py::test_real_ssh_example1_in_two_ranges`.
 
 `tools/slurm/` contains a single-node Docker fixture: slurmctld and slurmd in one container; the second mode
 also starts MariaDB/slurmdbd. Runtime uses a Docker `--internal` network, publishes no ports and mounts
@@ -381,9 +411,9 @@ Two server workers permit pipelined reads; run/stop are serialized. Server code 
 | `preview_upload` | Read-only new/update validation, changes, input checks, pending/existing files, additive `missing_programs` from server bindir/PATH; no directory creation |
 | `create_workdir` | Mutation: checked configuration and explicit custom-command authorization; absent/empty target under lock |
 | `update_workdir` | Mutation: revision, configuration and explicit custom authorization; locked conflict and idle checks |
-| `run_plan` | Revision and custom commands; optional `server_type: slurm` returns server-side Slurm defaults |
+| `run_plan` | Revision and range-specific custom commands; optional inclusive `start`/`end`; `server_type: slurm` returns Slurm defaults |
 | `clear_slurm_record` | Mutation: explicit `confirmed: true`, matching record revision, fresh queue check, then archival |
-| `run` | Revision, one-based start, explicit custom/logout/scope confirmations; Slurm also accepts reviewed `slurm` settings |
+| `run` | Revision, inclusive one-based `start`/`end`, explicit custom/logout/scope confirmations; Slurm accepts reviewed `slurm` settings |
 | `stop` | Existing background stop, or verified scancel for the recorded Slurm job |
 | `run_status` / `tail_log` | Background/Slurm state and the matching bounded log tail |
 | `watch` | Initial state/log tail; subscribes this session to local server state/log changes |

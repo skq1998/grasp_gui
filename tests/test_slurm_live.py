@@ -109,6 +109,25 @@ def test_real_slurm_running_cancel(tmp_path):
 
 
 @pytest.mark.grasp
+def test_real_slurm_example1_in_two_ranges(tmp_path, grasp_bindir):
+    root = tmp_path / "range"
+    cfg, operation, plan, settings = install(root, grasp_bindir)
+    end = next(i + 1 for i, job in enumerate(cfg["jobs"]) if job["step"] == "rmcdhf")
+    ids = []
+    for args in (dict(end=end), dict(start=end + 1)):
+        result = operation.run(str(root), plan["revision"], server_type="slurm", slurm=settings, **args)
+        ids.append(result["job_id"])
+        state = wait_for(root, lambda s: not s["active"])
+        assert state["status"] == "ok", state
+        if "end" in args:
+            assert (root / "2s_2p_DF.w").stat().st_size > 0
+            assert not any((root / ref["file"]).exists() for ref in cfg["reference"])
+    assert ids[0] != ids[1]
+    for ref in cfg["reference"]:
+        assert config.reference_energies(str(root / ref["file"])) == pytest.approx(ref["energies"], abs=1e-7)
+
+
+@pytest.mark.grasp
 def test_real_slurm_single_rank_mpi_angular_files(grasp_bindir):
     cfg, _ = config.load(Path(__file__).resolve().parents[1] / "demos/example1.json")
     # GRASP MPI 路径限制为 128 字符，不能沿用较长的 pytest 用例目录名。
