@@ -141,7 +141,7 @@ atomic units.
 | `get_pipeline` | `directory` | `config`, `revision` |
 | `update_workdir` | `directory`, `revision`, `config` | 保留结果、更新记录，不运行 / Retain results, update without running |
 | `export_script` | `directory`, optional `slurm` settings object | 有界脚本文本 / Bounded shell or Slurm text |
-| `run` | `directory`, optional `start` (1-based), `force` (boolean, default false) | 预检后后台启动 / Preflight then start |
+| `run` | `directory`, optional inclusive `start`/`end` (1-based), `force` (boolean, default false) | 预检后后台启动 / Preflight then start |
 | `status` | `directory` | 后台状态 / Background state |
 | `tail_log` | `directory`, optional `lines` (1–1000, default 100) | 有界日志 / Bounded log tail |
 | `stop` | `directory` | 停止请求和确认 / Stop request and confirmation |
@@ -173,7 +173,7 @@ an explicit error without it and otherwise reuses the viewers offscreen.
 
 ## 运行前检查 / Run preflight
 
-`run` 使用与 GUI 相同的名称和文件预检，只检查 `start` 起实际运行的步骤。每页的 `validate` 是名称限制的
+`run` 使用与 GUI 相同的名称和文件预检，只检查 `start` 到 `end` 实际运行的连续步骤。每页的 `validate` 是名称限制的
 唯一依据；上游输出会沿 `inputs/outputs` 及复制动作关联，报告在哪一步生成了令后续步骤失败的派生名称。
 
 - 名称超限或其他参数校验失败：拒绝启动，`force: true` 也不能跳过。
@@ -204,10 +204,21 @@ an explicit error without it and otherwise reuses the viewers offscreen.
 配置可能用于另一台服务器。其他配置结构错误仍按原方式返回工具错误。导入、更新和脚本生成仍严格校验，
 不会因诊断接口允许汇总问题而放行无效配置。修正配置后应再次校验/运行，不要把协议响应当作运行成功。
 
-Before `run`, the same checker as the GUI validates names/parameters and required files from the selected start.
+Before `run`, the same checker as the GUI validates names/parameters and required files from `start` through `end`.
 Invalid names/parameters always block execution. Missing inputs block by default; only boolean `force: true`
 permits a run despite them. It does not create those files or bypass custom-command permissions, root restrictions
 or other startup checks. Undeclared dependencies are reported as `skipped`.
+
+`start` defaults to 1; omitted `end` means the pipeline's last step. Both are integers and inclusive:
+`1 ≤ start ≤ end ≤ pipeline length`, otherwise the tool returns a clear error. For example,
+`run(directory="calc", start=4, end=6)` executes only steps 4–6. Earlier outputs must already exist;
+custom-command authorization also considers only this span. The response includes `from_step`, `to_step`
+and `total_steps`. Exported shell/Slurm scripts still include the entire pipeline.
+
+`start` 默认 1，省略 `end` 时运行到流程末尾；两者为包含终点的整数，必须满足
+`1 ≤ start ≤ end ≤ 流程步数`，否则工具返回明确错误。例如 `run(directory="calc", start=4, end=6)`
+仅执行第 4–6 步，前置输出须已存在；自定义命令权限只检查该段。返回 `from_step`、`to_step`、`total_steps`。
+导出 shell/Slurm 脚本仍包含整个流程。
 
 Rejected calls return `isError: true` with JSON/structured data containing `started: false`, sorted `issues`,
 `invalid`, `missing` and `skipped`. Issues identify one-based step, program and reason. Name issues additionally

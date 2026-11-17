@@ -34,6 +34,42 @@ def page(job):
     return step, values
 
 
+def run_bounds(length, start=1, end=None):
+    """一基、包含终点的运行范围，转换为连续切片；拒绝布尔值等伪整数。"""
+    end = length if end is None else end
+    if type(start) is not int or type(end) is not int or not 1 <= start <= end <= length:
+        raise ValueError(T("运行范围必须满足 1 ≤ 起始步骤 ≤ 结束步骤 ≤ 流程步数"))
+    return start - 1, end
+
+
+def selected_run_range(length, rows, mode):
+    """本机和远程共用选区规则；其余编辑动作仍只处理当前行。"""
+    if mode == "all":
+        return run_bounds(length)
+    rows = sorted(set(rows))
+    if rows and rows != list(range(rows[0], rows[-1] + 1)):
+        raise ValueError(T("请选择连续的流程步骤；不连续的选择不能运行。"))
+    if mode in ("to", "selected") and not rows:
+        raise ValueError(T("请先选择流程步骤"))
+    if mode not in ("from", "to", "selected"):
+        raise ValueError("invalid run mode")
+    start = rows[0] + 1 if rows and mode != "to" else 1
+    end = rows[-1] + 1 if rows and mode != "from" else length
+    return run_bounds(length, start, end)
+
+
+def title_range(jobs, titles):
+    """后台记录只保存标题；只有唯一匹配时才恢复原流程中的范围。"""
+    current = [job.get("title", "") for job in jobs]
+    found = [i for i in range(len(current) - len(titles) + 1)
+             if titles and current[i:i + len(titles)] == titles]
+    return (found[0] + 1, found[0] + len(titles), len(jobs)) if len(found) == 1 else None
+
+
+def range_text(start, end, total):
+    return T("第 {a}–{b} 步 (流程共 {n} 步)", a=start, b=end, n=total)
+
+
 def check_files(workdir, jobs, start=0, run=None, offset=0, path_check=None):
     """检查选中步骤；workdir=None 只检查参数和派生名称，不据文件存在与否判断配置。"""
     root = Path(workdir) if workdir is not None else None

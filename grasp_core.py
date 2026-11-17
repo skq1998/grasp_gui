@@ -145,6 +145,17 @@ EN = {
     "流程": "Pipeline",
     "▶ 运行全部": "▶ Run all",
     "▶ 从选中开始": "▶ Run from selected",
+    # 连续范围运行 (#53)
+    "▶ 运行到选中": "▶ Run to selected",
+    "▶ 运行选中的步骤": "▶ Run selected steps",
+    "运行范围必须满足 1 ≤ 起始步骤 ≤ 结束步骤 ≤ 流程步数":
+        "Run range must satisfy 1 ≤ start ≤ end ≤ pipeline length",
+    "请选择连续的流程步骤；不连续的选择不能运行。":
+        "Select consecutive pipeline steps; noncontiguous selections cannot run.",
+    "请先选择流程步骤": "Select pipeline steps first",
+    "第 {a}–{b} 步 (流程共 {n} 步)": "Steps {a}–{b} (pipeline: {n} steps)",
+    "已运行第 {a}–{b} 步 (流程共 {n} 步)": "Ran steps {a}–{b} (pipeline: {n} steps)",
+    # 流程编辑
     "查看": "Show",
     "上移": "Move up",
     "下移": "Move down",

@@ -60,6 +60,24 @@ def energies(peer, directory, name):
 
 
 @pytest.mark.grasp
+def test_real_ssh_example1_in_two_ranges(peer):
+    assert "run_range_v1" in peer.request("hello", dict(protocol=remote.PROTOCOL)).result(60)["capabilities"]
+    cfg, _ = config.load(Path(__file__).resolve().parents[1] / "demos/example1.json")
+    directory = target()
+    created = call(peer, "create_workdir", directory, configuration=cfg)
+    end = next(i + 1 for i, job in enumerate(cfg["jobs"]) if job["step"] == "rmcdhf")
+    for args in (dict(end=end), dict(start=end + 1)):
+        call(peer, "run", directory, revision=created["revision"], accept_logout=True, **args)
+        wait_done(peer, directory)
+        if "end" in args:
+            names = {row["name"] for row in call(peer, "list_dir", directory)["files"]}
+            assert "2s_2p_DF.w" in names
+            assert not any(ref["file"] in names for ref in cfg["reference"])
+    for ref in cfg["reference"]:
+        assert energies(peer, directory, ref["file"]) == pytest.approx(ref["energies"], abs=1e-7)
+
+
+@pytest.mark.grasp
 def test_real_ssh_new_fetch_edit_upload_and_direct_reference(peer, tmp_path, grasp_bindir):
     assert shutil.which("rsync"), "Install local rsync for this opt-in acceptance test"
     example, _ = config.load(Path(__file__).resolve().parents[1] / "demos/example1.json")

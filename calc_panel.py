@@ -16,7 +16,8 @@ import time
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QTextCharFormat, QTextCursor
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog,
+                               QGridLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
                                QPushButton, QScrollArea, QSplitter, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
@@ -176,15 +177,22 @@ def elapsed(seconds):
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}" if m else f"{sec} s"
 
 
-def run_summary(st, titles):
+def run_summary(st, titles, span=None):
     """上次运行的结果，如“上次运行在第 3/7 步 rmcdhf 出错 (结束于 …)”：停下来的是哪一步，不必翻日志。"""
     i, n = st.get("step", 0), len(titles)
     title = titles[i] if 0 <= i < n else "?"
+    if span:
+        i, n = i + span[0] - 1, span[2]
     end = st.get("end") or time.strftime("%Y-%m-%d %H:%M:%S")
     text = {"ok": T("上次运行完成：共 {n} 步", n=n),
             "stopped": T("上次运行在第 {i}/{n} 步 {t} 停止", i=i + 1, n=n, t=title),
             "failed": T("上次运行在第 {i}/{n} 步 {t} 出错", i=i + 1, n=n, t=title)}.get(
         st.get("status"), T("上次运行意外结束于第 {i}/{n} 步 {t}", i=i + 1, n=n, t=title))
+    if span and span != (1, span[2], span[2]):
+        if st.get("status") == "ok":
+            text = T("已运行第 {a}–{b} 步 (流程共 {n} 步)", a=span[0], b=span[1], n=span[2])
+        else:
+            text += " · " + summary.range_text(*span)
     return text + T(" (结束于 {e})", e=end)
 
 
@@ -254,7 +262,7 @@ class SlurmDialog(QDialog):
               ("mail", "邮件通知地址", "空 = 不通知"), ("extra", "其他 #SBATCH 选项", "每行一条，如 --account=xxx")]
     MULTILINE = ("modules", "extra")
 
-    def __init__(self, parent, settings, submit=False):
+    def __init__(self, parent, settings, submit=False, span=None):
         super().__init__(parent)
         self.setWindowTitle(T("提交 Slurm 作业") if submit else T("Slurm 作业脚本"))
         lay = QVBoxLayout(self)
@@ -263,6 +271,8 @@ class SlurmDialog(QDialog):
                         "(isodata, *.c, *.w …) 一起上传到服务器的同一目录，然后运行 sbatch 脚本名。"))
         note.setWordWrap(True)
         lay.addWidget(note)
+        if span:
+            lay.addWidget(QLabel(summary.range_text(*span)))
         g = QGridLayout()
         g.setColumnStretch(1, 1)
         self.w = {}
@@ -908,8 +918,11 @@ class CalcPanel(QWidget):
         self.client = None             # 与后台运行进程的连接 (见 grasp_bg)；连着时 busy
         self.titles = []               # 正在运行的各步标题
         self.last_run = ""             # 本目录上次运行的结果 (结束后留在状态栏的常驻标签中)
+        self.run_span = None           # 仅本次会话的范围；不扩展后台记录格式
         self.remote = None             # 本目录的计算在另一台机器上运行时：读取其 RUN_LOG 的线程的标记
         self.pipeline = []
+        self.preview_source = None     # 流程行号或程序页 key；只保留在界面中
+        self.preview_run = None
         self.session_cleared = False
         self.session_revision = None
         self.checking_session = False
@@ -983,15 +996,28 @@ class CalcPanel(QWidget):
             self.body.deleteLater()
         self.body = body
         self.layout().addWidget(body)
+        if self.preview_run is not self.run:
+            if self.preview_run is not None:
+                self.preview_run.np_spin.valueChanged.disconnect(self.refresh_preview)
+                self.preview_run.mpirun_edit.textChanged.disconnect(self.refresh_preview)
+            self.run.np_spin.valueChanged.connect(self.refresh_preview)
+            self.run.mpirun_edit.textChanged.connect(self.refresh_preview)
+            self.preview_run = self.run
 
     def rebuild(self):
         """重新创建全部控件，保留参数、流程和输出。"""
         data = self.collect()
         output = self.out.toPlainText()
+        source, text, row = self.preview_source, self.prev.toPlainText(), self.selected()
         sizes = self.split.sizes()
         self.build()
         self.split.setSizes(sizes)
         self.apply(data)
+        if row is not None:
+            self.plist.setCurrentRow(row)
+        self.preview_source = source
+        self.prev.setPlainText(text)
+        self.refresh_preview()
         self.append(output, "")
 
     def build_steps(self):
@@ -1048,6 +1074,9 @@ class CalcPanel(QWidget):
         pw = QWidget()
         pl = QHBoxLayout(pw)
         self.plist = QListWidget()
+        self.plist.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.plist.itemSelectionChanged.connect(self.update_run_buttons)
+        self.plist.currentRowChanged.connect(self.preview_row_changed)
         self.plist.itemDoubleClicked.connect(self.show_job)
         pl.addWidget(self.plist, 1)
         # 按钮按用途分组；高度够时排成一列，不够时自动排成两列
@@ -1057,7 +1086,11 @@ class CalcPanel(QWidget):
         menu.addAction(T("导出 Slurm 作业脚本…")).triggered.connect(self.export_slurm)
         menu.addAction(T("复制配置到剪贴板…")).triggered.connect(lambda: self.export_config(True))
         export.setMenu(menu)
-        pl.addWidget(ButtonColumn([[button("▶ 运行全部", self.run_pipeline), button("▶ 从选中开始", self.run_from_selected),
+        self.run_all = button("▶ 运行全部", self.run_pipeline)
+        self.run_from = button("▶ 从选中开始", self.run_from_selected)
+        self.run_to = button("▶ 运行到选中", lambda: self.run_selection("to"))
+        self.run_selected = button("▶ 运行选中的步骤", lambda: self.run_selection("selected"))
+        pl.addWidget(ButtonColumn([[self.run_all, self.run_from, self.run_to, self.run_selected,
                                     button("上传到服务器…", lambda: self.upload_remote()),
                                     button("上传并运行…", lambda: self.upload_remote(True))],
                                    [button("编辑", self.edit_job), button("更新所选", self.update_job),
@@ -1351,8 +1384,33 @@ class CalcPanel(QWidget):
     def preview(self):
         job = self.current_job()
         if job:
+            self.preview_source = self.nav.currentWidget().step.key
             self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
             self.show_preview()
+
+    def preview_row_changed(self, *_):
+        """自动预览只换文字；不能把窄窗口中的流程标签切走。"""
+        self.preview_source = self.selected()
+        self.refresh_preview()
+
+    def refresh_preview(self, *_):
+        source = self.preview_source
+        if source is None:
+            self.prev.clear()
+            return
+        if isinstance(source, int):
+            if not 0 <= source < len(self.pipeline):
+                self.preview_source = None
+                self.prev.clear()
+                return
+            job = self.pipeline[source]
+        else:
+            form = next(f for f in self.forms if f.step.key == source)
+            try:
+                job = form.job()
+            except (ValueError, KeyError):
+                return                    # 设置变化时表单可能尚未填完，保留旧文字且不弹框
+        self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
 
     def check_inputs(self):
         form = self.nav.currentWidget()
@@ -1384,7 +1442,7 @@ class CalcPanel(QWidget):
             return False
         return True
 
-    def start(self, jobs):
+    def start(self, jobs, span=None):
         if self.busy and not self.remote:
             QMessageBox.information(self, T("运行中"), T("已有任务在运行，请等待或先停止。"))
             return
@@ -1408,7 +1466,7 @@ class CalcPanel(QWidget):
         self.run.save()
         if not self.save_session(require_saved=True):
             return
-        first = summary.locate(self.pipeline, jobs)
+        first = span[0] - 1 if span else summary.locate(self.pipeline, jobs)
         try:
             checked = summary.check_files(self.cur_workdir, jobs, run=cfg, offset=first or 0)
         except (OSError, ValueError) as e:
@@ -1435,6 +1493,7 @@ class CalcPanel(QWidget):
             QMessageBox.warning(self, T("运行"), T("无法启动后台运行进程"))
             return
         if first is not None:
+            self.run_span = (first + 1, first + len(jobs), len(self.pipeline))
             state = grasp_bg.status(self.cur_workdir) or dict(status="running", step=0)
             self.summary_record = dict(first=first, keys=[summary.job_key(j) for j in jobs], state=state,
                                        basis=T("本次会话记录；按步骤参数指纹对应"))
@@ -1447,6 +1506,9 @@ class CalcPanel(QWidget):
     def attach(self, sock, titles):
         """连上运行进程：读取它发来的输出 (先补发此前的输出，然后是实时输出)。"""
         self.client, self.titles, self.busy = sock, titles, True
+        if self.run_span is None:
+            self.run_span = summary.title_range(self.pipeline, titles)
+        self.update_run_buttons()
         self.status(T("运行中：{n} 个步骤 …", n=len(titles)))
         threading.Thread(target=self.read_client, args=(sock,), daemon=True).start()
 
@@ -1471,7 +1533,9 @@ class CalcPanel(QWidget):
         sock, self.client = self.client, None
         self.remote = None
         self.busy = False
+        self.run_span = None
         self.summary_record = None
+        self.update_run_buttons()
         if sock:
             try:
                 sock.close()
@@ -1497,7 +1561,7 @@ class CalcPanel(QWidget):
     def finished(self, result):
         if not self.busy:
             return
-        titles = self.titles
+        titles, span = self.titles, self.run_span
         if self.summary_record is not None:
             self.summary_record["state"] = dict(grasp_bg.status(self.cur_workdir) or {}, status=result)
         self.detach()
@@ -1505,9 +1569,9 @@ class CalcPanel(QWidget):
         if result == "lost":
             self.write("\n" + T("*** 后台运行进程意外结束") + "\n", "err")
         st = dict(grasp_bg.status(self.cur_workdir) or {}, status=result)
-        self.last_run = run_summary(st, titles)
-        if not ok:
-            self.write("\n*** " + self.last_run + "\n", "err")
+        self.last_run = run_summary(st, titles, span)
+        if not ok or span and span != (1, span[2], span[2]):
+            self.write("\n*** " + self.last_run + "\n", "info" if ok else "err")
         self.status("")                     # 结果只显示在常驻标签中，不再另发一条状态栏消息
         self.update_progress()
         grasp_bg.mark_seen(self.cur_workdir)
@@ -1548,9 +1612,12 @@ class CalcPanel(QWidget):
             self.remote = token = object()
             self.busy = True
             self.titles = st.get("titles", [])
+            self.run_span = summary.title_range(self.pipeline, self.titles)
+            self.update_run_buttons()
             threading.Thread(target=self.tail_remote, args=(d, token), daemon=True).start()
             return
-        self.last_run = run_summary(st, st.get("titles", []))
+        span = summary.title_range(self.pipeline, st.get("titles", []))
+        self.last_run = run_summary(st, st.get("titles", []), span)
         self.update_progress()
         if st.get("seen"):
             self.write(origin, "info")
@@ -1561,7 +1628,7 @@ class CalcPanel(QWidget):
         self.write(grasp_bg.log_tail(d))
         i, titles = st.get("step", 0), st.get("titles", [])
         title = titles[i] if 0 <= i < len(titles) else "?"
-        self.write("\n" + {"ok": T("*** 后台运行完成"),
+        self.write("\n" + {"ok": "*** " + self.last_run if span else T("*** 后台运行完成"),
                            "stopped": T("*** 后台运行已停止 (第 {i} 步 {t})", i=i + 1, t=title),
                            "failed": T("*** 后台运行在第 {i} 步 {t} 出错", i=i + 1, t=title)}.get(
             st["status"], T("*** 后台运行进程意外结束 (第 {i} 步 {t})", i=i + 1, t=title)) + "\n",
@@ -1593,6 +1660,7 @@ class CalcPanel(QWidget):
     def run_current(self):
         job = self.current_job()
         if job:
+            self.preview_source = self.nav.currentWidget().step.key
             self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
             self.start([job])
 
@@ -1608,8 +1676,42 @@ class CalcPanel(QWidget):
             self.save_session()
 
     def refresh_list(self):
+        # 重建列表产生的临时空行不能改变独立的表单预览来源。
+        blocked = self.plist.blockSignals(True)
         self.plist.clear()
         self.plist.addItems([f"{i:2d}. {j['title']}" for i, j in enumerate(self.pipeline, 1)])
+        self.plist.blockSignals(blocked)
+        self.update_run_buttons()
+        if isinstance(self.preview_source, int):
+            self.preview_row_changed()
+
+    def update_run_buttons(self):
+        for mode, button in (("all", self.run_all), ("from", self.run_from),
+                             ("to", self.run_to), ("selected", self.run_selected)):
+            if mode == "all" or mode == "from" and not self.pipeline:
+                hint = ""
+            elif not self.pipeline:
+                hint = T("流程为空：先在各标签页点击“加入流程”。")
+            else:
+                try:
+                    summary.selected_run_range(
+                        len(self.pipeline), [i.row() for i in self.plist.selectedIndexes()], mode)
+                    hint = ""
+                except ValueError as e:
+                    hint = str(e)
+            if mode in ("to", "selected") and self.busy and not self.remote:
+                hint = T("已有任务在运行，请等待或先停止。")
+            button.setEnabled(not hint)
+            button.setToolTip(hint)
+
+    def run_selection(self, mode):
+        try:
+            first, last = summary.selected_run_range(
+                len(self.pipeline), [i.row() for i in self.plist.selectedIndexes()], mode)
+        except ValueError as e:
+            QMessageBox.information(self, T("运行"), str(e))
+            return
+        self.start(self.pipeline[first:last], span=(first + 1, last, len(self.pipeline)))
 
     def selected(self):
         i = self.plist.currentRow()
@@ -1618,7 +1720,7 @@ class CalcPanel(QWidget):
     def show_job(self, *_):
         i = self.selected()
         if i is not None:
-            self.prev.setPlainText(core.describe(self.pipeline[i], self.run.mpi_prefix()) + "\n")
+            self.preview_row_changed()
             self.show_preview()
 
     def move(self, d):
@@ -1664,6 +1766,7 @@ class CalcPanel(QWidget):
             self.pipeline[i] = job
             self.refresh_list()
             self.plist.setCurrentRow(i)
+            self.show_job()
             self.save_session()
             self.status(T("已更新第 {i} 步", i=i + 1))
 
@@ -1695,7 +1798,10 @@ class CalcPanel(QWidget):
         self.copyChanged.emit(text)
 
     def run_from_selected(self):
-        self.start(self.pipeline[self.selected() or 0:])
+        if not self.pipeline:
+            self.start([])
+            return
+        self.run_selection("from")
 
     def list_files(self):
         if not self.check_dirs():

@@ -7,7 +7,8 @@ import queue
 
 from PySide6.QtCore import Qt, QTimer, Signal, QObject
 from PySide6.QtGui import QTextCursor
-from PySide6.QtWidgets import (QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+                               QListWidget,
                                QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QSplitter,
                                QTabWidget, QVBoxLayout, QWidget)
 
@@ -16,6 +17,7 @@ import grasp_install as install
 import grasp_core as core
 import grasp_mix as mix
 import grasp_ssh as ssh
+import grasp_summary as summary
 import grasp_trans as transitions
 import grasp_wfn as wfn
 from grasp_core import T
@@ -619,6 +621,7 @@ class RemoteCalculation(QWidget):
         self.run_after_load = run_after_load
         self.server_type = getattr(source, "server_type", "workstation")
         self.submitting = False
+        self.can_run = False
         self.slurm_state = None
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(T("远程流程只读；可取出到本机编辑，再确认上传。")))
@@ -629,8 +632,12 @@ class RemoteCalculation(QWidget):
         if self.server_type == "slurm":
             self.run_button.setText(T("提交 Slurm 作业"))
         bar.addWidget(self.run_button)
-        self.run_selected = button("▶ 从选中开始", lambda: self.prepare_run(self.steps.currentRow() + 1))
+        self.run_selected = button("▶ 从选中开始", lambda: self.prepare_selection("from"))
         bar.addWidget(self.run_selected)
+        self.run_to = button("▶ 运行到选中", lambda: self.prepare_selection("to"))
+        self.run_range = button("▶ 运行选中的步骤", lambda: self.prepare_selection("selected"))
+        bar.addWidget(self.run_to)
+        bar.addWidget(self.run_range)
         self.stop_button = button("■ 停止", self.stop)
         bar.addWidget(self.stop_button)
         bar.addWidget(button("刷新", self.load))
@@ -648,6 +655,8 @@ class RemoteCalculation(QWidget):
         layout.addWidget(self.create_button)
         split = QSplitter()
         self.steps = QListWidget()
+        self.steps.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.steps.itemSelectionChanged.connect(self.update_run_buttons)
         self.steps.currentRowChanged.connect(self.show_job)
         split.addWidget(self.steps)
         self.details = QTabWidget()
@@ -679,6 +688,7 @@ class RemoteCalculation(QWidget):
             self.steps.clear()
             self.steps.addItems([f"{i + 1}. {j.get('title', '')}" for i, j in enumerate(self.jobs)])
             self.steps.setCurrentRow(0)
+            self.update_run_buttons()
             if self.run_after_load:
                 self.run_after_load = False
                 self.prepare_run(1)
@@ -686,8 +696,8 @@ class RemoteCalculation(QWidget):
 
         def watched(value, error):
             if error:
-                self.run_button.setEnabled(False)
-                self.run_selected.setEnabled(False)
+                self.can_run = False
+                self.update_run_buttons()
                 self.stop_button.setEnabled(False)
                 self.state.setText(str(error))
                 return
@@ -728,8 +738,8 @@ class RemoteCalculation(QWidget):
         self.clear_record.setVisible(bool(self.slurm_state and state.get("can_clear")))
         self.clear_record.setEnabled(not self.submitting)
         busy = self.submitting or state and (state.get("active", False) or state.get("status") == "running")
-        self.run_button.setEnabled(not busy)
-        self.run_selected.setEnabled(not busy)
+        self.can_run = not busy
+        self.update_run_buttons()
         self.stop_button.setEnabled(bool(busy) and not self.submitting and (state or {}).get("can_cancel", True))
         if not state:
             self.state.setText(T("正在提交 Slurm 作业…") if self.submitting else T("没有运行记录"))
@@ -744,6 +754,11 @@ class RemoteCalculation(QWidget):
             self.state.setText(text + (" · " + state["error"] if state.get("error") else ""))
             return
         titles = state.get("titles", [])
+        span = summary.title_range(self.jobs, titles)
+        if span and state.get("status") in ("ok", "failed", "stopped", "lost"):
+            from calc_panel import run_summary
+            self.state.setText(run_summary(state, titles, span))
+            return
         pos = state.get("step", 0)
         title = titles[pos] if 0 <= pos < len(titles) else ""
         self.state.setText(f"{state['status']} · {pos + 1}/{len(titles)} · {title}")
@@ -761,9 +776,44 @@ class RemoteCalculation(QWidget):
         self.source.submit("clear_slurm_record", dict(directory=self.directory,
                            revision=state["record_revision"], confirmed=True), self.started)
 
-    def prepare_run(self, start):
+    def has_run_range(self):
+        return "run_range_v1" in getattr(self.source, "server", {}).get("capabilities", [])
+
+    def update_run_buttons(self):
+        for mode, button in (("all", self.run_button), ("from", self.run_selected),
+                             ("to", self.run_to), ("selected", self.run_range)):
+            try:
+                summary.selected_run_range(len(self.jobs), [i.row() for i in self.steps.selectedIndexes()], mode)
+                hint = ""
+            except ValueError as e:
+                hint = str(e)
+            if mode in ("to", "selected") and not self.has_run_range():
+                hint = T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。")
+            button.setEnabled(self.can_run and not hint)
+            button.setToolTip(hint)
+
+    def prepare_selection(self, mode):
+        try:
+            first, last = summary.selected_run_range(
+                len(self.jobs), [i.row() for i in self.steps.selectedIndexes()], mode)
+        except ValueError as e:
+            QMessageBox.information(self, T("远程运行"), str(e))
+            return
+        self.prepare_run(first + 1, last if mode in ("to", "selected") else None)
+
+    def prepare_run(self, start, end=None):
         if not self.jobs or not self.revision or start < 1 or self.submitting:
             return
+        if end is not None and not self.has_run_range():
+            QMessageBox.warning(self, T("远程运行"), T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。"))
+            return
+        try:
+            first, last = summary.run_bounds(len(self.jobs), start, end)
+        except ValueError as e:
+            QMessageBox.warning(self, T("远程运行"), str(e))
+            return
+        span = (first + 1, last, len(self.jobs))
+        range_args = dict(start=start, end=last) if self.has_run_range() else {}
         if self.server_type == "slurm" and "slurm" not in getattr(self.source, "server", {}).get("server_types", []):
             QMessageBox.warning(self, T("远程运行"), T("服务器端尚不支持 Slurm，请先更新服务器端程序。"))
             return
@@ -785,12 +835,13 @@ class RemoteCalculation(QWidget):
                 from calc_panel import SlurmDialog
                 saved = core.load_config().get("remote_hosts", {}).get(self.source.client.host, {})
                 settings = dict(plan["slurm"], **saved.get("slurm", {}))
-                dialog = SlurmDialog(self, settings, submit=True)
+                dialog = SlurmDialog(self, settings, submit=True, span=span)
                 if dialog.exec() != QDialog.Accepted:
                     return
                 settings = dialog.settings()
                 if QMessageBox.question(self, T("提交 Slurm 作业"),
-                        T("将在服务器目录 {p} 提交 Slurm 作业，是否确认？", p=self.directory),
+                        T("将在服务器目录 {p} 提交 Slurm 作业，是否确认？", p=self.directory) +
+                        "\n" + summary.range_text(*span),
                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
                     return
                 profiles = core.load_config().get("remote_hosts", {})
@@ -798,8 +849,10 @@ class RemoteCalculation(QWidget):
                 core.save_config(remote_hosts=profiles)
                 self.submitting = True
                 self.show_state(None)
-                self.source.submit("run", dict(directory=self.directory, revision=self.revision, start=start,
-                                               allow_custom=custom, server_type="slurm", slurm=settings), self.started)
+                args = dict(directory=self.directory, revision=self.revision, start=start,
+                            allow_custom=custom, server_type="slurm", slurm=settings)
+                args.update(range_args)
+                self.source.submit("run", args, self.started)
                 return
             scope = accept_logout = False
             if plan["logout_kills"]:
@@ -823,8 +876,9 @@ class RemoteCalculation(QWidget):
                     return
             args = dict(directory=self.directory, revision=self.revision, start=start, allow_custom=custom,
                         user_scope=scope, accept_logout=accept_logout)
+            args.update(range_args)
             self.source.submit("run", args, self.started)
-        args = dict(directory=self.directory)
+        args = dict(directory=self.directory, **range_args)
         if self.server_type == "slurm":
             args["server_type"] = "slurm"
         self.source.submit("run_plan", args, planned)

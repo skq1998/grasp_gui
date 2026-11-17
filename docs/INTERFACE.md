@@ -274,6 +274,26 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   *Clear (清空)*, *Export ▾ (导出)*: shell script / Slurm job script. Steps imported as commands have no form and
   cannot be edited. The buttons stand in one column, grouped (run; edit / update / show; move; remove / clear;
   export); when the pane is too low for one column they rearrange into two.
+  Shift/Ctrl selects consecutive steps. *▶ Run from selected* starts at the first selected row;
+  *▶ Run to selected (运行到选中)* runs from step 1 through the last selected row;
+  *▶ Run selected steps (运行选中的步骤)* runs only that continuous span. Noncontiguous selection disables
+  these three buttons with an explanatory tooltip; *Run all* ignores selection. Edit, update, show, move,
+  remove and manual input checking still use the current row. Shell/Slurm exports still include all steps.
+  Completion output and the persistent last-run caption identify partial runs as
+  “Ran steps a–b (pipeline: n steps)”; later steps are not marked successful in the summary.
+  流程支持 Shift/Ctrl 连续多选：“从选中开始”从选区首步到流程末尾；“运行到选中”从第 1 步到选区末步；
+  “运行选中的步骤”只运行选区。不连续时禁用这三个按钮并说明原因，“运行全部”仍可用。
+  编辑、更新、查看、移动、删除及手动检查仍作用于当前行；导出脚本仍包含整个流程。
+  分段运行只预检该段，前置输出必须已经存在；结束后输出区和常驻提示写明“已运行第 a–b 步 (流程共 n 步)”。
+  重新打开目录时按唯一连续标题序列恢复范围；标题无法唯一对应时保留原提示，不猜测范围。
+  本机原有“运行全部 / 从选中开始”保留原行为：空流程且空闲时点击不操作，已有任务时点击显示运行中提示；
+  “从选中开始”仅因不连续选区而禁用。两个新按钮在空流程或本机运行中禁用，并提供明确提示。
+  分段失败、停止或意外结束时，本机和远程提示均使用流程中的步号，例如第 4–8 步中第二步出错显示第 5/27 步。
+  The original local Run all/from selected buttons retain their click behavior: an empty idle pipeline is a no-op,
+  and an active local run shows the existing warning. Noncontiguous selection disables Run from selected.
+  The two new buttons explain why they are disabled for empty/busy pipelines. Partial failure, stop and unexpected
+  termination captions use pipeline step numbers locally and remotely (e.g. step 5/27 within steps 4–8).
+  Screenshots / 截图：[中文](images/zh_run_range.png) / [English](images/en_run_range.png).
 * **Check input files (检查输入文件)**, next to *Preview input*: checks the pipeline from the selected step
   (or the current form if there is no pipeline). Starting a run also checks its selected steps, including
   *Update and run added steps*. Existing files and files declared as produced by earlier selected steps are
@@ -293,6 +313,22 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   pipeline and the program output (the three widths are remembered); when narrower it is a tab next to *Pipeline*.
   It shows the command, the here-document with the program's stdin and the file actions, e.g.
   `rmcdhf <<'EOF' … EOF` followed by `rsave odd4`.
+  The text follows the pipeline's current row (mouse, arrow keys or programmatic selection); with multiple
+  selected steps it shows the current row. Automatic refresh leaves the Pipeline tab visible in narrow windows.
+  For a pipeline-sourced preview, move/remove/clear refresh from the resulting current row, or clear it if
+  there is none. List rebuilding preserves a form preview, including after Add to pipeline; it does not
+  automatically select a newly added or neighboring step.
+  Update selected immediately shows the updated step and opens the preview, as Show and double-click do.
+  Preview input still opens a preview of the program form. Changing form fields alone does not refresh it.
+  Changing the MPI process count or mpirun command regenerates the displayed source: either that pipeline row
+  or the program form that supplied the preview. An invalid form keeps the previous text without a dialog.
+  The source is temporary UI state and is not saved in the working-directory record.
+  预览随流程当前行刷新（单击、方向键或程序设置当前行），多选时显示当前行；自动刷新只改文字，不切走“流程”标签。
+  流程来源的预览在上移、下移、删除、清空后按新的当前行刷新；没有当前行时清空。表单来源的预览不受列表重建影响，
+  “加入流程”后仍保留；不会自动选择新加入或相邻的步骤。“更新所选”后立即显示新输入并切到预览，
+  与“查看”和双击一样。“预览输入”仍显示程序页表单并切到预览，单独修改表单参数不自动刷新。
+  修改 MPI 进程数或 mpirun 命令时，按当前预览的来源（流程行或原程序页表单）重新生成；表单不合法时保留旧文字，
+  不弹错误框。预览来源仅为临时界面状态，不写入工作目录记录。
 * **Program output (程序输出)**: dark terminal-style pane, last 5000 lines (set a log file in the form for the full
   output); *Working directory (工作目录)* (update, restore record, clear directory; see below),
   *List files (查看文件)*, *Clear (清屏)*. Errors in red, step headers in blue.

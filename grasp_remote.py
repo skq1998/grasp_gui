@@ -22,6 +22,7 @@ import grasp_config as config
 import grasp_core as core
 import grasp_service as service
 import grasp_session as sessions
+import grasp_summary as summary
 from grasp_core import T
 
 PROTOCOL = 1
@@ -81,7 +82,8 @@ class Operations(service.Service):
         executable = os.environ.get("GRASP_GUI_REMOTE_EXECUTABLE") or (
             sys.executable if getattr(sys, "frozen", False) else sys.argv[0])
         return dict(protocol=PROTOCOL, version=core.VERSION, executable=os.path.abspath(executable),
-                    home=str(Path.home()), server_types=["workstation", "slurm"], capabilities=["workdir_write_v1"])
+                    home=str(Path.home()), server_types=["workstation", "slurm"],
+                    capabilities=["workdir_write_v1", "run_range_v1"])
 
     def get_pipeline(self, directory):
         root, data, revision = self.record(directory)
@@ -207,13 +209,16 @@ class Operations(service.Service):
     def run_status(self, directory):
         return self.status(directory)
 
-    def run_plan(self, directory, server_type="workstation"):
+    def run_plan(self, directory, server_type="workstation", start=1, end=None):
         _, data, revision = self.record(directory)
-        cfg = config.export(data.get("pipeline", []), {})
+        jobs = data.get("pipeline", [])
+        first, last = summary.run_bounds(len(jobs), start, end)
+        cfg = config.export(jobs[first:last], {})
+        commands = [(i + first, text) for i, text in config.custom_commands(cfg)]
         if server_type == "slurm":
             settings = dict(core.SLURM_DEFAULTS, **core.load_config().get("slurm", {}))
             settings["bindir"] = core.default_bindir()
-            return dict(revision=revision, custom_commands=config.custom_commands(cfg), server_type="slurm",
+            return dict(revision=revision, custom_commands=commands, server_type="slurm",
                         slurm=settings, logout_kills=False, lingering=False)
         if server_type != "workstation":
             raise ValueError("invalid server type")
@@ -225,15 +230,14 @@ class Operations(service.Service):
             linger = result.returncode == 0 and result.stdout.strip() == "yes"
         except (OSError, subprocess.SubprocessError):
             pass  # 无 systemd 的服务器不提供 scope 选项，仍可按普通方式运行。
-        return dict(revision=revision, custom_commands=config.custom_commands(cfg),
+        return dict(revision=revision, custom_commands=commands,
                     logout_kills=bg.logout_kills(), lingering=linger, run_settings=core.saved_run_settings())
 
     def run(self, directory, revision, start=1, allow_custom=False, user_scope=False, accept_logout=False,
-            server_type="workstation", slurm=None):
+            server_type="workstation", slurm=None, end=None):
         for flag in (allow_custom, user_scope, accept_logout):
             if type(flag) is not bool:
                 raise ValueError("confirmation must be boolean")
-        integer(start, 1, 100000)
         root = self.path(directory, directory=True)
         with sessions.locked(root):
             if self.record(directory)[2] != revision:
@@ -241,12 +245,12 @@ class Operations(service.Service):
             if server_type == "slurm":
                 import grasp_slurm
                 import grasp_workdir
-                import grasp_summary
                 _, data, _ = self.record(directory)
                 jobs = data.get("pipeline", [])
-                if not 1 <= start <= len(jobs) or not isinstance(slurm, dict):
+                first, last = summary.run_bounds(len(jobs), start, end)
+                if not isinstance(slurm, dict):
                     raise ValueError("invalid Slurm submission")
-                cfg = config.export(jobs, {}, validate=False)
+                cfg = config.export(jobs[first:last], {}, validate=False)
                 service.Service("/", allow_custom=allow_custom).custom(cfg)
                 settings = {k: str(slurm.get(k, v)).strip() for k, v in core.SLURM_DEFAULTS.items()}
                 # 该入口只提交单个普通作业；数组会改变取消和状态归属，不能悄悄当成单作业。
@@ -265,23 +269,23 @@ class Operations(service.Service):
                     temporary = str(Path.home() / temporary[2:])
                 run = dict(bindir=settings["bindir"], np=count if settings["mpirun"] else 1,
                            mpi=bool(settings["mpirun"]), mpitmp=temporary, nice=False)
-                checked = grasp_summary.check_files(str(root), cfg["jobs"], start=start - 1,
-                                                     run=run, path_check=self.path)
+                checked = summary.check_files(str(root), cfg["jobs"], offset=first,
+                                              run=run, path_check=self.path)
                 if checked["invalid"] or checked["missing"]:
                     raise service.PreflightError(checked)
                 grasp_workdir.idle(root)
-                selected = [config.make_job(j) for j in cfg["jobs"][start - 1:]]
+                selected = [config.make_job(j) for j in cfg["jobs"]]
                 script = grasp_slurm.batch_script(selected, settings)
                 return grasp_slurm.submit(root, script, bg.status(str(root)))
             if server_type != "workstation" or slurm is not None:
                 raise ValueError("invalid server type")
-            plan = self.run_plan(directory)
+            plan = self.run_plan(directory, start=start, end=end)
             if user_scope and not plan["lingering"]:
                 raise ValueError(T("服务器未开启 lingering，不能使用用户 scope"))
             if plan["logout_kills"] and not user_scope and not accept_logout:
                 raise ValueError(T("断线会结束计算，请由用户选择用户 scope、Slurm 或明确照常启动"))
             operation = service.Service("/", allow_custom=allow_custom)
-            return operation.run(directory, start, started_by="remote", user_scope=user_scope)
+            return operation.run(directory, start, end=end, started_by="remote", user_scope=user_scope)
 
     def signature(self, directory):
         root = self.directory_files(directory)

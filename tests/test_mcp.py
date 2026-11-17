@@ -386,15 +386,21 @@ def test_mcp_example1_reproduces_reference(tmp_path, settings, grasp_bindir, mon
     try:
         client.initialize()
         data(client.call("create_workdir", directory="example1", example="example1"))
-        data(client.call("run", directory="example1"))
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            state = data(client.call("status", directory="example1"))["state"]
-            if state["status"] != "running":
-                break
-            time.sleep(0.05)
-        assert state["status"] == "ok" and state["started_by"] == "mcp"
         cfg, _ = config.load(Path(ROOT) / "demos" / "example1.json")
+        end = next(i + 1 for i, job in enumerate(cfg["jobs"]) if job["step"] == "rmcdhf")
+        for args in (dict(end=end), dict(start=end + 1)):
+            data(client.call("run", directory="example1", **args))
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
+                state = data(client.call("status", directory="example1"))["state"]
+                if state["status"] != "running":
+                    break
+                time.sleep(0.05)
+            assert state["status"] == "ok" and state["started_by"] == "mcp"
+            if "end" in args:
+                assert len(state["titles"]) == end
+                assert (tmp_path / "example1/2s_2p_DF.w").stat().st_size > 0
+                assert not any((tmp_path / "example1" / ref["file"]).exists() for ref in cfg["reference"])
         for ref in cfg["reference"]:
             rows = data(client.call("levels", directory="example1", files=[ref["file"]]))["levels"]
             got = sorted(row["energy_hartree"] for row in rows)
