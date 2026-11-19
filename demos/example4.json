@@ -35,6 +35,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "1",
     "lists": [
      {
@@ -52,7 +53,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "evenmr.c"
+    "csf": "evenmr.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "even"
   },
@@ -78,6 +81,8 @@
     "vary": "*",
     "spec": "*",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "evenmr"
    },
@@ -87,6 +92,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "1",
     "lists": [
      {
@@ -104,7 +110,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "even4.c"
+    "csf": "even4.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "even"
   },
@@ -130,6 +138,8 @@
     "vary": "4*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "even4"
    },
@@ -149,6 +159,8 @@
     "se": true,
     "nqed": "4",
     "levels": "1-3\n1-2\n1-4\n1",
+    "zf": false,
+    "zero": "odd2.c",
     "log": ""
    },
    "group": "even"
@@ -159,6 +171,10 @@
     "state": "even4",
     "ci": true,
     "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
     "log": ""
    },
    "group": "even"
@@ -167,6 +183,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "1",
     "lists": [
      {
@@ -184,7 +201,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "oddmr.c"
+    "csf": "oddmr.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "odd"
   },
@@ -210,6 +229,8 @@
     "vary": "*",
     "spec": "*",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "oddmr"
    },
@@ -219,6 +240,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "1",
     "lists": [
      {
@@ -236,7 +258,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "odd4.c"
+    "csf": "odd4.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "odd"
   },
@@ -262,6 +286,8 @@
     "vary": "4*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "odd4"
    },
@@ -281,6 +307,8 @@
     "se": true,
     "nqed": "4",
     "levels": "1-2\n1-5\n1-5\n1-3\n1",
+    "zf": false,
+    "zero": "odd2.c",
     "log": ""
    },
    "group": "odd"
@@ -291,6 +319,10 @@
     "state": "odd4",
     "ci": true,
     "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
     "log": ""
    },
    "group": "odd"

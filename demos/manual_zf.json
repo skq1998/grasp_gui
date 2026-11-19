@@ -35,6 +35,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "1",
     "lists": [
      {
@@ -80,6 +81,8 @@
     "vary": "*",
     "spec": "*",
     "nscf": "900",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "mr"
    },
@@ -89,6 +92,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "1",
     "lists": [
      {
@@ -143,6 +147,8 @@
     "vary": "4*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "zerofirst_n4"
    },

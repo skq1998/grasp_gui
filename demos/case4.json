@@ -21,6 +21,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -45,6 +46,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -71,6 +73,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -110,7 +113,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "DF.c"
+    "csf": "DF.c",
+    "zf": false,
+    "zero": "odd2.c"
    }
   },
   {
@@ -134,6 +139,8 @@
     "vary": "*",
     "spec": "*",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "out_rmcdhf_DF",
     "save": "DF"
    }
@@ -159,7 +166,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "even3.c"
+    "csf": "even3.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "even"
   },
@@ -185,6 +194,8 @@
     "vary": "3*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "outeven_rmcdhf_3",
     "save": "even3"
    },
@@ -193,7 +204,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "even4.c"
+    "csf": "even4.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "even"
   },
@@ -219,6 +232,8 @@
     "vary": "4*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "outeven_rmcdhf_4",
     "save": "even4"
    },
@@ -238,6 +253,8 @@
     "se": true,
     "nqed": "4",
     "levels": "1",
+    "zf": false,
+    "zero": "odd2.c",
     "log": "outeven_rci"
    },
    "group": "even"
@@ -256,7 +273,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "odd3.c"
+    "csf": "odd3.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "odd"
   },
@@ -282,6 +301,8 @@
     "vary": "3*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "outodd_rmcdhf_3",
     "save": "odd3"
    },
@@ -290,7 +311,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "odd4.c"
+    "csf": "odd4.c",
+    "zf": false,
+    "zero": "odd2.c"
    },
    "group": "odd"
   },
@@ -316,6 +339,8 @@
     "vary": "4*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "outodd_rmcdhf_4",
     "save": "odd4"
    },
@@ -335,6 +360,8 @@
     "se": true,
     "nqed": "4",
     "levels": "1\n1",
+    "zf": false,
+    "zero": "odd2.c",
     "log": "outodd_rci"
    },
    "group": "odd"

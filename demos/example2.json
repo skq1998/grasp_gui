@@ -35,6 +35,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -51,7 +52,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "2s2p_DF.c"
+    "csf": "2s2p_DF.c",
+    "zf": false,
+    "zero": "odd2.c"
    }
   },
   {
@@ -100,6 +103,8 @@
     "vary": "*",
     "spec": "*",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "2s2p_DF"
    }
@@ -110,6 +115,10 @@
     "state": "2s2p_DF",
     "ci": false,
     "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
     "log": ""
    }
   },

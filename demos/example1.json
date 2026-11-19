@@ -35,6 +35,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -58,7 +59,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "2s_2p_DF.c"
+    "csf": "2s_2p_DF.c",
+    "zf": false,
+    "zero": "odd2.c"
    }
   },
   {
@@ -82,6 +85,8 @@
     "vary": "*",
     "spec": "*",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "2s_2p_DF"
    }
@@ -90,6 +95,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -106,7 +112,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "2s_3.c"
+    "csf": "2s_3.c",
+    "zf": false,
+    "zero": "odd2.c"
    }
   },
   {
@@ -130,6 +138,8 @@
     "vary": "3*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "2s_3"
    }
@@ -148,6 +158,8 @@
     "se": true,
     "nqed": "3",
     "levels": "1",
+    "zf": false,
+    "zero": "odd2.c",
     "log": ""
    }
   },
@@ -157,6 +169,10 @@
     "state": "2s_3",
     "ci": true,
     "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
     "log": ""
    }
   },
@@ -164,6 +180,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -180,7 +197,9 @@
   {
    "step": "rangular",
    "vals": {
-    "csf": "2p_3.c"
+    "csf": "2p_3.c",
+    "zf": false,
+    "zero": "odd2.c"
    }
   },
   {
@@ -204,6 +223,8 @@
     "vary": "3*",
     "spec": "",
     "nscf": "100",
+    "modify_nsic": false,
+    "nsic": "0",
     "log": "",
     "save": "2p_3"
    }
@@ -222,6 +243,8 @@
     "se": true,
     "nqed": "3",
     "levels": "1\n1",
+    "zf": false,
+    "zero": "odd2.c",
     "log": ""
    }
   },
@@ -231,6 +254,10 @@
     "state": "2p_3",
     "ci": true,
     "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
     "log": ""
    }
   },

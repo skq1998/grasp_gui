@@ -35,6 +35,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -94,6 +95,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -167,6 +169,10 @@
     "state": "2s_3",
     "ci": true,
     "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
     "log": ""
    }
   },
@@ -174,6 +180,7 @@
    "step": "rcsfgenerate",
    "vals": {
     "order": "*",
+    "orbital_order": "",
     "core": "0",
     "lists": [
      {
@@ -247,6 +254,10 @@
     "state": "2p_3",
     "ci": true,
     "unique": true,
+    "coupling_files": false,
+    "coupling_backup": false,
+    "coupling_threshold": "0.001",
+    "coupling_levels": "",
     "log": ""
    }
   },

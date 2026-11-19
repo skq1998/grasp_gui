@@ -767,7 +767,7 @@ def example3_coupling():
 
 def graspg1():
     """graspgtest/script1/csfg: the same calculation as case 1 with CSFG lists (each rmcdhf run twice, as there)."""
-    d = Demo("graspg1", 21,
+    d = Demo("graspg1", 22,
              dict(zh="GRASPG 示例 1：Mo XXXVIII，与算例 1 相同的计算用 CSFG 完成",
                   en="GRASPG example 1: Mo XXXVIII, the calculation of case 1 with CSFGs"),
              dict(zh="GRASPG 作者的第一个示例 (graspgtest/script1/csfg)，需要装有 GRASPG 的 GRASP。物理内容与算例 1 相同："
