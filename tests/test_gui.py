@@ -200,6 +200,27 @@ def test_field_enabled_by(qapp, checked):
     form.close()
 
 
+@pytest.mark.parametrize("language, message", [("zh", "至少指定一个"), ("en", "Specify at least one orbital")])
+def test_user_orbital_order_widget(qapp, tmp_path, no_dialogs, language, message):
+    core.set_lang(language)
+    w = window(tmp_path)
+    pane = w.calc
+    page = next(form for form in pane.forms if form.step.key == "rcsfgenerate")
+    pane.nav.setCurrentWidget(page)
+    order = page.get["order"].__self__
+    editor = page.get["orbital_order"].__self__
+    assert not editor.isEnabled()
+    order.setCurrentIndex(order.findData("u"))
+    assert editor.isEnabled()
+    assert pane.current_job() is None
+    assert no_dialogs[-1][0] == "critical" and message in no_dialogs[-1][1][1]
+    editor.setPlainText("2p,2s,1s")
+    assert pane.current_job()["pre"] == [("write", "clist.ref", "2p\n2s\n1s\n")]
+    order.setCurrentIndex(order.findData("s"))
+    assert not editor.isEnabled() and pane.current_job()["pre"] == []
+    assert w.close()
+
+
 def test_preview_column_and_buttons_adapt(qapp, tmp_path, no_dialogs):
     """下方足够宽时输入预览单独成一栏，变窄时回到标签页；按钮高度不够时排成两列。"""
     from calc_panel import ButtonColumn

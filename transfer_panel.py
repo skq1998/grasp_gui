@@ -27,7 +27,9 @@ class TransferDialog(QDialog):
         self.upload, self.rows, self.busy, self.closed = upload, [], False, False
         self.job, self.events, self.generation = None, queue.Queue(), 0
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(T("服务器 {h}:{p}", h=source.client.host, p=directory)))
+        self.source_label = QLabel(T("服务器 {h}:{p}", h=source.client.host, p=directory))
+        self.source_label.setWordWrap(True)
+        layout.addWidget(self.source_label)
         form = QFormLayout()
         profile = core.load_config().get("remote_hosts", {}).get(source.client.host, {})
         self.rsync = QLineEdit(profile.get("rsync", "rsync"))
@@ -56,8 +58,19 @@ class TransferDialog(QDialog):
         self.large.setTristate(True)
         self.large.stateChanged.connect(self.include_large)
         layout.addWidget(self.large)
+        self.selection_hint = QLabel(T("默认选择小文件，生成的运行脚本默认不选。"))
+        self.selection_hint.setWordWrap(True)
+        layout.addWidget(self.selection_hint)
+        selection = QHBoxLayout()
+        self.all_button = button("全选", lambda: self.select_files(True))
+        self.none_button = button("全不选", lambda: self.select_files(False))
+        self.defaults_button = button("恢复默认", self.reset_checks)
+        for widget in (self.all_button, self.none_button, self.defaults_button):
+            selection.addWidget(widget)
+        selection.addStretch()
+        layout.addLayout(selection)
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels([T("文件"), T("大小"), T("大文件")])
+        self.table.setHorizontalHeaderLabels([T("文件"), T("大小"), T("说明")])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setColumnWidth(0, 520)
         self.table.itemChanged.connect(self.changed)
@@ -141,13 +154,24 @@ class TransferDialog(QDialog):
         threshold = self.threshold.value() * 1_000_000
         for i, row in enumerate(self.rows):
             large = row["size"] > threshold
-            self.table.item(i, 0).setCheckState(Qt.Unchecked if large else Qt.Checked)
+            derived = row["name"].startswith("grasp_run/")
+            self.table.item(i, 0).setCheckState(Qt.Unchecked if large or derived else Qt.Checked)
+            if derived:
+                self.table.item(i, 2).setText(T("生成的运行脚本"))
+                continue
             self.table.item(i, 2).setText(T("大文件") if large else "")
         self.table.blockSignals(False)
         self.changed()
 
     def selected(self):
         return [row for i, row in enumerate(self.rows) if self.table.item(i, 0).checkState() == Qt.Checked]
+
+    def select_files(self, selected):
+        self.table.blockSignals(True)
+        for i in range(len(self.rows)):
+            self.table.item(i, 0).setCheckState(Qt.Checked if selected else Qt.Unchecked)
+        self.table.blockSignals(False)
+        self.changed()
 
     def include_large(self, *_args):
         state = self.large.checkState()
@@ -178,7 +202,8 @@ class TransferDialog(QDialog):
     def controls(self, busy):
         self.busy = busy
         for widget in (self.refresh_button, self.start_button, self.threshold, self.large, self.table,
-                       self.rsync, self.target, self.browse_button, self.policy):
+                       self.rsync, self.target, self.browse_button, self.policy,
+                       self.all_button, self.none_button, self.defaults_button):
             widget.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)
         if not busy:

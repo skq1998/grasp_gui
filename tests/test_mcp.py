@@ -93,6 +93,20 @@ def data(result):
     return json.loads(next(x["text"] for x in result["content"] if x["type"] == "text"))
 
 
+def test_mcp_rejects_unknown_choice_without_writing_workdir(tmp_path, settings):
+    doc = dict(format=config.FORMAT, version=config.VERSION,
+               jobs=[dict(step="rcsfgenerate", vals=dict(config.STEPS["rcsfgenerate"].defaults(), order="z"))])
+    client = Client(tmp_path, settings)
+    try:
+        client.initialize()
+        result = client.call("create_workdir", directory="calc", config=doc)
+        assert result["isError"] and "rcsfgenerate" in result["content"][0]["text"]
+        assert "'z'" in result["content"][0]["text"]
+        assert not (tmp_path / "calc").exists()
+    finally:
+        client.close()
+
+
 def test_disabled_by_default_and_config_output(tmp_path, settings):
     client = Client(tmp_path / "allowed", settings, enabled=False, no_qt=True)
     try:

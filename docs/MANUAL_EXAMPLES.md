@@ -41,7 +41,7 @@ and moments. The sequence-only collection and plotting steps are excluded.
 | 章节 / Section | `grasptest` | 处理 / Disposition |
 |---|---|---|
 | §§5.1–5.8，关联模型、相互作用筛选、组合激发 | 无独立目录 / none | 新增 **manual_csfs**，9 次程序调用；输出各节 CSF 文件，不计算能量 / New complete CSF-only tutorial |
-| §5.9，自定义轨道顺序 | 无 / none | `rcsfgenerate.order` 只允许 `* / r / s`，没有 `u` 和配套 `clist.ref` 工作流 / Unsupported user ordering |
+| §5.9，自定义轨道顺序 | 无 / none | **manual_orbital_order**，Ce III，比较 stdin 和 `clist.ref` / Ce III with separate stdin and orbital-list checks |
 | §5.10，jjgen | 无 / none | 缺 jjgen 程序页 / No jjgen form |
 | §7.1，拆分 CSF | 无 / none | case2 已包含同样的 1s²2p、n=5 SDT 列表及 n=3/4/5 拆分 / Covered by case2 |
 | §7.2，提取与压缩 | 无 / none | 新增 manual_tools：先重算 Li I，再提取和累积 / New complete Li I workflow |

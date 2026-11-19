@@ -6,6 +6,7 @@ from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 import hashlib
 import heapq
 import json
+import math
 import multiprocessing
 import os
 from pathlib import Path
@@ -119,8 +120,8 @@ def doubles(f, rec, offset, count, cancel=None):
 def cache_dirs(path):
     parent = os.path.dirname(os.path.abspath(path))
     digest = hashlib.sha256(os.fsencode(parent)).hexdigest()
-    return [Path(parent) / ".grasp_gui" / "index",
-            Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "grasp_gui" / "index" / digest]
+    return [Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "grasp_gui" / "index" / digest,
+            Path(parent) / ".grasp_gui" / "index"]
 
 
 def cache_name(path, kind):
@@ -197,58 +198,72 @@ def valid_cache(data, kind, saved):
 
 def save_cache(saved, kind, data):
     unchanged(saved)
+    directory = next(iter(cache_dirs(saved[0])), None)
+    if directory is None:
+        return
     doc = dict(version=CACHE_VERSION, stamp=saved, stride=STRIDE, kind=kind, data=data)
     encoded = json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
     doc["digest"] = hashlib.sha256(encoded).hexdigest()
-    for directory in cache_dirs(saved[0]):
-        temp = None
-        try:
-            directory.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
-                                             prefix=".index-", delete=False) as f:
-                temp = f.name
-                json.dump(doc, f, separators=(",", ":"), allow_nan=False)
-            unchanged(saved)
-            os.replace(temp, directory / cache_name(saved[0], kind))
-            return
-        except OSError:
-            # 查看别人的只读目录时改用用户缓存；两处都不可写才只用内存。
-            continue
-        finally:
-            if temp and os.path.exists(temp):
+    temp = None
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                                         prefix=".index-", delete=False) as f:
+            temp = f.name
+            json.dump(doc, f, separators=(",", ":"), allow_nan=False)
+        unchanged(saved)
+        os.replace(temp, directory / cache_name(saved[0], kind))
+    except OSError:
+        # 用户缓存不可写时只用内存，不在结果目录写入。
+        pass
+    finally:
+        if temp:
+            try:
                 os.unlink(temp)
+            except OSError:
+                pass
 
 
 def clean_cache(directory):
-    """只清理本目录对应且源文件已经删除的索引，不碰其他工作目录。"""
+    """只清理用户缓存中本目录已删除文件的索引，保留结果目录中的旧缓存。"""
     directory = os.path.abspath(directory)
-    for folder in cache_dirs(os.path.join(directory, "_")):
+    folder = next(iter(cache_dirs(os.path.join(directory, "_"))), None)
+    if folder is None:
+        return
+    try:
+        names = list(folder.glob("*.json"))
+    except OSError:
+        return
+    for path in names:
         try:
-            names = list(folder.glob("*.json"))
-        except OSError:
-            continue
-        for path in names:
-            try:
-                with path.open(encoding="utf-8") as f:
-                    # stamp 位于摘要之前；清理时无需解析其他文件的全部摘要。
-                    prefix = f.read(16384)
-                start = prefix.index('"stamp":') + len('"stamp":')
-                source = json.JSONDecoder().raw_decode(prefix[start:].lstrip())[0][0]
-                if os.path.dirname(source) != directory:
-                    continue
-                try:
-                    os.stat(source)
-                except FileNotFoundError:
-                    path.unlink()
-            except (OSError, ValueError, KeyError, TypeError, IndexError):
-                # 无法识别的缓存由对应文件下次打开时重建。
+            with path.open(encoding="utf-8") as f:
+                # stamp 位于摘要之前；清理时无需解析其他文件的全部摘要。
+                prefix = f.read(16384)
+            start = prefix.index('"stamp":') + len('"stamp":')
+            source = json.JSONDecoder().raw_decode(prefix[start:].lstrip())[0][0]
+            if os.path.dirname(source) != directory:
                 continue
+            try:
+                os.stat(source)
+            except FileNotFoundError:
+                path.unlink()
+        except (OSError, ValueError, KeyError, TypeError, IndexError):
+            # 无法识别的缓存由对应文件下次打开时重建。
+            continue
+
+
+def _check_mix_energies(blocks):
+    """在写缓存前拒绝发散结果，不能把它当成未写完的块或交给 JSON 处理。"""
+    if any(not math.isfinite(energy) for block in blocks for energy in block.get("energies", [])):
+        from grasp_core import T
+        raise ValueError(T("能量不是有限的数，计算可能已经发散"))
 
 
 def mix_index(path, cancel=None):
     checkpoint(cancel)
     hit = cached(path, "mix")
     if isinstance(hit, dict) and isinstance(hit.get("blocks"), list):
+        _check_mix_energies(hit["blocks"])
         return hit
     saved = stamp(path)
     with open(path, "rb") as f:
@@ -296,6 +311,7 @@ def mix_index(path, cancel=None):
             blocks.append(block)
             # 读记录正文会移动文件位置；恢复到当前块的结尾再跳下一块。
             f.seek(block["records"][-1]["end"])
+    _check_mix_energies(blocks)
     data = dict(header=counts, records=[tag, header], blocks=blocks, stamp=saved, top_k=0, partial=partial)
     save_cache(saved, "mix", data)
     return data

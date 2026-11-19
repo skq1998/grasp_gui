@@ -116,7 +116,8 @@ def test_segment_needs_earlier_outputs_and_keeps_global_step_numbers(tmp_path, l
     root = tmp_path / "calc"
     revision = install(root, [job("rcsfgenerate", saveas="earlier.c"), job("rangular", csf="earlier.c"), job("rci")])
     scripts = []
-    monkeypatch.setattr(slurm, "submit", lambda root, script, state: scripts.append(script))
+    monkeypatch.setattr(slurm, "submit", lambda root, script, state:
+                        scripts.append(script) or dict(backend="slurm", job_id="42"))
     def run():
         if backend == "local":
             return service.Service("/").run(str(root), start=2, end=2)

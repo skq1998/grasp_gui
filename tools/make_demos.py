@@ -32,6 +32,7 @@ class Demo:
         self.refs = refs            # result files whose energies are the reference
         self.jobs = []
         self.checks = []            # (job index, manual input file or None)
+        self.pre_checks = []        # (job index, generated filename, manual input file)
         self.group = None
         self.equivalent = None     # 示例声明等价输入规则；返回原因，空字符串表示不等价
 
@@ -513,10 +514,12 @@ def manual_csfs():
              dict(zh="手册 §5.1–5.8：CSF 生成与相互作用筛选", en="Manual §§5.1–5.8: CSF generation and interaction filtering"),
              dict(zh="手册正文中输入完整的 CSF 教学例：价价、核价、核核与核间关联、大多参考、相互作用筛选、双占据关联轨道、合并多次激发和混合宇称。"
                      "各节输出保存在 section51.c 到 section58.c；§5.5 使用 §5.4 的完整列表。这里只生成组态，不指定核、不计算能量，因而没有 reference 能量。"
-                     "§5.9 自定义轨道排序和 §5.10 jjgen 缺少相应程序页输入，未收录。",
+                     "§5.9 自定义轨道排序见独立算例，§5.10 jjgen 未收录。",
                   en="Complete CSF tutorials from the manual: valence, core–valence, core–core and intercore correlation, large multireferences, interaction filtering, "
                      "doubly occupied correlation orbitals, combined excitations and mixed parity. Outputs are section51.c through section58.c; §5.5 filters the full list from §5.4. "
-                     "These are configuration lists only, with no nucleus or energy calculation, so no reference energies. §§5.9–5.10 require unsupported custom orbital ordering / jjgen input."),
+                     "These configuration lists have no nucleus or energy calculation, "
+                     "so there are no reference energies. "
+                     "Section 5.9 is a separate demo. Section 5.10 jjgen is outside this workflow."),
              dict(zh="约 20 秒，只生成 CSF", en="about 20 seconds, CSF generation only"), "", [])
     def add(section, configs, active, j, nexc="2", core_="0", extra=()):
         d.csfs([(configs, active, j, nexc)] + list(extra), f"section{section}.c", core_=core_)
@@ -542,6 +545,21 @@ def manual_csfs():
     d.src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_inputs")
     d.checks = [(i, f"section{s}.in") for i, s in enumerate(
         ["51", "52", "53", "54", "55_mr", "55", "56", "57", "58"])]
+    return d
+
+
+def manual_orbital_order():
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_inputs")
+    d = Demo("manual_orbital_order", 21,
+             dict(zh="手册 §5.9：Ce III 自定义轨道顺序", en="Manual §5.9: Ce III user-defined orbital order"),
+             dict(zh="生成 Ce III 的 CSF 列表。通过 clist.ref 将 4f 排在 5s、5p 之后。",
+                  en="Generate the Ce III CSF list with 4f after 5s and 5p using clist.ref."),
+             dict(zh="仅生成 CSF", en="CSF generation only"), root, [])
+    d.add("rcsfgenerate", "section59.in", order="u", core="3", saveas="",
+          orbital_order="1s,2s,2p,3s,3p,3d,4s,4p,4d,5s,5p,4f,5d,5f,6s,6p",
+          lists=[dict(configs="3d(10,c)4s(2,*)4p(6,*)4d(10,*)5s(2,*)5p(6,*)4f(2,*)",
+                      active="6s,6p,5d,5f", jmin="0", jmax="12", nexc="2")])
+    d.pre_checks = [(0, "clist.ref", "section59_clist.ref")]
     return d
 
 
@@ -746,7 +764,7 @@ def example3_coupling():
 
 
 DEMOS = [example1, example2, example3, example4, example5, example8, example9, case1, case4, case2, case3, manual_csfs, manual_zf, manual_tools, manual_asfsplit, manual_accumulate,
-         example2_coupling, example3_coupling]
+         example2_coupling, example3_coupling, manual_orbital_order]
 
 
 def stdin_of(job):
@@ -795,6 +813,16 @@ def check(d, roots):
             bad += 1
             print(f"  {d.id} job {i + 1} ({d.jobs[i]['step']}) differs from {src}:\n"
                   f"    manual: {norm(want)}\n    demo:   {norm(got)}")
+    for i, target, src in d.pre_checks:
+        job = grasp_config.make_job(d.jobs[i])
+        actual = next((text for kind, name, text in job["pre"] if kind == "write" and name == target), None)
+        with open(find(roots, d, src), encoding="utf-8") as f:
+            expected = f.read()
+        if actual == expected:
+            same += 1
+        else:
+            bad += 1
+            print(f"  {d.id} job {i + 1}: {target} differs from {src}")
     print(f"  {d.id}: {same} identical, {equivalent} equivalent, {bad} differences")
     return bad
 

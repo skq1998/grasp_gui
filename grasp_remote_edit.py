@@ -47,7 +47,7 @@ def configuration(directory, pipeline):
     return config.export(pipeline, dict(title=root.name), files=paths)
 
 
-def checkout(directory, host, remote, reply, replace=False):
+def checkout(directory, host, remote, reply, replace=False, *, warnings=None):
     root = Path(directory).expanduser().resolve()
     previous = association(root)
     same = previous and previous["host"] == host and previous["directory"] == remote
@@ -55,9 +55,12 @@ def checkout(directory, host, remote, reply, replace=False):
         if root.exists() and any(root.iterdir()):
             if not same or not replace:
                 raise ValueError(T("本机目录已有其他内容，请换一个目录。"))
-            work.apply_update(work.prepare_update(root, reply["config"]))
+            plan = work.prepare_update(root, reply["config"])
+            work.apply_update(plan)
+            if warnings is not None:
+                warnings.extend(plan.get("script_warnings", ()))
         else:
-            config.install(reply["config"], str(root))
+            config.install(reply["config"], str(root), warnings=warnings)
         bind(root, dict(host=host, directory=remote, revision=reply["revision"]))
     return str(root)
 
@@ -72,6 +75,8 @@ def generated_files(jobs, run=None):
         for action in [*step.pre(values), *step.post(values)]:
             if action[0] == "cp":
                 names.add(action[2])
+            elif action[0] == "write":
+                names.add(action[1])
     return names
 
 

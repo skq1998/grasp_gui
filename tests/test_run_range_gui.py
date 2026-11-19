@@ -185,7 +185,7 @@ def test_partial_failure_and_stop_use_pipeline_numbers(qapp, tmp_path, monkeypat
 
 
 @pytest.mark.parametrize("modern", [True, False])
-def test_remote_range_and_old_server_request_shapes(qapp, modern):
+def test_remote_range_and_old_server_request_shapes(qapp, modern, accept_server_run_dialog):
     source = Source(modern)
     calc = RemoteCalculation(source, "/server/calc")
     source.setParent(calc)

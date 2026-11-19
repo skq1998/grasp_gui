@@ -88,11 +88,53 @@ def atomic(path, raw):
             os.unlink(temporary)
 
 
-def write(workdir, data, expected=ANY_REVISION):
+def write(workdir, data, expected=ANY_REVISION, *, warnings=None, bindir=None, defaults=None):
     raw = json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8")
+    return write_bytes(workdir, raw, expected, warnings=warnings, bindir=bindir, defaults=defaults)
+
+
+def write_bytes(workdir, raw, expected=ANY_REVISION, *, warnings=None, bindir=None, defaults=None):
+    """提交目录记录，再同步派生脚本；恢复时保留备份的原始字节。"""
+    import grasp_run_scripts as scripts
+
     with locked(workdir):
         previous = _bytes(workdir)
         if expected is not ANY_REVISION and revision(previous) != expected:
             raise Conflict(T("工作目录记录已被其他程序修改，请重新载入"))
         atomic(Path(workdir) / core.SESSION_FILE, raw)
-    return revision(raw)
+        current = revision(raw)
+        _, notices = scripts.rebuild(workdir, json.loads(raw), current, bindir=bindir, defaults=defaults)
+        if warnings is not None:
+            warnings.extend(notices)
+        return current
+
+
+def rebuild_scripts(workdir):
+    import grasp_run_scripts as scripts
+
+    with locked(workdir):
+        data, current = read(workdir)
+        if data is None:
+            raise ValueError(T("此目录没有工作目录记录"))
+        return scripts.rebuild(workdir, data, current)
+
+
+def save_run_settings(workdir, settings, *, slurm=False, defaults=None):
+    """记录已经确认的设置，避免重复运行制造没有意义的修订。"""
+    with locked(workdir):
+        data, current = read(workdir)
+        if data is None:
+            raise ValueError(T("此目录没有工作目录记录"))
+        data.pop("bindir", None)
+        revised = dict(data)
+        if slurm:
+            revised["slurm"] = dict(settings)
+        else:
+            revised.update((key, settings[key]) for key in ("np", "mpirun", "mpitmp", "nice"))
+        warnings = []
+        if revised != data:
+            current = write(workdir, revised, current, warnings=warnings, defaults=defaults)
+        else:
+            import grasp_run_scripts as scripts
+            _, warnings = scripts.rebuild(workdir, data, current, defaults=defaults)
+        return dict(revision=current, **({"warnings": warnings} if warnings else {}))

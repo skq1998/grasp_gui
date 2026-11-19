@@ -133,16 +133,35 @@ def test_cache_rebuild_and_changed_source(tmp_path, monkeypatch):
 
 
 def test_user_cache_and_memory_fallback(tmp_path, monkeypatch):
-    path = make_files(tmp_path)
-    local, fallback = tmp_path / "readonly", tmp_path / "user-cache"
-    local.write_text("not a directory")
-    monkeypatch.setattr(index, "cache_dirs", lambda p: [local, fallback])
-    assert len(mix.open_csfs(path.with_suffix(".c"))[0]) == 1100
-    assert list(fallback.glob("*.json"))
-    other = tmp_path / "also-readonly"
-    other.write_text("not a directory")
-    monkeypatch.setattr(index, "cache_dirs", lambda p: [local, other])
-    assert len(mix.open_csfs(path.with_suffix(".c"))[0]) == 1100
+    path = make_files(tmp_path / "results")
+    source = path.with_suffix(".c")
+    cache_home = tmp_path / "user-cache"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+    assert len(mix.open_csfs(source)[0]) == 1100
+    user, legacy = index.cache_dirs(source)
+    name = index.cache_name(source, "csf")
+    cache = user / name
+    assert cache.is_file() and cache.is_relative_to(cache_home) and not legacy.exists()
+
+    blocked = tmp_path / "blocked"
+    blocked.write_text("not a directory")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
+    assert len(mix.open_csfs(source)[0]) == 1100
+    assert not legacy.exists()
+
+    with monkeypatch.context() as disabled:
+        disabled.setattr(index, "cache_dirs", lambda *args: [])
+        assert len(mix.open_csfs(source)[0]) == 1100
+        index.clean_cache(path.parent)
+
+    legacy.mkdir(parents=True)
+    cache.rename(legacy / name)
+    assert index.cached(source, "csf") is not None
+    original = (legacy / name).read_bytes()
+    assert len(mix.open_csfs(source)[0]) == 1100
+    source.unlink()
+    index.clean_cache(path.parent)
+    assert (legacy / name).read_bytes() == original
 
 
 def test_cancel_and_worker_replacement(tmp_path):

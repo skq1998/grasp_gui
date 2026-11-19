@@ -83,7 +83,7 @@ class Operations(service.Service):
             sys.executable if getattr(sys, "frozen", False) else sys.argv[0])
         return dict(protocol=PROTOCOL, version=core.VERSION, executable=os.path.abspath(executable),
                     home=str(Path.home()), server_types=["workstation", "slurm"],
-                    capabilities=["workdir_write_v1", "run_range_v1"])
+                    capabilities=["workdir_write_v1", "run_range_v1", "run_settings_v1"])
 
     def get_pipeline(self, directory):
         root, data, revision = self.record(directory)
@@ -119,7 +119,7 @@ class Operations(service.Service):
         root = self.path(directory, directory=True)
         return service.Service("/", allow_custom=allow_custom).update_workdir(str(root), revision, configuration)
 
-    def preview_upload(self, directory, configuration, revision=None, uploads=None):
+    def preview_upload(self, directory, configuration, revision=None, uploads=None, run_settings=None):
         import grasp_summary as summary
         import grasp_transfer as transfer
         import grasp_workdir as work
@@ -142,16 +142,28 @@ class Operations(service.Service):
                 changes = plan["text"]
                 kept = [f["name"] for f in plan["files"] if f["kind"] == "conflict"]
             transfer.safe_targets(root, names)
-            run = core.saved_run_settings()
+            settings_warning = ""
+            if run_settings is None:
+                run = core.saved_run_settings(persist=False)
+            else:
+                try:
+                    run = service.checked_run_settings(run_settings)
+                except ValueError as error:
+                    # 上传只提示运行条件；过期的桌面偏好不能阻断流程写入。
+                    run = core.saved_run_settings(persist=False)
+                    settings_warning = T("按主机保存的运行设置无效：{e}，运行时可在服务器运行设置中修改。", e=str(error))
             checked = summary.check_files(str(root), cfg["jobs"], run=run, path_check=self.path)
             planned = names + [f["name"] for f in cfg.get("files", [])]
             pending = [row for row in checked["missing"] if any(fnmatch.fnmatchcase(n, row["file"]) for n in planned)]
             checked["missing"] = [row for row in checked["missing"] if row not in pending]
             checked.update(pending=pending, issues=checked["invalid"] + checked["missing"])
-            return dict(directory=str(root), revision=revision, changes=changes, kept_files=kept, checked=checked,
-                        missing_programs=config.missing_programs(cfg, run["bindir"]),
-                        custom_commands=config.custom_commands(cfg), warnings=warnings,
-                        existing=[n for n in names if (root / n).exists()])
+            result = dict(directory=str(root), revision=revision, changes=changes, kept_files=kept, checked=checked,
+                          missing_programs=service.missing_run_programs(cfg, run),
+                          custom_commands=config.custom_commands(cfg), warnings=warnings,
+                          existing=[n for n in names if (root / n).exists()])
+            if settings_warning:
+                result["run_settings_warning"] = settings_warning
+            return result
 
     def list_dir(self, directory):
         root = self.path(directory, directory=True)
@@ -209,13 +221,15 @@ class Operations(service.Service):
     def run_status(self, directory):
         return self.status(directory)
 
-    def run_plan(self, directory, server_type="workstation", start=1, end=None):
-        _, data, revision = self.record(directory)
+    def run_plan(self, directory, server_type="workstation", start=1, end=None, run_settings=None):
+        root, data, revision = self.record(directory)
         jobs = data.get("pipeline", [])
         first, last = summary.run_bounds(len(jobs), start, end)
         cfg = config.export(jobs[first:last], {})
         commands = [(i + first, text) for i, text in config.custom_commands(cfg)]
         if server_type == "slurm":
+            if run_settings is not None:
+                raise ValueError(T("服务器运行设置仅用于工作站模式。"))
             settings = dict(core.SLURM_DEFAULTS, **core.load_config().get("slurm", {}))
             settings["bindir"] = core.default_bindir()
             return dict(revision=revision, custom_commands=commands, server_type="slurm",
@@ -230,11 +244,15 @@ class Operations(service.Service):
             linger = result.returncode == 0 and result.stdout.strip() == "yes"
         except (OSError, subprocess.SubprocessError):
             pass  # 无 systemd 的服务器不提供 scope 选项，仍可按普通方式运行。
-        return dict(revision=revision, custom_commands=commands,
-                    logout_kills=bg.logout_kills(), lingering=linger, run_settings=core.saved_run_settings())
+        settings = (core.saved_run_settings(persist=False) if run_settings is None else
+                    service.checked_run_settings(run_settings))
+        checked = summary.check_files(str(root), cfg["jobs"], offset=first, run=settings, path_check=self.path)
+        return dict(revision=revision, custom_commands=commands, checked=checked,
+                    missing_programs=service.missing_run_programs(cfg, settings),
+                    logout_kills=bg.logout_kills(), lingering=linger, run_settings=settings)
 
     def run(self, directory, revision, start=1, allow_custom=False, user_scope=False, accept_logout=False,
-            server_type="workstation", slurm=None, end=None):
+            server_type="workstation", slurm=None, end=None, run_settings=None):
         for flag in (allow_custom, user_scope, accept_logout):
             if type(flag) is not bool:
                 raise ValueError("confirmation must be boolean")
@@ -243,6 +261,8 @@ class Operations(service.Service):
             if self.record(directory)[2] != revision:
                 raise sessions.Conflict(T("工作目录记录已被其他程序修改，请重新载入"))
             if server_type == "slurm":
+                if run_settings is not None:
+                    raise ValueError(T("服务器运行设置仅用于工作站模式。"))
                 import grasp_slurm
                 import grasp_workdir
                 _, data, _ = self.record(directory)
@@ -276,16 +296,27 @@ class Operations(service.Service):
                 grasp_workdir.idle(root)
                 selected = [config.make_job(j) for j in cfg["jobs"]]
                 script = grasp_slurm.batch_script(selected, settings)
-                return grasp_slurm.submit(root, script, bg.status(str(root)))
+                saved = sessions.save_run_settings(root, settings, slurm=True)
+                return dict(grasp_slurm.submit(root, script, bg.status(str(root))), **saved)
             if server_type != "workstation" or slurm is not None:
                 raise ValueError("invalid server type")
-            plan = self.run_plan(directory, start=start, end=end)
+            plan = self.run_plan(directory, start=start, end=end, run_settings=run_settings)
             if user_scope and not plan["lingering"]:
                 raise ValueError(T("服务器未开启 lingering，不能使用用户 scope"))
             if plan["logout_kills"] and not user_scope and not accept_logout:
                 raise ValueError(T("断线会结束计算，请由用户选择用户 scope、Slurm 或明确照常启动"))
             operation = service.Service("/", allow_custom=allow_custom)
-            return operation.run(directory, start, end=end, started_by="remote", user_scope=user_scope)
+            settings = dict(plan["run_settings"])
+            if not settings["bindir"]:
+                # 表单留空表示 PATH；不能让运行进程的 PATH 以空项（当前目录）开头。
+                settings["bindir"] = core.default_bindir(use_saved=False)
+            script_options = {}
+            if run_settings is not None:
+                # 桌面明确指定的 GRASP 路径只用于这次运行。
+                bindir = core.default_bindir(use_saved=False)
+                script_options["script_bindir"] = bindir if os.path.isdir(bindir) else ""
+            return operation.run(str(root), start, end=end, started_by="remote", user_scope=user_scope,
+                                 run_settings=settings, **script_options)
 
     def signature(self, directory):
         root = self.directory_files(directory)
@@ -331,8 +362,11 @@ class Operations(service.Service):
         root = self.directory_files(directory)
         path = self.path(str(root / file))
         blocks = mix.open_mix(path, summary=True, k=limit, cancel=self.cancel)
-        b = next(b for b in blocks if b.nb == block)
-        lv = next(lv for lv in b.levels if lv.pos == index)
+        try:
+            b = next(b for b in blocks if b.nb == block)
+            lv = next(lv for lv in b.levels if lv.pos == index)
+        except StopIteration as e:
+            raise ValueError(T("块或能级不存在")) from e
         csf = mix.find_csf_for(str(path))
         csfs = mix.open_csfs(csf, cancel=self.cancel) if csf else None
         top = lv.top_components(limit)

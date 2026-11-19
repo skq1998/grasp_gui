@@ -71,6 +71,20 @@ below still apply. 文件与剪贴板共用 32 MiB 的 UTF-8 文本上限（含 
   命令行和文件操作由导入方的界面按当前规则**重新生成**。缺少的参数用默认值，不认识的参数忽略，并都告知用户。
 * **命令**：直接保存命令本身，只用于 2.1 之前的版本加入流程、没有记录表单参数的步骤；不会重新生成输入，可移植性较差。
 
+Command fields `title`, `stdin`, `log` are strings, `args` is a list of strings, and `mpi` is boolean.
+`pre`/`post` are action lists: `["cp", source, target]` or `["run", [program, arguments…], optional_stdin]`.
+Attached `files` must be a list, and CSF-list form fields must contain a list of objects. Invalid structures
+are rejected as configuration errors before import, including when parameter validation is deferred for preflight.
+命令的标题、输入和日志是字符串，参数是字符串列表，MPI 标志是布尔值；前后动作只接受上述复制或运行结构。
+附带文件是列表，CSF 列表字段是字典的列表；结构不合法时在导入前报告配置错误，预检延后参数校验时也一样。
+
+Choice values must use a code listed in [STEPS.md](STEPS.md). Import rejects unknown codes and reports the
+step, field, supplied value and allowed codes. A legacy value such as `"5 标准 (EOL)"` is read as code `5`.
+Missing fields retain the existing default behavior.
+
+选项值必须使用 [STEPS.md](STEPS.md) 中列出的代码。导入时遇到未知代码会报告步骤、字段、原值和可用代码并拒绝导入。
+兼容 `"5 标准 (EOL)"` 这类旧写法，按首个代码 `5` 读取。缺少字段时仍使用默认值。
+
 ### Name lengths / 名称长度
 
 GRASP reads state and file names into fixed-length character variables. A longer name is cut off silently, and

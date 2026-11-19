@@ -36,6 +36,17 @@ If a step has to change, edit the configuration and generate the script again; d
 空目录中运行；4. 用 `reference` 取得结果文件的能级能量，填入配置的 `reference`。没有程序文件时可在源码目录中用
 `python3 grasp_config.py …`。需要修改时改配置、重新生成脚本，不要改脚本。
 
+## Running a saved working directory / 运行已保存的工作目录
+
+For a directory already installed or saved by GRASP GUI, run `sh grasp_run/run.sh` from that directory,
+or supply an inclusive range such as `sh grasp_run/run.sh 4 6`. On a Slurm server, submit
+`sbatch grasp_run/submit.sbatch 4 6` from the same directory. Use `grasp_gui script /path/to/workdir`
+to regenerate from `.grasp_gui.json`. Keep `grasp_run/` out of shared configuration attachments.
+
+现有工作目录直接运行 `sh grasp_run/run.sh`，或用 `sh grasp_run/run.sh 4 6` 连续运行第 4 至 6 步。
+在 Slurm 服务器的计算目录中可调用 `sbatch grasp_run/submit.sbatch 4 6`。用 `grasp_gui script 工作目录`
+按 `.grasp_gui.json` 重新生成脚本。共享配置的附带文件不包含 `grasp_run/`。
+
 ## Rules / 规则
 
 1. Top level: `"format": "grasp-gui-config"`, `"version": 2`, `"package": "GRASP2018"`, `title`, `summary` (the
@@ -44,7 +55,7 @@ If a step has to change, edit the configuration and generate the script again; d
 2. **One job per program run**, in execution order: `{"step": key, "group": "odd"|"even", "vals": {...}}`.
    Keys and fields are listed in [STEPS.md](STEPS.md). Give every field. Values are strings, except `bool`
    fields (`true`/`false`) and the `lists` of `rcsfgenerate`; `text` fields use `\n` between lines (e.g. one line of
-   levels per J block). `choice` fields take one of the listed codes.
+   levels per J block). `choice` fields take one of the listed codes. Unknown codes are rejected.
 3. `group` (only for the tabs that have it): `"odd"` or `"even"` by the parity of the states the step works on. It
    chooses the form set in the GUI; file names are free.
 4. Steps exchange files through the working directory by name, as in GRASP (`rcsf.inp`, `rwfn.inp`, `isodata`,
@@ -67,7 +78,7 @@ If a step has to change, edit the configuration and generate the script again; d
 1. 顶层写 `format`、`version` (2)、`package` (GRASP2018)、`title`、`summary` (体系、能级、模型、计算内容)、`runtime`、
    `created_by` (agent 名称)、`jobs`，有结果时写 `reference`。
 2. **每运行一次程序对应一步**，按执行顺序；程序页和参数见 [STEPS.md](STEPS.md)，参数全部给出。除 bool 和 rcsfgenerate 的
-   lists 外都是字符串，多行参数用 `\n` 分行 (如每个 J 块一行能级)，choice 取所列代码。
+   lists 外都是字符串，多行参数用 `\n` 分行 (如每个 J 块一行能级)，choice 取所列代码，未知代码会被拒绝。
 3. `group` 按该步所处理的态的宇称取 odd / even，只决定在界面中放在哪一组表单，文件名不受限制。
 4. 各步按文件名通过工作目录交换文件；复制文件用表单中的字段 (`saveas`、`csf`、`copyfrom`、`save` 等)，不另加复制命令。
    常见顺序见 `demos/` 中的算例。

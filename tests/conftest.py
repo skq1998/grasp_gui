@@ -70,3 +70,22 @@ def coupling_bindir():
     if not d or not os.path.isfile(os.path.join(d, "Coupling")):
         pytest.skip("Coupling not found: set COUPLING_BINDIR or PATH")
     return d
+
+
+@pytest.fixture
+def accept_server_run_dialog(monkeypatch):
+    """已有远程流程测试只确认新对话框；真实控件检查由专门的设置测试覆盖。"""
+    from PySide6.QtWidgets import QDialog
+    import remote_panel
+    calls = []
+    class Dialog:
+        modern = False
+        def __init__(self, parent, source, directory, plan, args, **kwargs):
+            self.plan = plan
+            calls.append((directory, args))
+        def exec(self):
+            return QDialog.Accepted
+        def deleteLater(self):
+            pass
+    monkeypatch.setattr(remote_panel, "ServerRunDialog", Dialog)
+    return calls

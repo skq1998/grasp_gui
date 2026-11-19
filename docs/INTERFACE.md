@@ -22,8 +22,8 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 ```
 
 * **Working directory (工作目录)**: edit + *Browse… (浏览…)* + *Recent (最近)* menu (its first item, *Open another
-  directory… (打开其他目录…)*, opens a folder dialog). Changing it saves the session
-  of the old directory, loads the new one's, and refreshes the viewers. On start the last directory is opened.
+  directory… (打开其他目录…)*, opens a folder dialog). Changing it saves the previous session when needed,
+  loads the new one's, and refreshes the viewers. On start the last directory is opened.
 * **Settings (设置)** toggle: collapsed it shows a one-line summary (`GRASP bin: … · serial` / `MPI n processes`);
   expanded: *GRASP bin directory (GRASP bin 目录)* + *Browse…*, *MPI processes (MPI 进程数)*, *mpirun command
   (mpirun 命令)*, *MPI_TMP*, *Lower priority of calculations (nice) (降低计算进程优先级)*. With more than one process
@@ -32,9 +32,14 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
   MPI launcher and the MPI versions of rangular, rmcdhf, rci, rbiotransform and rtransition can be found
   through the normal GRASP bin/PATH lookup;
   otherwise it defaults to 1. Physical cores come from Linux CPU topology or macOS `hw.physicalcpu`, with
-  a fallback of half the logical cores (at least 1). The initial value is saved immediately. Existing saved
-  counts are retained; changing the bin directory or launcher never recalculates them. The input maximum
+  a fallback of half the logical cores (at least 1). The initial value is saved immediately. Editing or browsing
+  for the bin directory or editing the launcher recalculates the automatic default, with a status message
+  when it changes. Counts entered by hand or loaded from a parameter file are retained. Older saved counts
+  with no source indicator are treated as user choices. The input maximum
   remains the logical core count. Its tooltip explains that hyperthreading offers little benefit for GRASP.
+  初始值立即保存。编辑或浏览选择 GRASP bin 目录、编辑 mpirun 命令后，自动默认值重新计算，数值改变时状态栏提示一次。
+  手动输入、载入参数文件指定的进程数，以及没有来源标记的旧设置均保留。
+  [English screenshot](images/en_mpi_default.png) / [中文截图](images/zh_mpi_default.png)。
 * **GRASP bin lookup**: `$GRASP_BINDIR` → last used → directory of `rmcdhf` on `PATH` → `../bin` of the program.
 * **Tabs (标签页)**: *Calculation (计算)*, *Radial wave functions (径向波函数)*, *Levels (能级图)*; bold labels.
   The viewer tabs show the working directory and refresh after a run finishes. *Open in new window (在新窗口中打开)*
@@ -70,6 +75,12 @@ reported; a read-only viewer can still close, while starting a run requires a sa
 默认载入新记录，新增步骤不自动运行；保留自己的修改须再次确认覆盖。取消不写入。保存失败会提示，
 只读查看仍可关闭；开始计算前必须保存成功。
 
+When a workdir record contains an unrecognized choice, the Calculation tab opens using the current default
+and lists the affected steps or form fields and the original values. Shared configuration imports reject
+unknown choices before installation.
+工作目录记录含未知选项时仍可打开，计算页使用当前默认值并列出受影响的步骤或表单字段及原值。
+导入共享配置时则在写入前拒绝未知选项。
+
 While MCP is enabled, opening a calculation with `started_by: "mcp"` shows **[This calculation was
 started by an MCP agent] ([此计算由 MCP agent 启动])** in the output, including after completion.
 With MCP disabled, the toggle is the only agent-related interface item.
@@ -103,6 +114,20 @@ Results summary on the remote Levels tab uses the same dialog, with server-gener
 state. Changing sections/level count requests a new summary. The dialog title shows the source; save chooses a
 local file, starting in the desktop home directory. Cancel/older responses do not alter the clipboard or preview.
 Closing the remote window closes its viewers and connection; it does not stop a background calculation.
+
+Workstation runs always open **Server run settings**, including runs after creation/upload and selected ranges.
+The shared RunSettings fields show the server's GRASP bin path, process count, mpirun, MPI_TMP and nice.
+Saved desktop values for this host take precedence over server defaults. Checks run on opening, on **Check**,
+and automatically before confirmation if values changed. Missing programs (including MPI variants/launcher)
+and input preflight are shown; missing programs default to Cancel but allow explicit continuation.
+Confirming saves only this host's desktop preferences. **File → Server run settings…** also checks/saves without
+starting a calculation. Older servers show read-only settings and an update instruction; their run requests remain
+unchanged. Slurm continues to use its resource dialog. [中文截图](images/zh_server_run_settings.png) /
+[English screenshot](images/en_server_run_settings.png).
+
+If saved host settings become invalid, upload previews warn and check against server defaults instead, so a moved
+bin directory does not block uploading. Run confirmation still validates settings strictly. An empty bin field
+continues to mean PATH; the server supplies a nonempty default before handing settings to the run process.
 
 For Slurm, **Submit Slurm job (提交 Slurm 作业)** reviews resource settings and asks for default-No confirmation.
 The state shows the job ID and scheduler state; pending/running/unknown jobs disable submission. Stop uses
@@ -138,6 +163,15 @@ Old servers without `workdir_write_v1` show an update instruction and receive no
 远程“结果摘要…”由服务器读流程、状态并生成文本；勾选/能级数改变后重新请求，复制与本机保存沿用同一对话框。
 标题显示服务器来源，保存从本机家目录开始选择；不使用桌面会话历史，不在桌面读取服务器目录，取消或旧回答不改变剪贴板。
 关闭远程窗口同时关闭这些查看器和连接，后台计算继续。完整协议、缓存/重连限制见 [REMOTE.md](REMOTE.md)。
+
+工作站每次运行（含新建后运行、上传后运行和选定范围）先显示“服务器运行设置”，复用本机的路径、进程数、
+mpirun、MPI_TMP 和 nice 控件；该主机在桌面保存过的值优先，否则用服务器默认值。打开时、点“检查”时，
+以及修改后确认前均在服务器检查，显示缺少的程序（包括 MPI 程序和启动器）和输入预检。缺少程序时默认取消，
+仍可明确继续。确认只保存桌面端的该主机偏好；“文件 → 服务器运行设置…”可单独检查、保存而不启动。
+旧服务器只读显示并提示更新，运行请求不增加参数；Slurm 仍用资源设置对话框。
+按主机保存的运行设置失效时，上传预览提示原因并改用服务器默认值检查，不阻断上传；运行时仍严格校验。
+bin 留空仍表示 PATH，服务器只在交给运行进程前补上非空默认目录。
+上传警告截图：[中文](images/zh_upload_run_settings_warning.png) / [English](images/en_upload_run_settings_warning.png)。
 
 The remote window's **File** menu offers **Download to this computer…**, **Upload from this computer…**
 and **Upload local directory…**. The transfer dialog lists all regular files and sizes in decimal MB, excludes symbolic
@@ -179,6 +213,7 @@ grasp_gui FILE             open the tab for this file by content, only this file
 grasp_gui check CONFIG.json             check a shared configuration (exit code 1 if it cannot be imported)
 grasp_gui script CONFIG.json [--bindir DIR] [--mpi "mpirun -np N"]
                                         print the shell script of its pipeline (runs in the current directory)
+grasp_gui script WORKDIR                rebuild and print the paths of the work-directory scripts
 grasp_gui steps                         reference of all program tabs and fields (Markdown, = docs/STEPS.md)
 grasp_gui reference FILE.cm …           level energies of mixing coefficient files as "reference" JSON
 ```
@@ -214,6 +249,14 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   of the manual's test cases (`grasptest/` case1–4, example1–5, 8, 9) except non-default `jj2lsj` runs (use
   *Custom*). `rcsfgenerate` has several CSF lists (*+ Add list*, *− Delete current list*, *Reference configurations
   (one per line)*). `rmcdhf` can use the in-memory version `rmcdhf_mem` / `rmcdhf_mem_mpi`.
+* **rcsfgenerate user orbital order / 自定义轨道顺序**. Select `u` (*user*) to edit *Orbital order*.
+  Enter nonrelativistic orbitals such as `2p,2s,1s`, separated by commas or newlines. Entries must be unique
+  and satisfy `n ≤ 15` and `l < n`. Preview shows both the file-writing action and stdin. Running the step
+  writes `clist.ref` in the working directory before launching GRASP. GRASP appends unlisted orbitals in default order.
+
+  在 *轨道排序* 中选择 `u`（用户指定）后可编辑 *轨道顺序*。输入非相对论轨道，例如 `2p,2s,1s`，
+  可用逗号或换行分隔。轨道不重复，并满足 `n ≤ 15` 和 `l < n`。预览同时显示写文件动作和交互回答。
+  运行该步时先在工作目录写出 `clist.ref`，再启动 GRASP。GRASP 将未列出的轨道按默认顺序接在后面。
 * **rmcdhf NSIC**: *Modify NSIC (修改 NSIC)* enables a non-negative count of extra first-cycle orbital improvements; unchecked uses the program default.
   EOL defaults: `(NW-NFIX)/4` serial, `4+(NW-NFIX)/4` MPI, or 0 with varied correlation orbitals; AL: `2+(NW-NFIX)/4` (integer division).
   The page description explains the defaults; older configurations import with this option unchecked and no warning.
@@ -354,11 +397,55 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
     starting a new run there asks first.
   * Files in the working directory: `.grasp_gui_run.json` (process, host, start / end, steps, current step, result),
     `.grasp_gui_run.log` (the whole output of the last run).
-* **Session (工作目录记录)**: parameters, groups and pipeline are saved in `<workdir>/.grasp_gui.json` on every change
-  and restored when the directory is opened again. *Save / Load parameters* write / read the same content as a
-  JSON file elsewhere.
+* **Session (工作目录记录)**: opening a directory restores its parameters, groups and pipeline from
+  `<workdir>/.grasp_gui.json`. For a directory without a record, the first record is created by editing or
+  clearing the pipeline, running, importing, or saving changed form or group parameters when switching
+  groups or directories or closing the window. Inherited parameters, browsing results and switching tabs
+  or groups by themselves do not create a record. Changing only run settings saves user preferences.
+  *Save / Load parameters* write / read the same content as a JSON file elsewhere.
+
+  工作目录已有记录时照常保存。没有记录时，编辑或清空流程、运行、导入会建立记录。修改表单或态组参数后，
+  在切换态组、切换目录或关闭窗口时保存。沿用上个目录的参数、查看结果、切换标签页或仅切换态组不产生记录。
+  只调整运行设置时保存到用户偏好。
 * **Slurm job script (Slurm 作业脚本)** dialog: job name, partition, nodes, tasks, time, memory, modules, e-mail,
   extra `#SBATCH` lines (remembered). Upload the script with the inputs of the working directory and `sbatch` it.
+
+### Run scripts in the working directory / 工作目录运行脚本
+
+Saving a nonempty pipeline updates `grasp_run/run.sh` and `grasp_run/submit.sbatch` from `.grasp_gui.json`.
+The script headers identify the record revision. Each step appears once with its primary inputs and outputs.
+Unchanged scripts keep their modification times. On a generation error the record is still saved and the
+warning appears in the calculation output and status bar. A same-named user file is preserved. When the pipeline
+becomes empty, the app removes its own scripts and removes the directory if it is empty.
+
+```sh
+cd /path/to/calculation
+sh grasp_run/run.sh
+sh grasp_run/run.sh 4 6
+sbatch grasp_run/submit.sbatch
+sbatch grasp_run/submit.sbatch 4 6
+```
+
+Both commands accept an inclusive one-based range. `run.sh` finds its working directory relative to the script
+and reports the failing step if a command exits with an error. It uses the GRASP program directory from the
+machine that generated it. `submit.sbatch` uses the Slurm program directory saved in the record and expands
+its home-directory notation on the cluster. Set `GRASP_RUN_BINDIR`, `GRASP_RUN_NP`, `GRASP_RUN_MPIRUN`, `GRASP_RUN_MPI_TMP`,
+or `GRASP_RUN_NICE` in the environment to override settings. MPI launcher prefixes should use
+`$GRASP_RUN_NP` for the process count. The GUI continues to use its existing background runner.
+
+保存非空流程后，从 `.grasp_gui.json` 更新 `grasp_run/run.sh` 和 `grasp_run/submit.sbatch`。文件头标注记录修订号，
+每步正文只出现一次，前面列出主要输入和输出。内容相同则保留修改时间。生成失败时记录照常保存，提示显示在计算输出和状态栏。
+程序保留用户同名文件。流程为空时，只删除程序生成的脚本，目录变空才删除。
+
+可以按上面的命令手动运行全部或指定连续步骤，起止编号从 1 开始且均包含。计算目录由 `run.sh` 的位置确定，某步命令失败时
+显示步号后停止。`run.sh` 使用生成机器的默认 GRASP 路径。`submit.sbatch` 使用记录中的 Slurm 程序目录，在集群上展开
+家目录写法。可用列出的环境变量覆盖路径。MPI 启动前缀用 `$GRASP_RUN_NP`
+统一进程数；界面仍用原有后台运行方式。用 `grasp_gui script 工作目录` 手动重建脚本。只清理结果时保留 `grasp_run/`，
+明确选择“全部删除”才可一并删除。上传和下载默认不勾选其中的文件。
+
+| 中文 | English |
+|---|---|
+| ![传输默认保留脚本](images/zh_run_script_transfer.png) | ![Generated scripts unchecked for transfer](images/en_run_script_transfer.png) |
 
 ### Background runs and logging out / 后台运行与退出登录 (KillUserProcesses)
 
@@ -464,6 +551,8 @@ results-only cleanup is refused. Shared configuration and session formats are un
 permanent, including selected subdirectories; symbolic links are only unlinked. Root, home and system directories
 are refused; a directory without a session requires a separate confirmation. Clearing everything also clears the
 visible pipeline, and closing the window does not recreate the removed record.
+Refusal before deletion begins (for example, an active run) reports only its reason. Errors after deletion
+begins warn that some selected items may already have been deleted.
 
 “清空工作目录…”先列出删除与保留项、总数量和大小（B / KB / MB / GB，保留一位小数），可取消勾选或用“全选 / 全不选”
 批量选择可删除项；默认只删结果，保留工作目录记录、备份、输入清单及清单中的附带输入，运行状态、日志和缓存可以清理。
@@ -472,6 +561,7 @@ visible pipeline, and closing the window does not recreate the removed record.
 “全部删除”包括输入、清单和记录，必须输入目录名确认；删除不能恢复，选中的子目录会递归删除，
 符号链接只删除链接本身。根目录、家目录、系统目录禁止清空；没有工作目录记录的目录另行确认。
 全部删除后界面流程也清空，关闭窗口不会重新生成记录。
+开始删除前被拒绝（例如仍有任务运行）时只显示原因；开始删除后才发生的错误才提示可能已有部分项目被删除。
 
 ### Export configuration (导出配置)
 
@@ -523,15 +613,24 @@ rmcdhf 部分另含 `name.sum` 中每个轨道最终的自洽程度和广义占�
 
 Large mixing and CSF files are indexed in the background. The status bar shows *Reading … (正在读取 …)*
 and progress; changing the directory or file selection cancels obsolete work. Tabs and controls remain usable.
+Mixing files with any non-finite energy (NaN or ±Inf) are unreadable: the file is marked red and its tooltip
+and the status bar explain that the calculation may have diverged. Other files remain visible. Local, remote,
+summary and MCP readers use the same check before cache writing or energy-zero calculations.
+混合系数文件中只要有 NaN 或正负无穷能量，整个文件就标为无法读取；文件名变红，提示框和状态栏说明计算可能已经发散，
+其他文件仍可显示。本机、远程、摘要与 MCP 共用检查，在写索引缓存或计算零点前拒绝该文件。
+Read errors, incomplete-file notices and uncertain energy-zero warnings appear together; their separator is
+localized. Clearing the last warning also clears its status message. 读取错误、未写完和零点不确定三类提示同时显示；
+全部消失后清除旧状态提示，英文界面使用英文分隔符。
 The composition pane briefly shows *Reading composition… (正在读取组成…)* when the selected level's CSFs are read.
 Only the displayed components are parsed; changing the weight threshold reuses the same data. Small mixing files
 are analyzed serially to avoid process startup delays; larger files can use up to four local analysis processes.
 
-Indexes and leading-component summaries are cached in `<workdir>/.grasp_gui/index/`. For a read-only directory,
-the cache falls back to `~/.cache/grasp_gui/index/<directory hash>/` (`$XDG_CACHE_HOME` if set). If neither location
-is writable, viewing still works without a disk cache. A changed source invalidates its cache; damaged caches
-are rebuilt, and entries for deleted sources are removed on the next directory scan. These caches contain no
-copies of the full calculation files and can be deleted to reclaim space.
+New indexes and leading-component summaries go in `$XDG_CACHE_HOME/grasp_gui/index/<directory hash>/`
+(`~/.cache` when unset), using the server user's cache for remote reads. Existing
+`<workdir>/.grasp_gui/index/` entries can still be read. Viewing works without a disk cache if the user cache
+cannot be written. Changing a source invalidates its cache, and a directory scan removes entries for deleted
+sources from the user cache. These indexes can be deleted to reclaim space. Calculated transitions are stored
+in `<workdir>/.grasp_gui/tr/`.
 
 Skipped symmetry blocks are matched to the CSF list by their original block numbers. An rci empty-block
 header and an omitted rmcdhf block do not hide later levels. A file ending at a complete block is considered
@@ -542,9 +641,10 @@ Remote views use the server's partial-file metadata; summary output retains its 
 
 中文：大型混合系数和 CSF 文件在后台建立索引，状态栏显示读取进度；切换文件或目录会取消旧请求，界面保持响应。
 选中能级时只解析所需的 CSF，阈值改变时复用已读数据。小混合文件串行分析，避免启动进程池的延迟；大文件至多用四个本地分析进程。
-索引和主要成分摘要保存在工作目录的 `.grasp_gui/index/`；
-只读目录改用用户的 `~/.cache/grasp_gui/index/<目录哈希>/`，两处都不可写时仍可查看，但不保留磁盘缓存。
-源文件变化时缓存失效，损坏时重建，源文件删除后在下次扫描清理；缓存不含完整结果文件的副本，可直接删除。
+新索引和主要成分摘要写到 `$XDG_CACHE_HOME/grasp_gui/index/<目录哈希>/`（未设置时用 `~/.cache`），
+远程读取使用服务器用户的缓存目录。仍可读取工作目录中已有的 `.grasp_gui/index/`。
+用户缓存不可写时仍可查看。源文件变化时缓存失效，下次扫描会清理用户缓存中已删除源文件的索引。
+这些索引可直接删除。计算出的跃迁结果保存在工作目录的 `.grasp_gui/tr/`。
 
 跳过的对称块按原始块号与 CSF 配对，rci 的空块头和 rmcdhf 省略的块不会丢掉后面的能级。文件在完整块后结束时，
 还须按文件头的能级总数核对是否完整；记录被截断仍视为未写完。未写完的文件在文件提示框中显示
@@ -623,11 +723,17 @@ levels come from the same file — and which multipoles: E1, or M2 when E1 is fo
 same parity; J = 0 → 0 is refused). Buttons, in two rows: *Compute (selected J) (计算跃迁 (所选 J))* — only the J^π symmetries of
 the two levels (the GUI writes `.c`/`.cm` files with just those blocks), with the main window's process count;
 *Compute all J (MPI) (计算全部 J (MPI))* — all transitions between the two files (lifetimes, branching ratios) with
-the MPI programs and *Processes (进程数)* next to it (first use: the same physical-core/MPI availability rule as the main window,
-saved independently as `tr_np`; existing values are retained, and its maximum remains four times the logical
-core count); *Stop*; *Export ▾*: transitions of the current level (CSV),
+the MPI programs and *Processes (进程数)* next to it. Its default follows the main window's physical-core
+and MPI availability rule and is saved independently as `tr_np`. Opening Levels or starting an all-J
+calculation refreshes the automatic default and shows a status message if it changes. Manual and older
+saved counts are retained. The maximum remains four times the logical core count. *Stop*; *Export ▾*:
+transitions of the current level (CSV),
 all computed transitions between the two files (CSV), *GRASP transition file (for rtabtrans1 / rtabtrans2)*
 (`even4.odd4.ct`).
+
+“计算全部 J”的进程数独立保存。打开能级图页或开始计算全部 J 时，按主窗口同样的物理核数和 MPI 可用性规则更新自动默认值，
+数值改变时状态栏提示一次。手动设置及没有来源标记的旧设置均保留。上限仍为逻辑核数的四倍。
+[English screenshot](images/en_mpi_transition_default.png) / [中文截图](images/zh_mpi_transition_default.png)。
 
 Results: table *Type*, *Gauge (规范)* — Babushkin (length) and Coulomb (velocity), A (s⁻¹), gf, S (a.u.); their
 ratio close to 1 indicates a reliable calculation. *Transitions drawn in the diagram (图上标注的跃迁)* list with
@@ -656,24 +762,70 @@ cannot handle paths longer than 128 characters; the GUI then falls back to the s
 
 ### Upload local pipeline / 上传本机流程
 
-The pipeline run-button group also contains **Upload to server… (上传到服务器…)** and **Upload and run…
-(上传并运行…)**. Unlinked directories select a host and a new/empty target using the connection browser plus
-an editable target field. Linked copies reconnect to their saved host/directory. The upload dialog reuses the
-rsync file table, threshold and progress. Small inputs default on; generated outputs, large files, internal
-records and server-existing names default off/excluded. Existing server files are retained in this workflow.
+The pipeline run-button group has one **Upload to server… (上传到服务器…)** action. Linked copies instead
+show **Update server pipeline… (更新服务器流程…)** and reconnect to their fixed host/directory. In the target
+dialog the browsed **Server directory** is the upload target; **Upload to this directory** confirms that path.
+**New subdirectory…** defaults to the local workdir name. Empty names, `/`, `.` and `..` are rejected. An existing
+subdirectory is entered normally. A new subdirectory or a directly typed nonexistent path is shown as
+**Created when the upload is confirmed**, beside the path and in the final confirmation; choosing it does not
+create a server directory. Parent directory cancels that candidate. A pending target saves the last browsed existing
+directory (the parent for New subdirectory…) as the host default, or server HOME if none was browsed, leaving a usable
+default. The ordinary connection dialog is unchanged.
 
-The dialog previews server changes/input checks before its default-No confirmation; custom commands have a
-separate default-No confirmation. It saves the record before transferring files. Failed transfer keeps the record
-and association and offers retry; the next attempt checks the current server revision again. Upload and run
-opens the remote window and invokes its ordinary run-confirmation flow after the pipeline loads, once only.
-Conflict offers **Fetch server pipeline again**; users can export local edits first. **Unlink local copy…**
-asks default-No, changes only desktop preferences, and never deletes server data.
+Before accepting an unlinked target, the dialog checks for an existing calculation. It offers **Fetch for local
+editing…** with a default new local path and explains that current local pipeline edits are not carried over;
+export them first if needed. It never directly overwrites that calculation. Nonempty directories without a valid
+calculation remain refused, with an explicit instruction to choose an empty directory or **New subdirectory…**.
+Connection, permission and other errors retain their diagnostics. After fetching, the hint points to
+**Update server pipeline…** on the Calculation tab.
+Update dialogs and confirmations name `host:path` and display the server's proposed changes.
 
-本机计算页流程运行按钮旁增加“上传到服务器…”和“上传并运行…”。新目录先选主机和新建/空目标；关联副本沿用主机与路径。
-确认前显示服务器预览、选中的输入、待上传/缺失与冲突文件；默认否，自定义命令单独确认。先写记录再传输入，同名服务器文件保留。
-失败后提示补传，不删记录。丢失回答先核对：配置一致则关联；旧修订号未变或新建目标经检查仍为空时，提示“写入未执行，
-可以再次确认上传”，保留本机修改，等待用户重新确认。其他变化仍提示冲突；绝不自动重发写入。
-副本常驻来源标识，本机缺少输入标明“由服务器检查”；本机直接运行另有默认否确认。
+The upload and download file tables provide **Select all**, **Deselect all** and **Restore defaults**, synchronized
+with the large-file checkbox. Defaults are explained above the table: upload selects small files except generated
+outputs and server-existing names; ordinary transfers select small files. Internal records remain excluded and
+existing server files are retained. Deselecting everything writes the pipeline without transferring input files,
+with that action and missing inputs stated in the confirmation/status. Attached files inside the configuration
+keep their existing installation behavior. No separate pipeline-only button is added.
+
+Confirmation defaults to No; custom commands have a separate default-No confirmation. The record is saved
+before file transfer. Completion offers **Open remote window**; it does not run a calculation. An already open
+window for the same host/directory is raised and refreshed. Otherwise a new remote window takes ownership of
+the SSH session. Use that window's existing range/run controls to start, with workstation/Slurm confirmation.
+**Upload and run…** is removed; direct server import's **Create and run** remains available.
+
+Failed transfer keeps the record/association and offers retry, with a fresh server revision check. Lost write replies
+are reconciled before retry; mutations are never automatically resent. **Unlink local copy…** asks default No
+and changes only desktop preferences. The source label and confirmation for running a server copy locally remain.
+
+计算页保留一个“上传到服务器…”入口，已关联副本时改为“更新服务器流程…”，固定使用关联主机和目录。
+目标对话框的“服务器目录”就是上传位置；“上传到此目录”确认当前路径。“新建子目录…”默认填本机目录名，
+拒绝空名、含 `/`、`.` 和 `..`；同名目录存在时直接进入。不存在的子目录或手输路径在路径旁和最终确认中标注
+“确认上传时创建”，选择时不创建服务器目录，返回上一级可取消候选目标；普通连接对话框行为不变。
+待创建目标把最近浏览的已有目录保存为默认目录（新建子目录时就是上级）；尚未浏览时用服务器 HOME，取消上传也不会留下不存在的默认路径。
+
+未关联且目标已有计算时，在确认目标时提示“取出到本机编辑…”，默认使用新的本机目录，明确本机当前修改不会带过去，
+需要时应先导出配置；不提供直接覆盖操作。无有效计算的非空目录仍拒绝。取出后提示改完在计算页点“更新服务器流程…”。
+非空且无记录时明确提示改用空目录或“新建子目录…”；连接、权限等其他错误保留诊断。
+更新标题和确认框显示主机、目录及服务器返回的改动。
+
+上传、下载均提供“全选”“全不选”“恢复默认”，与“包括大文件”状态同步；列表上方说明默认规则。上传默认勾选小文件，
+取消流程生成、服务器已有同名及大文件；内部记录不列出，同名文件仍保留。全不选时，确认框和状态明确说明
+“只写入流程，不传输输入文件”并列出缺少的输入；配置自带文件仍按原机制安装，不另加“只上传流程”按钮。
+
+最终确认默认否，自定义命令另确认，先写流程再传输入。完成后可“打开远程窗口”；已有同主机、同目录窗口时前置并刷新，
+新窗口接管 SSH 会话，均不自动运行。运行范围和工作站 / Slurm 确认使用远程窗口的原有按钮。
+删除“上传并运行…”；直接在服务器新建计算的“新建并运行”保留。
+传输失败、结果未确认、修订冲突的处理不变：先核对，绝不自动重发写入；解除关联仅改本机偏好。
+
+Screenshots / 界面截图（本地协议替身，不连接真实 SSH）：
+
+| Interaction / 操作 | 中文 | English |
+|---|---|---|
+| Pending target / 待创建目标 | [目标](images/zh_upload_target.png) | [Target](images/en_upload_target.png) |
+| Nonempty without a record / 非空且无记录 | [拒绝说明](images/zh_upload_nonempty.png) | [Refusal](images/en_upload_nonempty.png) |
+| No input files / 不传输入 | [只写流程](images/zh_upload_pipeline_only.png) | [Pipeline only](images/en_upload_pipeline_only.png) |
+| Update preview / 更新预览 | [更新](images/zh_upload_update.png) | [Update](images/en_upload_update.png) |
+| Completion / 完成后 | [打开远程窗口](images/zh_upload_complete.png) | [Open remote window](images/en_upload_complete.png) |
 
 ## Direct server configuration import / 直接导入到服务器
 

@@ -92,6 +92,26 @@ def test_upload_defaults_and_no_confirmation_leave_server_intact(setup, monkeypa
     assert not any(method == "create_workdir" for method, _ in source.calls)
 
 
+@pytest.mark.parametrize("language", ["zh", "en"])
+def test_invalid_host_run_settings_warn_without_blocking_upload(setup, monkeypatch, qapp, language):
+    from PySide6.QtWidgets import QMessageBox
+    dialog, source, panel, cfg = setup
+    core.set_lang(language)
+    source.server = dict(capabilities=[edit.CAPABILITY, "run_settings_v1"])
+    core.save_config(remote_hosts=dict(fixture=dict(run=dict(bindir="/missing/grasp/bin", np=1))))
+    original = Path(core.CONFIG_FILE).read_bytes()
+    dialog.load()
+    spin(qapp, lambda: dialog.ready)
+    warning = "按主机保存的运行设置无效：" if language == "zh" else "Saved run settings for this host are invalid:"
+    assert warning in dialog.report.toPlainText()
+    confirmations = []
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: confirmations.append(args) or QMessageBox.No)
+    dialog.start_transfer()
+    assert warning in confirmations[0][2]
+    assert Path(core.CONFIG_FILE).read_bytes() == original
+    assert not Path(dialog.directory).exists()
+
+
 def test_record_written_before_rsync_and_link_survives_failure(setup, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     dialog, source, panel, cfg = setup
@@ -247,14 +267,21 @@ def test_target_dialog_selects_host_and_new_directory(qapp, tmp_path, monkeypatc
         server = dict(capabilities=[edit.CAPABILITY], server_types=["workstation", "slurm"])
         def close(self):
             pass
-    dialog = TargetDialog(None, str(tmp_path / "local"))
+        def submit(self, method, args, callback):
+            try:
+                callback(getattr(remote.Operations(), method)(**args), None)
+            except Exception as error:
+                callback(None, error)
+    cfg = dict(format=config.FORMAT, version=config.VERSION,
+               jobs=[dict(step="rnucleus", vals=config.STEPS["rnucleus"].defaults())])
+    dialog = TargetDialog(None, str(tmp_path / "local"), configuration=cfg)
     try:
         dialog.host.setCurrentText("cluster")
-        dialog.source, dialog.directory = Source(dialog), "/work"
+        dialog.source, dialog.directory = Source(dialog), str(tmp_path / "new calculation")
         dialog.server_type.setCurrentIndex(dialog.server_type.findData("slurm"))
-        dialog.target.setText("new calculation")
+        dialog.path.setText(dialog.directory)
         dialog.accept()
-        assert dialog.result() == QDialog.Accepted and dialog.directory == "/work/new calculation"
+        assert dialog.result() == QDialog.Accepted and dialog.directory == str(tmp_path / "new calculation")
         assert dialog.source.server_type == "slurm"
     finally:
         dialog.reject()
@@ -294,21 +321,24 @@ def test_take_out_opens_original_local_editor_and_preserves_unrelated_files(qapp
         qapp.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
-def test_upload_and_run_reuses_remote_window_start_flow(setup, monkeypatch):
+def test_upload_opens_remote_window_only_on_request_without_running(setup, monkeypatch):
     from PySide6.QtWidgets import QMessageBox, QWidget
     import remote_edit_panel
     dialog, source, panel, cfg = setup
-    dialog.run_after = True
     calls = []
     class Window(QWidget):
-        def __init__(self, received, directory, parent, run_after_load):
+        def __init__(self, received, directory, parent, run_after_load=False):
             super().__init__(parent)
+            received.setParent(self)
             calls.append((received, directory, run_after_load))
     monkeypatch.setattr(remote_edit_panel, "RemoteWindow", Window)
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Yes)
     monkeypatch.setattr(dialog, "begin_transfer", lambda rows: dialog.completed_upload(dict(count=len(rows))))
     dialog.start_transfer()
-    assert calls == [(source, dialog.directory, True)]
+    assert calls == [] and dialog.open_button.isEnabled()
+    dialog.open_button.click()
+    assert calls == [(source, dialog.directory, False)]
+    assert not any(method in ("run_plan", "run") for method, _ in source.calls)
 
 
 def test_remote_run_after_pipeline_load_occurs_once(qapp):

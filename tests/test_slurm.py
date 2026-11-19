@@ -14,6 +14,7 @@ import grasp_bg as bg
 import grasp_config as config
 import grasp_core as core
 import grasp_remote as remote
+import grasp_session as sessions
 import grasp_service as service
 import grasp_slurm as slurm
 import grasp_summary as summary
@@ -194,7 +195,7 @@ def test_remote_slurm_submit_never_launches_background_runner(tmp_path, monkeypa
     op = remote.Operations()
     plan = op.run_plan(str(root), server_type="slurm")
     assert plan["server_type"] == "slurm" and not plan["logout_kills"]
-    settings = dict(plan["slurm"], nodes="1", ntasks="1", mpirun="")
+    settings = dict(plan["slurm"], nodes="1", ntasks="1", mpirun="", bindir="/cluster/grasp/bin")
     monkeypatch.setattr(slurm.shutil, "which", lambda name: name)
     monkeypatch.setattr(bg, "launch", lambda *a, **k: pytest.fail("Slurm must not use bg.launch"))
     calls = []
@@ -208,8 +209,12 @@ def test_remote_slurm_submit_never_launches_background_runner(tmp_path, monkeypa
     assert not (root / slurm.RECORD).exists()
     result = op.run(str(root), plan["revision"], server_type="slurm", slurm=settings)
     assert result["backend"] == "slurm" and result["job_id"] == "42"
+    data, revision = sessions.read(root)
+    assert revision == result["revision"] and data["slurm"]["bindir"] == settings["bindir"]
+    assert "bindir" not in data
+    assert settings["bindir"] in (root / "grasp_run/submit.sbatch").read_text()
     with pytest.raises(ValueError, match="Slurm"):
-        op.run(str(root), plan["revision"], server_type="slurm", slurm=settings)
+        op.run(str(root), result["revision"], server_type="slurm", slurm=settings)
     assert calls.count("sbatch") == 1
 
 

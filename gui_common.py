@@ -135,8 +135,14 @@ def viewer_for(path):
 class RunSettings(QWidget):
     """可收起的设置区；收起时只显示一行摘要。展开 / 收起的按钮 (self.toggle) 由主窗口放在工作目录一行。"""
 
-    def __init__(self, cfg):
+    defaultChanged = Signal(str)
+
+    def __init__(self, cfg, *, remote=False, np_user=None):
         super().__init__()
+        self.remote = remote
+        prefs = {} if remote else core.load_config()
+        self.np_user = core.user_process_count(prefs, "np") if np_user is None else np_user
+        self.mpi_inputs = cfg["bindir"], cfg["mpirun"]
         top = QVBoxLayout(self)
         top.setContentsMargins(0, 0, 0, 0)
         self.toggle = QPushButton()
@@ -149,15 +155,20 @@ class RunSettings(QWidget):
         g = QGridLayout(self.box)
         g.setContentsMargins(0, 0, 0, 0)
         self.bindir_edit = QLineEdit(cfg["bindir"])
-        self.bindir_edit.editingFinished.connect(self.save)     # 改完立即保存，下次启动沿用
+        if not remote:
+            self.bindir_edit.editingFinished.connect(self.launcher_changed)
         g.addWidget(QLabel(T("GRASP bin 目录")), 0, 0)
         g.addWidget(self.bindir_edit, 0, 1)
-        g.addWidget(button("浏览…", self.pick_bindir), 0, 2)
+        if not remote:
+            g.addWidget(button("浏览…", self.pick_bindir), 0, 2)
         mp = QHBoxLayout()
         self.np_spin = QSpinBox()
-        self.np_spin.setRange(1, max(os.cpu_count() or 1, 1))
+        self.np_spin.setRange(1, 100000 if remote else max(os.cpu_count() or 1, 1))
         self.np_spin.setValue(cfg["np"])
         self.mpirun_edit = QLineEdit(cfg["mpirun"])
+        if not remote:
+            self.mpirun_edit.editingFinished.connect(self.launcher_changed)
+            self.np_spin.valueChanged.connect(self.np_edited)
         self.mpitmp_edit = QLineEdit(cfg["mpitmp"])
         self.nice_check = QCheckBox(T("降低计算进程优先级 (nice)"))
         self.nice_check.setChecked(cfg["nice"])
@@ -176,8 +187,8 @@ class RunSettings(QWidget):
         self.bindir_edit.textChanged.connect(self.update_summary)
         self.np_spin.valueChanged.connect(self.update_summary)
         # 按上次的收起状态显示；GRASP bin 目录中找不到 GRASP 时总是展开，提醒检查路径
-        collapsed = core.load_config().get("settings_collapsed", True)
-        if not os.path.isfile(os.path.join(cfg["bindir"], "rmcdhf")):
+        collapsed = False if remote else prefs.get("settings_collapsed", True)
+        if not remote and not os.path.isfile(os.path.join(cfg["bindir"], "rmcdhf")):
             collapsed = False
         self.show_box(not collapsed, save=False)
 
@@ -186,7 +197,7 @@ class RunSettings(QWidget):
         self.summary.setVisible(not visible)
         self.toggle.setText(("▾ " if visible else "▸ ") + T("设置"))
         self.update_summary()
-        if save:
+        if save and not self.remote:
             core.save_config(settings_collapsed=not visible)
 
     def update_summary(self):
@@ -198,7 +209,32 @@ class RunSettings(QWidget):
         d = QFileDialog.getExistingDirectory(self, "", self.bindir_edit.text() or os.getcwd())
         if d:
             self.bindir_edit.setText(d)
-            self.save()
+            self.launcher_changed()
+
+    def np_edited(self):
+        self.np_user = True
+
+    def set_process_count(self, n):
+        blocked = self.np_spin.blockSignals(True)
+        try:
+            self.np_spin.setValue(n)
+        finally:
+            self.np_spin.blockSignals(blocked)
+        self.update_summary()
+
+    def refresh_default(self):
+        inputs = self.bindir(), self.mpirun()
+        if self.remote or self.np_user or inputs == self.mpi_inputs:
+            return
+        self.mpi_inputs = inputs
+        value = core.default_mpi_np(*inputs)
+        if value != self.np():
+            self.set_process_count(value)
+            self.defaultChanged.emit(T("MPI 进程数的默认值已改为 {n}。", n=self.np()))
+
+    def launcher_changed(self):
+        self.refresh_default()
+        self.save()
 
     def bindir(self):
         return self.bindir_edit.text()
@@ -223,20 +259,30 @@ class RunSettings(QWidget):
         """运行设置 (bindir, np, mpirun, mpitmp, nice)，交给 core.Runner。"""
         return dict(bindir=self.bindir(), np=self.np(), mpirun=self.mpirun(), mpitmp=self.mpitmp(), nice=self.nice())
 
-    def apply(self, data):
+    def apply(self, data, *, user=False):
         """载入参数文件中的设置 (只设置其中有的项)。"""
         for key, edit in [("bindir", self.bindir_edit), ("mpirun", self.mpirun_edit), ("mpitmp", self.mpitmp_edit)]:
             if key in data:
                 edit.setText(str(data[key]))
         if "np" in data:
-            self.np_spin.setValue(int(data["np"]))
+            if self.remote:
+                self.np_spin.setValue(int(data["np"]))
+            else:
+                self.set_process_count(int(data["np"]))
+                if user:
+                    self.np_user = True
         if "nice" in data:
             self.nice_check.setChecked(bool(data["nice"]))
+        if user:
+            self.refresh_default()
+        self.mpi_inputs = self.bindir(), self.mpirun()
 
     def save(self):
         """保存到 ~/.config/grasp_gui.json，作为下次启动的默认值。"""
+        if self.remote:
+            return
         core.save_config(bindir=self.bindir().strip(), np=self.np(), mpirun=self.mpirun(), mpitmp=self.mpitmp(),
-                         nice=self.nice())
+                         nice=self.nice(), np_user=self.np_user)
 
 
 def saved_settings():

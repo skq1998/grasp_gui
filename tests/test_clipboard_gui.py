@@ -1,5 +1,6 @@
 """剪贴板导入沿用外部配置的确认与预览；复制和文件输出一致。"""
 
+import json
 import os
 import struct
 
@@ -45,6 +46,34 @@ def test_clipboard_import_and_preview(qapp, tmp_path, dialogs):
     assert core.load_session(target) == core.load_session(file_target)
     assert dialogs == []
     dlg.close()
+
+
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_unknown_choice_blocks_import_but_legacy_record_opens(qapp, tmp_path, dialogs, lang):
+    from test_gui import window
+    core.set_lang(lang)
+    step = config.STEPS["rcsfgenerate"]
+    values = step.defaults()
+    cfg = dict(format=config.FORMAT, version=2, jobs=[dict(step=step.key, vals=dict(values, order="z"))])
+    QGuiApplication.clipboard().setText(json.dumps(cfg))
+    dlg = ConfigDialog(None, [], "")
+    assert not dlg.open_clipboard() and not dlg.ok.isEnabled()
+    assert "rcsfgenerate" in dialogs[-1] and "'z'" in dialogs[-1]
+    dlg.close()
+
+    job = step.job(values)
+    job["vals"]["order"] = "z"
+    job["stdin"] = "z\n" + job["stdin"].partition("\n")[2]
+    assert core.save_session(tmp_path, dict(pipeline=[job], steps={step.key: job["vals"]}))
+    w = window(tmp_path)
+    try:
+        assert len(dialogs) == 2 and "rcsfgenerate" in dialogs[-1] and "'z'" in dialogs[-1]
+        assert ("第 1 步" if lang == "zh" else "Step 1") in dialogs[-1]
+        assert w.calc.pipeline[0]["vals"]["order"] == "*" and w.calc.pipeline[0]["stdin"].startswith("*\n")
+        form = next(f for f in w.calc.forms if f.step.key == step.key)
+        assert form.values()["order"] == "*"
+    finally:
+        assert w.close()
 
 
 def test_custom_commands_require_confirmation(qapp, monkeypatch):

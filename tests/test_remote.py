@@ -174,7 +174,7 @@ def test_existing_viewers_remote_data_without_local_reads(tmp_path, qapp, monkey
 
 
 @pytest.mark.gui
-def test_remote_readonly_pipeline_and_custom_confirmation(tmp_path, qapp, monkeypatch):
+def test_remote_readonly_pipeline_and_custom_confirmation(tmp_path, qapp, monkeypatch, accept_server_run_dialog):
     from remote_panel import RemoteCalculation
     from PySide6.QtCore import QObject, Signal
     from PySide6.QtWidgets import QMessageBox
@@ -204,6 +204,7 @@ def test_remote_readonly_pipeline_and_custom_confirmation(tmp_path, qapp, monkey
     panel.prepare_run(1)
     assert source.calls[-1][0] == "run"
     assert source.calls[-1][1]["allow_custom"] is True
+    assert len(accept_server_run_dialog) == 1
     panel.push(dict(event="log", directory="/server/calc", text="new log", reset=True))
     assert panel.output.toPlainText() == "new log"
     panel.show_state(dict(status="running", step=0, titles=["step"]))
@@ -218,7 +219,9 @@ def test_user_scope_requires_explicit_logout_choice(tmp_path, monkeypatch):
     op = remote.Operations()
     directory = str(tmp_path / "calc")
     revision = op.record(directory)[2]
-    monkeypatch.setattr(op, "run_plan", lambda directory, **kw: dict(logout_kills=True, lingering=False))
+    settings = dict(bindir=str(tmp_path), np=1, mpirun="mpirun", mpitmp="tmp_mpi", nice=True)
+    monkeypatch.setattr(op, "run_plan", lambda directory, **kw:
+                        dict(logout_kills=True, lingering=False, run_settings=settings))
     with pytest.raises(ValueError, match="scope"):
         op.run(directory, revision)
     with pytest.raises(ValueError, match="lingering"):
@@ -226,8 +229,9 @@ def test_user_scope_requires_explicit_logout_choice(tmp_path, monkeypatch):
     launched = []
     monkeypatch.setattr(service.Service, "run", lambda self, *a, **kw: launched.append(kw))
     op.run(directory, revision, accept_logout=True)
-    assert launched == [dict(end=None, started_by="remote", user_scope=False)]
-    monkeypatch.setattr(op, "run_plan", lambda directory, **kw: dict(logout_kills=True, lingering=True))
+    assert launched == [dict(end=None, started_by="remote", user_scope=False, run_settings=settings)]
+    monkeypatch.setattr(op, "run_plan", lambda directory, **kw:
+                        dict(logout_kills=True, lingering=True, run_settings=settings))
     op.run(directory, revision, user_scope=True)
     assert launched[-1]["user_scope"] is True
     command = []
@@ -380,7 +384,7 @@ def test_server_pushes_utf8_and_resets_for_new_run(tmp_path):
 @pytest.mark.gui
 @pytest.mark.parametrize("choice,linger,expected", [("使用用户 scope", True, "scope"),
     ("照常启动", False, "normal"), ("导出 Slurm 作业脚本…", False, "export_script"), ("取消", True, None)])
-def test_logout_dialog_requires_explicit_choice(qapp, monkeypatch, choice, linger, expected):
+def test_logout_dialog_requires_explicit_choice(qapp, monkeypatch, choice, linger, expected, accept_server_run_dialog):
     import remote_panel as panel_module
     from PySide6.QtCore import QObject, Signal
     from PySide6.QtWidgets import QMessageBox

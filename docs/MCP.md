@@ -171,6 +171,10 @@ rtransition outputs. Branching ratios cover only the channels read, not a comple
 is relative to the workdir and restricted to the root. Numerical tools work without Qt; drawing reports
 an explicit error without it and otherwise reuses the viewers offscreen.
 
+`levels` 可选返回 `errors: [{file, error}]`，逐文件报告读取失败。含 NaN 或正负无穷能量的文件整份拒绝，
+其他文件照常返回；没有错误时省略该字段。The optional `errors` list reports unreadable files, including
+non-finite energies; other level results are retained. Healthy replies omit it.
+
 ## 运行前检查 / Run preflight
 
 `run` 使用与 GUI 相同的名称和文件预检，只检查 `start` 到 `end` 实际运行的连续步骤。每页的 `validate` 是名称限制的
@@ -259,6 +263,15 @@ GUI screenshots / 界面截图：
 |---|---|---|
 | 外部修改 / External change | ![中文](images/zh_mcp_conflict.png) | ![English](images/en_mcp_conflict.png) |
 | 运行来源 / Run origin | ![中文](images/zh_mcp_origin.png) | ![English](images/en_mcp_origin.png) |
+
+新建或更新工作目录记录会生成 `grasp_run/` 中的两个脚本。MCP 的 `run` 继续用后台运行进程，在实际运行设置
+变化时更新目录记录。返回值可能含 `revision` 和 `warnings`。生成脚本失败只告警，记录仍保存成功。
+运行后修改配置前，请用返回的修订号或先读取 `get_pipeline`。
+
+Creating or updating a work-directory record generates both scripts under `grasp_run/`. MCP `run` still uses
+the background runner. It may update the record when run settings change and return `revision` and `warnings`.
+Script generation errors are reported while the record remains saved. Use the returned revision or refresh
+it with `get_pipeline` before the next edit.
 
 ## 目录与命令限制 / Directory and command limits
 

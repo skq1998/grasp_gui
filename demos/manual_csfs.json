@@ -9,8 +9,8 @@
   "en": "Manual §§5.1–5.8: CSF generation and interaction filtering"
  },
  "summary": {
-  "zh": "手册正文中输入完整的 CSF 教学例：价价、核价、核核与核间关联、大多参考、相互作用筛选、双占据关联轨道、合并多次激发和混合宇称。各节输出保存在 section51.c 到 section58.c；§5.5 使用 §5.4 的完整列表。这里只生成组态，不指定核、不计算能量，因而没有 reference 能量。§5.9 自定义轨道排序和 §5.10 jjgen 缺少相应程序页输入，未收录。",
-  "en": "Complete CSF tutorials from the manual: valence, core–valence, core–core and intercore correlation, large multireferences, interaction filtering, doubly occupied correlation orbitals, combined excitations and mixed parity. Outputs are section51.c through section58.c; §5.5 filters the full list from §5.4. These are configuration lists only, with no nucleus or energy calculation, so no reference energies. §§5.9–5.10 require unsupported custom orbital ordering / jjgen input."
+  "zh": "手册正文中输入完整的 CSF 教学例：价价、核价、核核与核间关联、大多参考、相互作用筛选、双占据关联轨道、合并多次激发和混合宇称。各节输出保存在 section51.c 到 section58.c；§5.5 使用 §5.4 的完整列表。这里只生成组态，不指定核、不计算能量，因而没有 reference 能量。§5.9 自定义轨道排序见独立算例，§5.10 jjgen 未收录。",
+  "en": "Complete CSF tutorials from the manual: valence, core–valence, core–core and intercore correlation, large multireferences, interaction filtering, doubly occupied correlation orbitals, combined excitations and mixed parity. Outputs are section51.c through section58.c; §5.5 filters the full list from §5.4. These configuration lists have no nucleus or energy calculation, so there are no reference energies. Section 5.9 is a separate demo. Section 5.10 jjgen is outside this workflow."
  },
  "runtime": {
   "zh": "约 20 秒，只生成 CSF",
