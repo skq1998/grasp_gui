@@ -1,0 +1,40 @@
+{
+ "format": "grasp-gui-config",
+ "version": 2,
+ "package": "GRASP2018",
+ "id": "manual_orbital_order",
+ "order": 21,
+ "title": {
+  "zh": "手册 §5.9：Ce III 自定义轨道顺序",
+  "en": "Manual §5.9: Ce III user-defined orbital order"
+ },
+ "summary": {
+  "zh": "生成 Ce III 的 CSF 列表。通过 clist.ref 将 4f 排在 5s、5p 之后。",
+  "en": "Generate the Ce III CSF list with 4f after 5s and 5p using clist.ref."
+ },
+ "runtime": {
+  "zh": "仅生成 CSF",
+  "en": "CSF generation only"
+ },
+ "jobs": [
+  {
+   "step": "rcsfgenerate",
+   "vals": {
+    "order": "u",
+    "orbital_order": "1s,2s,2p,3s,3p,3d,4s,4p,4d,5s,5p,4f,5d,5f,6s,6p",
+    "core": "3",
+    "lists": [
+     {
+      "configs": "3d(10,c)4s(2,*)4p(6,*)4d(10,*)5s(2,*)5p(6,*)4f(2,*)",
+      "active": "6s,6p,5d,5f",
+      "jmin": "0",
+      "jmax": "12",
+      "nexc": "2"
+     }
+    ],
+    "saveas": ""
+   }
+  }
+ ],
+ "reference": []
+}

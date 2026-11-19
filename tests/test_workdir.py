@@ -121,7 +121,7 @@ def test_clear_modes_inputs_and_links(tmp_path):
     (root / ".grasp_gui" / "cache").write_bytes(b"cache")
     (root / ".grasp_gui_run.log").write_text("output")
     plan = work.prepare_clear(root)
-    assert {x["name"] for x in plan["kept"]} == {"input", core.SESSION_FILE, config.INPUTS_FILE}
+    assert {x["name"] for x in plan["kept"]} == {"input", core.SESSION_FILE, config.INPUTS_FILE, "grasp_run"}
     work.clear(plan, {x["name"] for x in plan["entries"] if x["name"] != "state.cm"})
     assert (root / "state.cm").read_bytes() == b"result"
     assert not (root / "link").exists()
@@ -171,14 +171,14 @@ def test_failed_update_rolls_back_inputs(tmp_path, monkeypatch):
     config.install(cfg([job()], [dict(name="input", text="old")]), str(tmp_path))
     original = (tmp_path / core.SESSION_FILE).read_bytes()
     plan = work.prepare_update(tmp_path, cfg([job(z="4")], [dict(name="input", text="new")]))
-    atomic = work._atomic
+    atomic = work.sessions.atomic
 
-    def fail_record(path, raw, mode=None):
+    def fail_record(path, raw):
         if Path(path).name == core.SESSION_FILE:
             raise OSError("simulated write error")
-        return atomic(path, raw, mode)
+        return atomic(path, raw)
 
-    monkeypatch.setattr(work, "_atomic", fail_record)
+    monkeypatch.setattr(work.sessions, "atomic", fail_record)
     with pytest.raises(OSError):
         work.apply_update(plan, {"input"})
     assert (tmp_path / "input").read_text() == "old"

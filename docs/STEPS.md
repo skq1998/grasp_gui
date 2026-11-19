@@ -30,7 +30,8 @@ program `rcsfgenerate`; `group`: "odd" / "even"
 
 | key | type | default | meaning / 含义 |
 |---|---|---|---|
-| `order` | choice | `"*"` | 轨道排序 / Orbital ordering<br>`*` = 默认 / default, `r` = 反序 / reverse, `s` = 按对称性 / symmetry |
+| `order` | choice | `"*"` | 轨道排序 / Orbital ordering<br>`*` = 默认 / default, `r` = 反序 / reverse, `s` = 按对称性 / symmetry, `u` = 用户指定 / user |
+| `orbital_order` | text | `""` | 轨道顺序 / Orbital order — 每行一个或用逗号分隔，如 1s,2s,2p / One per line or comma-separated, e.g. 1s,2s,2p *(2.11.0)* |
 | `core` | choice | `"0"` | 闭壳芯 / Core<br>`0` = 无芯 / no core, `1` = He, `2` = Ne, `3` = Ar, `4` = Kr, `5` = Xe, `6` = Rn |
 | `lists` | lists | `[{"configs": "1s(2,i)2s(2,i)2p(1,i)\n1s(2,i)2p(3,i)", "active": "2s,2p", "jmin": "1", "jmax": "3", "nexc": "0"}]` | CSF lists of rcsfgenerate / CSF 列表：[{configs, active, jmin, jmax, nexc}]<br>`configs`: 组态 (每行一个) / configurations (one per line), `active`: 活跃轨道集 / Active set (各 l 的最高 n，如 5s,4p,3d / highest n per l, e.g. 5s,4p,3d), `jmin`: 2J 最小值 / 2J min, `jmax`: 2J 最大值 / 2J max, `nexc`: 激发数 / Number of excitations (负数: 关联轨道总是双占据 / negative: correlation orbitals doubly occupied) |
 | `saveas` | string | `"odd2.c"` | 保存 rcsf.out 为 / Save rcsf.out as — 留空则不复制 / leave empty to skip copy |

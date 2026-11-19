@@ -21,7 +21,7 @@ import grasp_summary as summary
 import grasp_trans as transitions
 import grasp_wfn as wfn
 from grasp_core import T
-from gui_common import button
+from gui_common import RunSettings, button
 from level_panel import LevelPanel
 from wfn_panel import WfnPanel
 
@@ -329,6 +329,8 @@ class SparseCoefficients:
 
 
 class RemoteLevels(LevelPanel):
+    LOCAL_TRANSITIONS = False
+
     def __init__(self, source, directory):
         self.remote_source, self.remote_directory = source, directory
         self.remote_generation, self.remote_closed, self.remote_rows = 0, False, []
@@ -415,7 +417,14 @@ class RemoteLevels(LevelPanel):
             compositions[(path, b.nb, lv.pos)] = [(p["csf"], p["coefficient"], p.get("configuration") or "",
                                                    p.get("coupling") or "") for p in parts]
         self.read_data = {}
+        errors = {str(PurePosixPath(self.remote_directory) / row["file"]): row["error"]
+                  for row in data.get("errors", [])}
+        for path in errors:
+            groups.setdefault(path, {})
         for path, bs in groups.items():
+            if path in errors:
+                self.read_data[path] = ValueError(errors[path])
+                continue
             blocks = mix.Blocks(bs.values())
             blocks.partial = partial.get(path, False)
             fallback = dict(zero_group="DC", zero_warning="") if path.endswith(".m") else mix.unknown_hamiltonian()
@@ -439,7 +448,7 @@ class RemoteLevels(LevelPanel):
 
     def redraw(self, *_):
         missing = [PurePosixPath(p).name for p in self.checked_paths()
-                   if p in self.read_data and not self.read_data[p][0]]
+                   if p in self.read_data and not isinstance(self.read_data[p], Exception) and not self.read_data[p][0]]
         if missing:
             self.scan([PurePosixPath(p).name for p in self.checked_paths()])
         self.render_levels()
@@ -611,6 +620,112 @@ class RemoteWaves(WfnPanel):
     def shutdown(self):
         self.remote_closed = True
         super().shutdown()
+
+
+class ServerRunDialog(QDialog):
+    """公共工作站运行确认：检查在服务器执行，编辑不触碰本机运行偏好。"""
+
+    def __init__(self, parent, source, directory, plan, range_args, *, run=True):
+        super().__init__(parent)
+        self.source, self.directory, self.plan = source, directory, plan
+        self.range_args, self.run = range_args, run
+        self.modern = "run_settings_v1" in getattr(source, "server", {}).get("capabilities", [])
+        self.closed, self.generation, self.checked_values = False, 0, None
+        self.setWindowTitle(T("服务器运行设置"))
+        self.resize(940, 400)
+        layout = QVBoxLayout(self)
+        label = QLabel(T("服务器 {h}:{p}", h=source.client.host, p=directory))
+        label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(label)
+        values = dict(bindir="", np=1, mpirun="mpirun", mpitmp="tmp_mpi", nice=True)
+        values.update(plan.get("run_settings", {}))
+        if self.modern:
+            saved = core.load_config().get("remote_hosts", {}).get(source.client.host, {}).get("run", {})
+            values.update(saved)
+        self.settings = RunSettings(values, remote=True)
+        self.settings.setEnabled(self.modern)
+        layout.addWidget(self.settings)
+        self.report = QPlainTextEdit()
+        self.report.setReadOnly(True)
+        layout.addWidget(self.report, 1)
+        bar = QHBoxLayout()
+        self.check_button = button("检查", self.check)
+        self.check_button.setEnabled(self.modern)
+        self.ok = button("确认运行" if run else "保存", self.confirm)
+        self.cancel = button("取消", self.reject)
+        for widget in (self.check_button, self.ok, self.cancel):
+            widget.setAutoDefault(False)
+            bar.addWidget(widget)
+        layout.addLayout(bar)
+        self.cancel.setDefault(True)
+        self.finished.connect(self.finish)
+        for edit in (self.settings.bindir_edit, self.settings.mpirun_edit, self.settings.mpitmp_edit):
+            edit.textChanged.connect(self.changed)
+        self.settings.np_spin.valueChanged.connect(self.changed)
+        self.settings.nice_check.toggled.connect(self.changed)
+        if self.modern:
+            QTimer.singleShot(0, self.check)
+        else:
+            self.show_report(plan)
+            self.report.appendPlainText(T("服务器端版本较旧，设置只读；请用“安装 / 更新服务器版…”更新后再修改。"))
+
+    def finish(self, _):
+        self.closed = True
+        self.generation += 1
+
+    def changed(self, *_):
+        self.generation += 1
+        self.checked_values = None
+        self.ok.setEnabled(True)
+        self.cancel.setDefault(True)
+        self.report.setPlainText(T("设置已改变，请检查；确认前会自动检查。"))
+
+    def show_report(self, plan):
+        missing = plan.get("missing_programs", [])
+        lines = [T("服务器缺少程序：{names}", names=", ".join(missing) or "—")]
+        checked = plan.get("checked")
+        if checked is not None:
+            lines.append(summary.check_text(checked) if checked["issues"] else T("输入预检通过。"))
+        self.report.setPlainText("\n\n".join(lines))
+        self.ok.setDefault(not missing)
+        self.cancel.setDefault(bool(missing))
+
+    def check(self, *, accept=False):
+        if self.closed or not self.modern:
+            return
+        self.generation += 1
+        generation, values = self.generation, self.settings.values()
+        self.ok.setEnabled(False)
+        self.report.setPlainText(T("正在检查服务器运行设置…"))
+        def received(plan, error):
+            if self.closed or generation != self.generation:
+                return
+            self.ok.setEnabled(True)
+            if error or plan["revision"] != self.plan["revision"]:
+                self.checked_values = None
+                self.report.setPlainText(str(error) if error else T("工作目录记录已被其他程序修改，请重新载入"))
+                self.cancel.setDefault(True)
+                return
+            self.plan = plan
+            self.checked_values = values
+            self.show_report(plan)
+            if accept:
+                # 检查得到警告后须再次明确确认，不让异步回答直接启动计算。
+                if plan.get("missing_programs") or plan.get("checked", {}).get("issues"):
+                    return
+                self.confirm()
+        args = dict(directory=self.directory, run_settings=values, **self.range_args)
+        self.source.submit("run_plan", args, received)
+
+    def confirm(self):
+        if self.modern and self.checked_values != self.settings.values():
+            self.check(accept=True)
+            return
+        if self.modern:
+            profiles = core.load_config().get("remote_hosts", {})
+            profiles.setdefault(self.source.client.host, {})["run"] = self.settings.values()
+            core.save_config(remote_hosts=profiles)
+        self.accept()
 
 
 class RemoteCalculation(QWidget):
@@ -857,6 +972,13 @@ class RemoteCalculation(QWidget):
                 args.update(range_args)
                 self.source.submit("run", args, self.started)
                 return
+            dialog = ServerRunDialog(self, self.source, self.directory, plan, range_args)
+            if dialog.exec() != QDialog.Accepted:
+                dialog.deleteLater()
+                return
+            plan = dialog.plan
+            settings = dialog.settings.values() if dialog.modern else None
+            dialog.deleteLater()
             scope = accept_logout = False
             if plan["logout_kills"]:
                 box = QMessageBox(self)
@@ -880,11 +1002,23 @@ class RemoteCalculation(QWidget):
             args = dict(directory=self.directory, revision=self.revision, start=start, allow_custom=custom,
                         user_scope=scope, accept_logout=accept_logout)
             args.update(range_args)
+            if settings is not None:
+                args["run_settings"] = settings
             self.source.submit("run", args, self.started)
         args = dict(directory=self.directory, **range_args)
         if self.server_type == "slurm":
             args["server_type"] = "slurm"
         self.source.submit("run_plan", args, planned)
+
+    def edit_run_settings(self):
+        def received(plan, error):
+            if error:
+                QMessageBox.warning(self, T("服务器运行设置"), str(error))
+                return
+            dialog = ServerRunDialog(self, self.source, self.directory, plan, {}, run=False)
+            dialog.exec()
+            dialog.deleteLater()
+        self.source.submit("run_plan", dict(directory=self.directory), received)
 
     def copy_script(self, value, error):
         if not error:
@@ -899,6 +1033,10 @@ class RemoteCalculation(QWidget):
             if self.server_type != "slurm":
                 text += "\n" + T("用户 scope 失败时可导出 Slurm，或重新选择照常启动；请先核对运行状态。")
             QMessageBox.warning(self, T("远程运行"), text)
+        elif value:
+            self.revision = value.get("revision", self.revision)
+            if value.get("warnings"):
+                QMessageBox.warning(self, T("远程运行"), "\n".join(value["warnings"]))
         self.load()
 
     def stop(self):
@@ -944,6 +1082,8 @@ class RemoteWindow(QMainWindow):
         self.waves.message.connect(self.statusBar().showMessage)
         self.levels.message.connect(self.statusBar().showMessage)
         files = self.menuBar().addMenu(T("文件"))
+        if getattr(source, "server_type", "workstation") == "workstation":
+            files.addAction(T("服务器运行设置…")).triggered.connect(lambda: self.calc.edit_run_settings())
         files.addAction(T("下载到本机…")).triggered.connect(lambda: self.open_transfer())
         files.addAction(T("从本机上传…")).triggered.connect(lambda: self.open_transfer(upload=True))
         files.addAction(T("上传本机目录…")).triggered.connect(lambda: self.open_transfer(upload=True, folder=True))

@@ -191,7 +191,10 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         lay = QVBoxLayout(central)
-        self.run = gc.RunSettings(self.run.values() if self.run else gc.saved_settings())
+        previous = self.run
+        self.run = gc.RunSettings(previous.values() if previous else gc.saved_settings(),
+                                  np_user=previous.np_user if previous else None)
+        self.run.defaultChanged.connect(self.statusBar().showMessage)
         row = QHBoxLayout()
         row.addWidget(QLabel(T("工作目录")))
         self.workdir = QLineEdit(self.cur_workdir)
@@ -400,7 +403,10 @@ class MainWindow(QMainWindow):
         kind = self.current_tab()
         self.detach_btn.setVisible(kind != "calc")
         if kind != "calc":
-            self.panel(kind).scan()             # 切换过来时刷新 (计算可能产生了新文件)
+            panel = self.panel(kind)
+            panel.scan()             # 切换过来时刷新 (计算可能产生了新文件)
+            if kind == "levels":
+                panel.refresh_transition_default()
 
     def panel(self, kind):
         """查看器面板 (第一次用到时创建)。"""

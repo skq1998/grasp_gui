@@ -151,6 +151,8 @@ def check_files(workdir, jobs, start=0, run=None, offset=0, path_check=None):
             if action[0] == "cp":
                 require(action[1], number, title, errors)
                 produced(action[2], origin)
+            elif action[0] == "write":
+                produced(action[1], origin)
         for name in inputs:
             require(name, number, title, errors)
         for name in outputs:
@@ -159,6 +161,8 @@ def check_files(workdir, jobs, start=0, run=None, offset=0, path_check=None):
             if action[0] == "cp":
                 require(action[1], number, title, errors)
                 produced(action[2], origin)
+            elif action[0] == "write":
+                produced(action[1], origin)
         for name in removes:
             available.discard(name)
             origins.pop(name, None)

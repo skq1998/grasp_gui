@@ -114,8 +114,10 @@ def test_real_slurm_example1_in_two_ranges(tmp_path, grasp_bindir):
     cfg, operation, plan, settings = install(root, grasp_bindir)
     end = next(i + 1 for i, job in enumerate(cfg["jobs"]) if job["step"] == "rmcdhf")
     ids = []
+    revision = plan["revision"]
     for args in (dict(end=end), dict(start=end + 1)):
-        result = operation.run(str(root), plan["revision"], server_type="slurm", slurm=settings, **args)
+        result = operation.run(str(root), revision, server_type="slurm", slurm=settings, **args)
+        revision = result.get("revision", revision)
         ids.append(result["job_id"])
         state = wait_for(root, lambda s: not s["active"])
         assert state["status"] == "ok", state
@@ -123,6 +125,27 @@ def test_real_slurm_example1_in_two_ranges(tmp_path, grasp_bindir):
             assert (root / "2s_2p_DF.w").stat().st_size > 0
             assert not any((root / ref["file"]).exists() for ref in cfg["reference"])
     assert ids[0] != ids[1]
+    for ref in cfg["reference"]:
+        assert config.reference_energies(str(root / ref["file"])) == pytest.approx(ref["energies"], abs=1e-7)
+
+
+@pytest.mark.grasp
+@pytest.mark.parametrize("split", [False, True])
+def test_generated_sbatch_example1(tmp_path, grasp_bindir, split):
+    import grasp_session as sessions
+
+    root = tmp_path / "generated"
+    cfg, _, _, settings = install(root, grasp_bindir)
+    sessions.save_run_settings(root, settings, slurm=True)
+    env = core.child_env()
+    env.pop("GRASP_RUN_BINDIR", None)
+    command = ["sbatch", "--wait", "--parsable", "--output=slurm-generated-%j.log", "grasp_run/submit.sbatch"]
+    stop = next(i for i, job in enumerate(cfg["jobs"]) if job["step"] == "rmcdhf")
+    ranges = [("1", str(stop)), (str(stop + 1), str(len(cfg["jobs"])))] if split else [()]
+    for args in ranges:
+        result = subprocess.run(command + list(args), env=env, cwd=root, text=True, capture_output=True, timeout=360)
+        logs = "\n".join(path.read_text(errors="replace")[-3000:] for path in root.glob("slurm-generated-*.log"))
+        assert result.returncode == 0, (result.stdout, result.stderr, logs)
     for ref in cfg["reference"]:
         assert config.reference_energies(str(root / ref["file"])) == pytest.approx(ref["energies"], abs=1e-7)
 

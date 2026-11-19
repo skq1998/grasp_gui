@@ -90,6 +90,25 @@ def test_bad_configs_are_rejected(doc):
         config.check(doc)
 
 
+@pytest.mark.parametrize("step,field", [(s, f) for s in core.STEPS for f in s.fields if isinstance(f, core.Choice)],
+                         ids=lambda item: item.key)
+def test_choice_fields_reject_unknown_codes_and_accept_legacy_labels(step, field):
+    vals = step.defaults()
+    doc = dict(format=config.FORMAT, version=2, jobs=[dict(step=step.key, vals=vals)])
+    vals[field.key] = "unknown-choice"
+    for validate in (True, False):
+        with pytest.raises(config.ConfigError) as error:
+            config.check(doc, validate=validate)
+        message = str(error.value)
+        assert all(part in message for part in ("1", step.key, core.T(field.label), "unknown-choice"))
+        assert ", ".join(code for code, _ in field.options) in message
+    for code, _ in field.options:
+        for value in (code, f"{code} legacy label") if code else (code,):
+            vals[field.key] = value
+            checked, warnings = config.check(doc, validate=False)
+            assert not warnings and config.job_values(checked["jobs"][0])[field.key] == code
+
+
 def test_steps_md_is_up_to_date():
     with open(os.path.join(ROOT, "docs", "STEPS.md"), encoding="utf-8") as f:
         assert f.read().rstrip("\n") == config.steps_markdown().rstrip("\n"), \
@@ -116,7 +135,10 @@ def test_import_persists_only_valid_input_names(tmp_path):
     config.install(cfg, str(tmp_path))
     assert json.loads((tmp_path / config.INPUTS_FILE).read_text()) == ["extra.in"]
     assert config.load_inputs(tmp_path) == {"extra.in"}
-    assert core.load_session(tmp_path) == json.loads(json.dumps(config.session(cfg)))
+    expected = config.session(cfg)
+    settings = core.saved_run_settings(persist=False)
+    expected.update((key, settings[key]) for key in ("np", "mpirun", "mpitmp", "nice"))
+    assert core.load_session(tmp_path) == json.loads(json.dumps(expected))
     original = (tmp_path / config.INPUTS_FILE).read_bytes()
     with pytest.raises(config.ConfigError):
         config.save_inputs(tmp_path, ["../outside"])

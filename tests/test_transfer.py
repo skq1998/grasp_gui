@@ -299,3 +299,22 @@ def test_upload_scan_and_stale_lists(qapp, tmp_path):
         assert len(dialog.rows) == 2
     finally:
         dialog.reject()
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("upload", [False, True])
+def test_run_scripts_start_unchecked(qapp, upload):
+    from transfer_panel import TransferDialog
+
+    source = SimpleNamespace(client=SimpleNamespace(host="fixture"), submit=lambda *args: None)
+    dialog = TransferDialog(source, "/server", upload=upload)
+    try:
+        dialog.show_files(dict(files=[dict(name=n, size=12) for n in
+                                      ("isodata", "grasp_run/run.sh", "grasp_run/submit.sbatch")], skipped=[]))
+        assert [row["name"] for row in dialog.selected()] == ["isodata"]
+        dialog.select_files(True)
+        assert len(dialog.selected()) == 3
+        dialog.reset_checks()
+        assert [row["name"] for row in dialog.selected()] == ["isodata"]
+    finally:
+        dialog.reject()

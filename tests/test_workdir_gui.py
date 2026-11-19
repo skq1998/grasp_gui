@@ -12,10 +12,130 @@ from PySide6.QtCore import Qt             # noqa: E402
 import calc_panel as panel                # noqa: E402
 import grasp_config as config             # noqa: E402
 import grasp_core as core                 # noqa: E402
+import grasp_session as sessions          # noqa: E402
 import grasp_workdir as work              # noqa: E402
 from conftest import DEMOS                 # noqa: E402
 from test_gui import no_dialogs, spin, window  # noqa: E402, F401
+from test_large_files import make_files  # noqa: E402
+from test_mcp import wavefunction  # noqa: E402
 from test_workdir import cfg, job          # noqa: E402
+
+
+@pytest.mark.parametrize("tab", ["levels", "wfn"])
+@pytest.mark.parametrize("switch_directory", [False, True])
+def test_viewing_results_leaves_directory_untouched(qapp, tmp_path, monkeypatch, no_dialogs, tab, switch_directory):
+    monkeypatch.setattr(core, "CONFIG_FILE", str(tmp_path / "preferences.json"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    root = tmp_path / "results"
+    make_files(root, ncf=2, nev=2)
+    wavefunction(root / "state.w")
+    original = {p.name: p.read_bytes() for p in root.iterdir()}
+    w = window(root, tab)
+    if tab == "levels":
+        spin(qapp, lambda: not w.panel(tab).loading)
+        assert w.panel(tab).level_table.rowCount() == 2
+    else:
+        assert w.panel(tab).checked_paths() == [str(root / "state.w")]
+    if switch_directory:
+        target = tmp_path / "other"
+        target.mkdir()
+        w.change_workdir(str(target))
+        assert w.cur_workdir == str(target)
+    assert w.close() and not no_dialogs
+    assert {p.name for p in root.iterdir()} == original.keys()
+    assert all((root / name).read_bytes() == value for name, value in original.items())
+
+
+def test_inherited_parameters_navigation_and_run_preferences_do_not_create_record(qapp, tmp_path, no_dialogs):
+    root = tmp_path / "old"
+    config.install(cfg([job("rnucleus", z="6")]), root)
+    target = tmp_path / "new"
+    target.mkdir()
+    w = window(root)
+    w.change_workdir(str(target))
+    assert next(f for f in w.calc.forms if f.step.key == "rnucleus").values()["z"] == "6"
+    w.calc.switch_group("even")
+    w.calc.nav.setCurrentWidget(w.calc.group_forms()[0])
+    w.calc.show_preview()
+    w.calc.switch_group("odd")
+    w.run.mpitmp_edit.setText("changed-temp")
+    w.run.save()
+    assert w.close() and not no_dialogs
+    assert not (target / core.SESSION_FILE).exists()
+    assert core.load_config()["mpitmp"] == "changed-temp"
+
+
+@pytest.mark.parametrize("edit", ["form", "group", "add", "clear"])
+def test_calculation_actions_create_first_record(qapp, tmp_path, no_dialogs, edit):
+    w = window(tmp_path)
+    form = next(f for f in w.calc.forms if f.step.key == "rnucleus")
+    w.calc.nav.setCurrentWidget(form)
+    if edit == "form":
+        form.set_values({"z": "6"})
+        assert not (tmp_path / core.SESSION_FILE).exists()
+    elif edit == "group":
+        w.calc.switch_group("even")
+        assert not (tmp_path / core.SESSION_FILE).exists()
+        form = next(f for f in w.calc.group_forms() if f.step.key == "rmcdhf")
+        form.set_values({"nscf": "222"})
+        w.calc.switch_group("odd")
+        assert core.load_session(tmp_path)["groups"]["even"]["rmcdhf"]["nscf"] == "222"
+    elif edit == "add":
+        w.calc.add_to_pipeline()
+        assert core.load_session(tmp_path)["pipeline"][0]["step"] == "rnucleus"
+    else:
+        w.calc.clear_pipeline()
+        assert core.load_session(tmp_path)["pipeline"] == []
+    assert w.close() and not no_dialogs
+    if edit == "form":
+        assert core.load_session(tmp_path)["steps"]["rnucleus"]["z"] == "6"
+
+
+def test_single_step_run_creates_first_record(qapp, tmp_path, no_dialogs):
+    w = window(tmp_path)
+    form = next(f for f in w.calc.forms if f.step.key == "custom")
+    form.set_values({"prog": "sh", "args": "-c 'echo calculated > result.txt'"})
+    w.calc.nav.setCurrentWidget(form)
+    w.calc.run_current()
+    assert w.calc.busy and (tmp_path / core.SESSION_FILE).is_file()
+    spin(qapp, lambda: not w.calc.busy)
+    assert (tmp_path / "result.txt").read_text() == "calculated\n"
+    assert w.close() and not no_dialogs
+
+
+def test_existing_record_saves_without_changing_contents(qapp, tmp_path, no_dialogs):
+    config.install(cfg([job()]), tmp_path)
+    assert window(tmp_path).close()  # 先由界面补齐完整记录。
+    path = tmp_path / core.SESSION_FILE
+    original = path.read_bytes()
+    os.utime(path, ns=(1, 1))
+    assert window(tmp_path, "levels").close() and not no_dialogs
+    assert path.read_bytes() == original and path.stat().st_mtime_ns != 1
+
+
+def test_record_save_keeps_slurm_bindir(qapp, tmp_path, no_dialogs):
+    config.install(cfg([job()]), tmp_path)
+    w = window(tmp_path)
+    w.calc.slurm["bindir"] = "~/cluster/grasp"
+    assert w.close() and not no_dialogs
+    data, _ = sessions.read(tmp_path)
+    assert data["slurm"]["bindir"] == "~/cluster/grasp"
+    assert "bindir" not in data
+
+
+def test_external_first_record_still_prompts_before_close(qapp, tmp_path, no_dialogs, monkeypatch):
+    w = window(tmp_path, "levels")
+    config.install(cfg([job()]), tmp_path)
+    shown = []
+
+    def load(dialog):
+        shown.append(True)
+        dialog.choose("load")
+        return dialog.result()
+
+    monkeypatch.setattr(panel.SessionChangedDialog, "exec", load)
+    assert w.close() and not no_dialogs
+    assert shown == [True] and len(core.load_session(tmp_path)["pipeline"]) == 1
 
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
@@ -143,7 +263,8 @@ def test_clear_selection_and_all_delete_survives_close(qapp, tmp_path, no_dialog
 
     def delete_results(d):
         assert not d.all_files.isChecked()
-        assert {d.kept.item(i).text() for i in range(d.kept.count())} == {"input", core.SESSION_FILE, config.INPUTS_FILE}
+        assert {d.kept.item(i).text() for i in range(d.kept.count())} == {
+            "input", core.SESSION_FILE, config.INPUTS_FILE, "grasp_run"}
         for i in range(d.files.count()):
             if d.files.item(i).data(Qt.UserRole)["name"] == "other.cm":
                 d.files.item(i).setCheckState(Qt.Unchecked)

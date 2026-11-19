@@ -4,6 +4,9 @@
 §§5.1–5.8，pp. 21–33，及 §14.1，pp. 349–362，[开放获取全文](https://www.diva-portal.org/smash/get/diva2:1760743/FULLTEXT01.pdf)。
 原文为 CC BY 4.0；作者署名及章节来源保留于此。
 
+`section59.in` 和 `section59_clist.ref` 分别记录 §5.9 的 Ce III 交互回答和轨道清单。
+`--check` 对照 stdin 和实际生成的 `clist.ref`。The two §5.9 transcripts cover stdin and the orbital list.
+
 这些 `.in` 文件仅转录原文 `>>` 标出的程序回答，保留空回答，去掉启动程序与复制文件的 shell 命令。
 §5.5 分为生成多参考列表 (`section55_mr.in`) 和相互作用筛选 (`section55.in`)。
 它们不是由 GUI 输入生成器导出的标准结果，而是 `tools/make_demos.py --check` 的独立对照输入。

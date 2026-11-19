@@ -8,7 +8,8 @@ import pytest
 from tools import make_demos as demos
 
 
-@pytest.mark.parametrize("make", [demos.case2, demos.case3, demos.manual_csfs, demos.manual_zf])
+@pytest.mark.parametrize(
+    "make", [demos.case2, demos.case3, demos.manual_csfs, demos.manual_zf, demos.manual_orbital_order])
 def test_manual_demo_rebuilds_jobs(make):
     d = make()
     stored = json.loads((Path(demos.OUT) / (d.id + ".json")).read_text())
@@ -21,7 +22,7 @@ def test_manual_demo_rebuilds_jobs(make):
     assert all(j["step"] != "custom" for j in d.jobs)
 
 
-@pytest.mark.parametrize("make", [demos.manual_csfs, demos.manual_zf])
+@pytest.mark.parametrize("make", [demos.manual_csfs, demos.manual_zf, demos.manual_orbital_order])
 def test_book_transcripts(make, tmp_path):
     d = make()
     d.id = "renamed"
