@@ -94,7 +94,8 @@ def test_bad_configs_are_rejected(doc):
                          ids=lambda item: item.key)
 def test_choice_fields_reject_unknown_codes_and_accept_legacy_labels(step, field):
     vals = step.defaults()
-    doc = dict(format=config.FORMAT, version=2, jobs=[dict(step=step.key, vals=vals)])
+    doc = dict(format=config.FORMAT, version=2, package=core.package_of([step.key]),
+               jobs=[dict(step=step.key, vals=vals)])
     vals[field.key] = "unknown-choice"
     for validate in (True, False):
         with pytest.raises(config.ConfigError) as error:
