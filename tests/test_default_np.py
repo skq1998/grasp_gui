@@ -20,7 +20,8 @@ def cpuinfo(packages, cores, threads):
 
 @pytest.mark.parametrize("packages,cores,threads", [(1, 2, 1), (1, 2, 2), (2, 3, 2), (2, 3, 1)])
 def test_linux_physical_cores(monkeypatch, packages, cores, threads):
-    monkeypatch.setattr(core.sys, "platform", "linux")
+    monkeypatch.setattr(core, "IS_LINUX", True)
+    monkeypatch.setattr(core, "IS_MACOS", False)
     data = cpuinfo(packages, cores, threads)
     monkeypatch.setattr("builtins.open", mock_open(read_data=data))
     assert core.physical_cpu_count() == packages * cores
@@ -29,7 +30,8 @@ def test_linux_physical_cores(monkeypatch, packages, cores, threads):
 @pytest.mark.parametrize("data", ["", "processor: 0\n", "processor: 0\nphysical id: x\ncore id: 1\n",
                                  cpuinfo(1, 2, 1) + "\nprocessor: 2\n"])
 def test_linux_incomplete_topology_falls_back(monkeypatch, data):
-    monkeypatch.setattr(core.sys, "platform", "linux")
+    monkeypatch.setattr(core, "IS_LINUX", True)
+    monkeypatch.setattr(core, "IS_MACOS", False)
     monkeypatch.setattr(core.os, "cpu_count", lambda: 8)
     monkeypatch.setattr("builtins.open", mock_open(read_data=data))
     assert core.physical_cpu_count() == 4
@@ -37,7 +39,8 @@ def test_linux_incomplete_topology_falls_back(monkeypatch, data):
 
 @pytest.mark.parametrize("logical,expected", [(None, 1), (0, 1), (1, 1), (2, 1), (3, 1), (8, 4)])
 def test_unreadable_topology_falls_back(monkeypatch, logical, expected):
-    monkeypatch.setattr(core.sys, "platform", "linux")
+    monkeypatch.setattr(core, "IS_LINUX", True)
+    monkeypatch.setattr(core, "IS_MACOS", False)
     monkeypatch.setattr(core.os, "cpu_count", lambda: logical)
 
     def unavailable(*args, **kwargs):
@@ -48,7 +51,8 @@ def test_unreadable_topology_falls_back(monkeypatch, logical, expected):
 
 
 def test_macos_physical_cores(monkeypatch):
-    monkeypatch.setattr(core.sys, "platform", "darwin")
+    monkeypatch.setattr(core, "IS_LINUX", False)
+    monkeypatch.setattr(core, "IS_MACOS", True)
     calls = []
 
     def sysctl(command, **options):
@@ -63,7 +67,8 @@ def test_macos_physical_cores(monkeypatch):
 
 @pytest.mark.parametrize("result", ["0", "unknown", OSError("missing"), subprocess.TimeoutExpired("sysctl", 2)])
 def test_macos_failure_falls_back(monkeypatch, result):
-    monkeypatch.setattr(core.sys, "platform", "darwin")
+    monkeypatch.setattr(core, "IS_LINUX", False)
+    monkeypatch.setattr(core, "IS_MACOS", True)
     monkeypatch.setattr(core.os, "cpu_count", lambda: 10)
 
     def sysctl(*args, **kwargs):

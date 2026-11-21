@@ -252,7 +252,7 @@ def query(workdir, record):
                 error=T("Slurm 暂无作业记录，不能判定任务已结束"))
 
 
-def status(workdir, background=None, refresh=False):
+def status(workdir, background=None, refresh=False, *, reconcile=True):
     try:
         record = read(workdir)
     except ValueError as error:
@@ -288,7 +288,7 @@ def status(workdir, background=None, refresh=False):
         while len(_cache) > 128:
             _cache.pop(next(iter(_cache)))
     # 不在缓存锁内取目录锁，避免与持目录锁的提交/更新请求互相等待。
-    if not record["job_id"] and value.get("job_id"):
+    if reconcile and not record["job_id"] and value.get("job_id"):
         with sessions.locked(workdir):
             current = read(workdir)
             if current and current["token"] == record["token"] and not current["job_id"]:

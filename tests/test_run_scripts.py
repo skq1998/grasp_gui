@@ -180,7 +180,9 @@ def test_run_reports_bad_settings_range_and_failing_step(tmp_path):
     failure = execute()
     assert failure.returncode != 0 and "Step 2 failed" in failure.stderr
     assert (tmp_path / "first").exists() and not (tmp_path / "third").exists()
-    assert execute("3", "3").returncode == 0 and (tmp_path / "third").exists()
+    success = execute("3", "3")
+    assert success.returncode == 0 and (tmp_path / "third").exists()
+    assert success.stdout.splitlines()[-1] == "Completed steps 3–3"
 
 
 @pytest.mark.grasp

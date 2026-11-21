@@ -31,7 +31,7 @@ def first_family(candidates):
 
 def fixed_font():
     """等宽字体：优先用常见的等宽字体 (包括打包的 DejaVu Sans Mono)，都没有时用系统默认。"""
-    family = first_family(MONO_FONTS)
+    family = first_family(["Menlo", *MONO_FONTS] if core.IS_MACOS else MONO_FONTS)
     if family:
         font = QFont(family)
         font.setStyleHint(QFont.Monospace)

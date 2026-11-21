@@ -334,7 +334,7 @@ class RemoteLevels(LevelPanel):
     def __init__(self, source, directory):
         self.remote_source, self.remote_directory = source, directory
         self.remote_generation, self.remote_closed, self.remote_rows = 0, False, []
-        super().__init__(directory)
+        super().__init__(directory, nist_comparison=False)
         self.tr_run.hide()
         self.tr_all.hide()
         self.tr_np.hide()
@@ -731,6 +731,7 @@ class ServerRunDialog(QDialog):
 class RemoteCalculation(QWidget):
     editRequested = Signal(str)
     created = Signal(str, bool)
+    filesChanged = Signal()
 
     def __init__(self, source, directory, run_after_load=False):
         super().__init__()
@@ -739,6 +740,7 @@ class RemoteCalculation(QWidget):
         self.run_after_load = run_after_load
         self.server_type = getattr(source, "server_type", "workstation")
         self.submitting = False
+        self.cleaning = False
         self.can_run = False
         self.slurm_state = None
         layout = QVBoxLayout(self)
@@ -764,6 +766,9 @@ class RemoteCalculation(QWidget):
         if not self.edit_button.isEnabled():
             self.edit_button.setToolTip(T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。"))
         bar.addWidget(self.edit_button)
+        self.clean_button = button("清空工作目录…", self.preview_clean)
+        self.update_clean_button()
+        bar.addWidget(self.clean_button)
         self.state = QLabel()
         self.state.setWordWrap(True)
         bar.addWidget(self.state, 1)
@@ -897,6 +902,58 @@ class RemoteCalculation(QWidget):
     def has_run_range(self):
         return "run_range_v1" in getattr(self.source, "server", {}).get("capabilities", [])
 
+    def update_clean_button(self):
+        supported = "workdir_clean_v1" in getattr(self.source, "server", {}).get("capabilities", [])
+        self.clean_button.setEnabled(supported and self.can_run and bool(self.revision) and not self.cleaning)
+        self.clean_button.setToolTip("" if supported else T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。"))
+
+    def preview_clean(self, *, recovering=False):
+        from calc_panel import ClearDialog, clean_result
+
+        if self.cleaning or (not recovering and not self.clean_button.isEnabled()):
+            return
+        self.cleaning = True
+        self.update_run_buttons()
+        target = dict(directory=self.directory)
+
+        def finished(value, error, run_after):
+            self.cleaning = False
+            self.update_run_buttons()
+            if isinstance(error, ssh.UnknownOutcome):
+                self.filesChanged.emit()
+                QMessageBox.warning(self, T("清空工作目录"), T("清理结果未知。将重新读取文件清单，请核对后再操作。"))
+                self.preview_clean(recovering=True)
+            elif error:
+                QMessageBox.warning(self, T("清空工作目录"), str(error))
+            else:
+                self.filesChanged.emit()
+                self.run_after_load = clean_result(self, value) and run_after
+                if not value["error"]:
+                    self.source.notice.emit(T("清理完成"))
+                self.load()
+
+        def show(plan, error):
+            if error:
+                self.cleaning = False
+                self.update_run_buttons()
+                QMessageBox.warning(self, T("清空工作目录"), str(error))
+                return
+            dlg = ClearDialog(self, plan["root"], plan=plan, can_run=bool(self.jobs))
+            accepted = dlg.exec() == QDialog.Accepted
+            backup = dlg.backup_to_delete
+            names = [backup] if backup else sorted(dlg.selected_names())
+            mode = "delete" if backup else dlg.mode.currentData()
+            run_after = not backup and dlg.run_after.isChecked()
+            dlg.deleteLater()
+            if accepted:
+                self.source.submit("clean_workdir", dict(target, revision=plan["revision"], names=names, mode=mode),
+                                   lambda value, err: finished(value, err, run_after))
+            else:
+                self.cleaning = False
+                self.update_run_buttons()
+
+        self.source.submit("preview_clean", target, show)
+
     def update_run_buttons(self):
         for mode, button in (("all", self.run_button), ("from", self.run_selected),
                              ("to", self.run_to), ("selected", self.run_range)):
@@ -907,8 +964,9 @@ class RemoteCalculation(QWidget):
                 hint = str(e)
             if mode in ("to", "selected") and not self.has_run_range():
                 hint = T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。")
-            button.setEnabled(self.can_run and not hint)
+            button.setEnabled(self.can_run and not self.cleaning and not hint)
             button.setToolTip(hint)
+        self.update_clean_button()
 
     def prepare_selection(self, mode):
         try:
@@ -920,7 +978,7 @@ class RemoteCalculation(QWidget):
         self.prepare_run(first + 1, last if mode in ("to", "selected") else None)
 
     def prepare_run(self, start, end=None):
-        if not self.jobs or not self.revision or start < 1 or self.submitting:
+        if not self.jobs or not self.revision or start < 1 or self.submitting or self.cleaning:
             return
         if end is not None and not self.has_run_range():
             QMessageBox.warning(self, T("远程运行"), T("服务器端版本较旧，请用“安装 / 更新服务器版…”更新。"))
@@ -1074,6 +1132,7 @@ class RemoteWindow(QMainWindow):
             self.calc.editRequested.connect(open_local)
         self.waves = RemoteWaves(source, directory)
         self.levels = RemoteLevels(source, directory)
+        self.calc.filesChanged.connect(self.refresh_results)
         for widget, title in ((self.calc, "计算"), (self.waves, "径向波函数"), (self.levels, "能级图")):
             self.tabs.addTab(widget, T(title))
         layout.addWidget(self.tabs)
@@ -1091,6 +1150,12 @@ class RemoteWindow(QMainWindow):
         menu.addAction(T("重新连接")).triggered.connect(source.reconnect)
         menu.addAction(T("在新窗口中打开径向波函数")).triggered.connect(lambda: self.open_view("wfn"))
         menu.addAction(T("在新窗口中打开能级图")).triggered.connect(lambda: self.open_view("levels"))
+
+    def refresh_results(self):
+        self.waves.scan()
+        self.levels.scan()
+        for _, panel in self.detached:
+            panel.scan()
 
     def open_transfer(self, upload=False, folder=False):
         from PySide6.QtWidgets import QFileDialog

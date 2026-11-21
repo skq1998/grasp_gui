@@ -239,9 +239,7 @@ def list_demos(path=DEMO_DIR):
 
 def job_values(job):
     """step 任务的完整表单参数 (缺少的用默认值，按字段类型转换)。"""
-    step = STEPS[job["step"]]
-    return {f.key: core.normalize(f, job["vals"].get(f.key, f.default)) for f in step.fields
-            if isinstance(f, core.Field)}
+    return STEPS[job["step"]].saved_values(job["vals"])
 
 
 def make_job(job):
@@ -578,10 +576,15 @@ def cli(args):
         print(T("错误：{e}", e=e), file=sys.stderr)
         return 1
     if cmd == "script":
+        from grasp_summary import checked_script_jobs
+        try:
+            jobs = checked_script_jobs(".", session(cfg)["pipeline"])
+        except (OSError, ValueError) as e:
+            print(T("错误：{e}", e=e), file=sys.stderr)
+            return 1
         for w in warnings:
             print(T("警告：{w}", w=w), file=sys.stderr)
-        print(core.shell_script(session(cfg)["pipeline"], opts.get("--bindir") or core.default_bindir(), ".",
-                                opts.get("--mpi", "")))
+        print(core.shell_script(jobs, opts.get("--bindir") or core.default_bindir(), ".", opts.get("--mpi", "")))
         return 0
     print(T("{n} 个计算步骤，所需程序：{p}", n=len(cfg["jobs"]), p=" ".join(programs(cfg))))
     for w in warnings:

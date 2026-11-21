@@ -11,6 +11,7 @@ import codecs
 import csv
 import json
 import os
+from pathlib import Path
 import re
 import shlex
 import shutil
@@ -19,6 +20,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+
+IS_LINUX = sys.platform.startswith("linux")
+IS_MACOS = sys.platform == "darwin"
 
 VERSION = "2.10.0"         # 发布时改为发布的版本号 (写入导出的共享配置)
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,7 +47,7 @@ def program_path(bindir, prog):
 def physical_cpu_count():
     """核数供计算默认值和数据分析共用；缺少拓扑时保守地按逻辑核数的一半估计。"""
     try:
-        if sys.platform.startswith("linux"):
+        if IS_LINUX:
             with open("/proc/cpuinfo", encoding="ascii") as stream:
                 blocks = re.split(r"\n\s*\n", stream.read().strip())
             cores = set()
@@ -58,7 +62,7 @@ def physical_cpu_count():
                 cores.add((int(package), int(core)))
             if cores:
                 return len(cores)
-        elif sys.platform == "darwin":
+        elif IS_MACOS:
             count = int(subprocess.check_output(["sysctl", "-n", "hw.physicalcpu"], text=True,
                                                 stderr=subprocess.DEVNULL, timeout=2).strip())
             if count > 0:
@@ -288,6 +292,52 @@ EN = {
         "Total computed decay rate {a:.4e} s⁻¹, lifetime {tau:.4e} s (computed transitions only).",
     "跃迁计算完成": "Transition calculation finished",
     "跃迁计算失败，见下方的程序输出": "Transition calculation failed; see the program output below",
+    # NIST ASD 能级对照 (#25)
+    "NIST ASD 能级对照": "NIST ASD level comparison",
+    "NIST 能级对照…": "Compare NIST levels…",
+    "NIST 光谱": "NIST spectrum",
+    "从 NIST 获取": "Fetch from NIST",
+    "刷新缓存": "Refresh cache",
+    "导入 NIST 文件…": "Import NIST file…",
+    "计算能量零点": "Calculated energy reference",
+    "能级对照表": "Level comparison table",
+    "所选行的实验能级": "Experimental level for selected row",
+    "应用配对": "Apply match",
+    "导出对照 CSV…": "Export comparison CSV…",
+    "NIST ASD · {date} 导入": "NIST ASD · imported {date}",
+    "NIST ASD · 下载于 {date}": "NIST ASD · downloaded {date}",
+    "输入光谱后，可从 NIST 获取或导入 CSV / 制表符文件。":
+        "Enter a spectrum to fetch NIST data or import a CSV or tab-delimited file.",
+    "正在从 NIST 获取 {ion}…": "Fetching {ion} from NIST…",
+    "无法从 NIST 获取数据：{e}。请检查代理设置或改用导入。":
+        "Could not fetch NIST data: {e}. Check your proxy settings or import a file.",
+    "手动配对文件 nist-matches.json 格式有误，已保留原件。":
+        "The manual matching file nist-matches.json is invalid. The original file has been kept.",
+    "请输入有效的 NIST 光谱，例如 Li I 或 Fe XV。": "Enter a valid NIST spectrum such as Li I or Fe XV.",
+    "NIST 数据文件过大。": "The NIST data file is too large.",
+    "没有可读取的 NIST 能级。": "No readable NIST levels were found.",
+    "需要包含 J 和 Level (cm-1) 的 NIST CSV 或制表符文件。":
+        "Use a NIST CSV or tab-delimited file with J and Level (cm-1) columns.",
+    "NIST 能级数超过读取上限。": "The NIST data exceeds the level count limit.",
+    "NIST 表格格式有误。": "Invalid NIST table format.",
+    "已有一次 NIST 请求在进行。": "A NIST request is already in progress.",
+    "该 NIST 能级已被手动配对到另一计算态。": "This NIST level is already paired manually with another calculated level.",
+    "请先勾选要对照的计算能级文件。": "Select the calculated level files to compare first.",
+    "对照显示最低的 {n} 个计算能级。": "The comparison shows the lowest {n} calculated levels.",
+    "宇称": "Parity",
+    "计算能量 (cm⁻¹)": "Calculated (cm⁻¹)",
+    "NIST 组态": "NIST configuration",
+    "NIST 谱项": "NIST term",
+    "NIST 能量 (cm⁻¹)": "NIST (cm⁻¹)",
+    "差值 (cm⁻¹)": "Difference (cm⁻¹)",
+    "相对误差": "Relative error",
+    "对应状态": "Match status",
+    "唯一匹配": "Unique match",
+    "手动匹配": "Manual match",
+    "待核对": "Review match",
+    "无匹配": "No match",
+    "自动匹配": "Automatic match",
+    "计算能级": "Calculated levels",
     # 能级查看器中的导出
     "能级图 (PNG / SVG / PDF)…": "Level diagram (PNG / SVG / PDF)…",
     "能级数据 (CSV)…": "Level data (CSV)…",
@@ -354,6 +404,7 @@ EN = {
     "总能量 (a.u.)": "Total energy (a.u.)",
     "纯度": "Purity (%)",
     "主要组成": "Leading component",
+    "主要成分": "Leading composition",
     "点击能级查看组成": "Click a level to see its composition",
     "只显示权重 ≥": "Show weights ≥",
     "系数": "Coefficient",
@@ -443,6 +494,65 @@ EN = {
     "激发数": "Number of excitations",
     "负数: 关联轨道总是双占据": "negative: correlation orbitals doubly occupied",
     "保存 rcsf.out 为": "Save rcsf.out as",
+    # rcsfgenerate 壳层模型 (#24)
+    "从壳层模型构造…": "Build from shell model…",
+    "从壳层模型构造": "Build from shell model",
+    "元素 (符号或 Z)": "Element (symbol or Z)",
+    "离化度": "Ion charge",
+    "电子数": "Number of electrons",
+    "载入基态": "Load ground state",
+    "显示至主量子数 n": "Show up to n",
+    "显示相对论子壳层": "Show relativistic subshells",
+    "壳层": "Shell",
+    "占据数": "Occupation",
+    "容量": "Capacity",
+    "激发标记": "Excitation marker",
+    "参考组态": "Reference configurations",
+    "复制参考": "Duplicate reference",
+    "删除参考": "Remove reference",
+    "检测到混合宇称，将按宇称写成独立列表。": "Mixed parity detected. Separate lists will be written for each parity.",
+    "建议闭壳芯": "Suggest core",
+    "按参考组态设置": "Use reference shells",
+    "2J 范围 (最小值、最大值)": "2J range (min, max)",
+    "替换现有列表": "Replace existing lists",
+    "追加到现有列表": "Append to existing lists",
+    "填回方式": "Apply to lists",
+    "填回程序页": "Apply to program tab",
+    "{symbol} · {electrons} 个电子 · 基态 {config}": "{symbol} · {electrons} electrons · ground state {config}",
+    "NIST ASD · 下载于 {date} · 基态项 {term} · 电离能 {energy}":
+        "NIST ASD · downloaded {date} · ground term {term} · ionization energy {energy}",
+    "理论值": "theoretical",
+    "半经验值": "semi-empirical",
+    "全电离离子没有束缚电子，不能生成 CSF。": "A fully stripped ion has no bound electrons and cannot generate CSFs.",
+    "推算组态，按 n+l、n 顺序填充。电离能和基态项无数据。":
+        "Estimated occupation by n+l, then n. Ionization energy and ground term are unavailable.",
+    "相对子壳层按较小 j 先填充，只作参考。": "The smaller-j subshell is filled first for illustration.",
+    "先点有电子的来源壳层，再点有空位的目标壳层，一次移动一个电子。":
+        "Select an occupied shell and then a shell with a vacancy to move one electron.",
+    "已选择 {shell}，请选择目标壳层。": "{shell} selected. Choose the destination shell.",
+    "追加时沿用当前程序页的闭壳芯。": "Appending uses the existing core in the program tab.",
+    "请输入有效的元素符号或原子序数 (1–118)。": "Enter a valid element symbol or atomic number (1–118).",
+    "离化度须为 0 到原子序数。": "Ion charge must be between zero and the atomic number.",
+    "来源壳层须有电子，目标壳层须有空位。": "The source shell needs an electron and the destination needs a vacancy.",
+    "请选择有效的闭壳芯。": "Select a valid closed-shell core.",
+    "活跃轨道集须列出各 l 的最高 n，例如 5s,4p,3d。": "Enter the highest n for each l in the active set, such as 5s,4p,3d.",
+    "活跃轨道须满足 l < n ≤ 15，每个 l 只写一次。": "Active orbitals must satisfy l < n ≤ 15, with each l listed once.",
+    "2J 范围须递增，且上下限的奇偶性须与电子数一致。":
+        "The 2J range must be ordered and both bounds must have the same parity as the electron count.",
+    "激发数的绝对值不能超过芯外电子数。": "The absolute excitation count cannot exceed the number of electrons outside the core.",
+    "至少需要一个参考组态。": "At least one reference configuration is required.",
+    "参考组态须保留电子总数，且每个壳层需满足占据容量。":
+        "Each reference must preserve the electron count and fit within shell capacities.",
+    "所选闭壳芯在每个参考组态中都必须满占据。": "The selected closed core must be filled in each reference.",
+    "最少占据数不能大于参考组态的占据数：{shell}": "Minimum occupation exceeds the reference occupation of {shell}.",
+    "活跃集没有覆盖参考组态的壳层：{shell}": "The active set does not cover reference shell {shell}.",
+    "每个参考须有芯外电子，GRASP 组态行最多容纳 15 个壳层和 135 个字符。":
+        "Each reference needs electrons outside the core. GRASP accepts up to 15 shells and 135 characters per line.",
+    "活跃集的最大 n 须至少为 {n}，以容纳闭壳芯。": "The active set needs a maximum n of at least {n} for this core.",
+    "i 表示不激发，* 表示可激发，数值表示最少占据数。":
+        "i locks the occupation, * permits excitation, and a number sets the minimum occupation.",
+    "关于 GRASP GUI…": "About GRASP GUI…",
+    "壳层模型的离线数据 · 下载于 {date}": "Offline shell-model data · downloaded {date}",
     # rcsfsplit
     "按轨道集把 name.c 拆分为 name<标签>.c 等多个文件。":
         "Split name.c by orbital set into name<label>.c files.",
@@ -624,6 +734,65 @@ EN = {
     "自洽场与 CI": "SCF & CI",
     "性质与跃迁": "Properties & transitions",
     "结果与工具": "Results & tools",
+    # 逐层收敛分析 (#35)
+    "收敛": "Convergence",
+    "已收敛": "Converged",
+    "收敛中": "Converging",
+    "未收敛": "Not converged",
+    "主成分改变": "Leading composition changed",
+    "无法对应": "Unmatched",
+    "对应不唯一": "Ambiguous correspondence",
+    "层数不足": "Not enough layers",
+    "上一次增量为零": "Previous increment is zero",
+    "增量变号": "Increment changed sign",
+    "未进入收敛区": "Outside the convergence region",
+    "当前增量为零": "Current increment is zero",
+    "参考能级缺失": "Reference level is missing",
+    "请选择 1–50 个不同的轨道层文件。": "Select 1–50 distinct layer files.",
+    "每层能级上限须为 1–2000。": "The per-layer limit must be between 1 and 2000.",
+    "收敛阈值须为正的有限数值。": "The convergence threshold must be positive and finite.",
+    "所选参考能级已不可用。": "The selected reference level is no longer available.",
+    "请指定有序文件列表或一个态组。": "Provide either an ordered list of files or a state group.",
+    "请指定有效的态组。": "Select a valid state group.",
+    "返回能级数须为 1–1000。": "The response limit must be between 1 and 1000 levels.",
+    "剩余量 (cm⁻¹)": "Remainder (cm⁻¹)",
+    "总能量增量 (cm⁻¹)": "Total energy increment (cm⁻¹)",
+    "纯度 (%)": "Purity (%)",
+    "精细结构分裂及增量 (cm⁻¹)": "Fine-structure splittings and increments (cm⁻¹)",
+    "总迭代次数": "Total iterations",
+    "迭代序号": "Iteration",
+    "加权 SCF 能量增量 (Hartree)": "Weighted SCF increment (Hartree)",
+    "单能级 SCF 能量增量 (Hartree)": "Single-level SCF increment (Hartree)",
+    "无法判断": "Undetermined",
+    "无日志": "No log",
+    "无法读取日志": "Cannot read log",
+    "日志文件": "Log file",
+    "谱项": "Term",
+    "原因": "Reason",
+    "各层最低能级": "lowest level in each layer",
+    "阈值 {n} cm⁻¹，参考能级 {ref}": "Threshold {n} cm⁻¹, reference {ref}",
+    "受数据或行数上限影响，部分结果未列出。": "Some results were omitted because of data or row limits.",
+    "激发能与增量 (cm⁻¹)": "Excitation and increment (cm⁻¹)",
+    "激发能增量绝对值 ({unit}，对数刻度)": "Absolute excitation increment ({unit}, log scale)",
+    "|ΔE| ({unit}，对数)": "|ΔE| ({unit}, log)",
+    "没有可绘制的非零增量。": "There are no nonzero increments to plot.",
+    "轨道层": "Orbital layer",
+    "零增量保留在表中。": "Zero increments are listed in the table.",
+    "状态": "Status",
+    "复制为文本": "Copy as text",
+    "导出 CSV…": "Export CSV…",
+    "参考能级": "Reference level",
+    "收敛阈值": "Convergence threshold",
+    "不分组": "Ungrouped",
+    "选择层文件…": "Select layer files…",
+    "请选择工作目录中的混合系数文件。": "Choose mixing-coefficient files from the working directory.",
+    "只显示未收敛的态": "Show only unconverged levels",
+    "只绘制选中的态": "Plot selected levels only",
+    "正在读取收敛数据…": "Reading convergence data…",
+    "激发能与增量 ({unit})": "Excitation and increment ({unit})",
+    "精细结构分裂及增量 ({unit})": "Fine-structure splittings and increments ({unit})",
+    "总能量增量": "Total energy increment",
+    "剩余量": "Remainder",
     # 态组 / 工作目录记录
     "态组": "State group",
     "复制到 {g}（替换名称）": "Copy to {g} (rename files)",
@@ -850,6 +1019,8 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "运行中：第 {i}/{n} 步 {t}": "Running: step {i}/{n} {t}",
     "，本步 {d}": ", this step {d}",
     "，最后输出于 {d} 前": ", last output {d} ago",
+    "后台套接字目录不安全：{path}": "Unsafe background socket directory: {path}",
+    "后台套接字路径过长：{path}": "Background socket path is too long: {path}",
     "此目录已有计算在运行": "A run is already in progress in this directory",
     "停止计算并退出": "Stop the run and quit",
     "后台继续": "Continue in background",
@@ -1407,6 +1578,29 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
         "Small files are selected by default; generated files, server-existing names and large files are not.",
     "只写入流程，不传输输入文件": "Write the pipeline only; do not transfer input files",
     "缺少输入文件：{names}": "Missing input files: {names}",
+    # 工作目录清理 (#54)
+    "修改时间": "Modified",
+    "流程生成": "Generated by pipeline",
+    "外部输入": "External inputs",
+    "未知": "Unknown",
+    "不能清理挂载点或特殊文件：{name}": "Cannot clean mount points or special files: {name}",
+    "目录中的项目过多，无法预览清理": "Too many entries to preview cleanup",
+    "清理外部输入后，流程可能无法从头运行。": "Removing external inputs may prevent the pipeline from running from scratch.",
+    "已选 {n} 项，共 {size}": "{n} selected, {size} total",
+    "移到备份目录": "Move to backup directory",
+    "直接删除（不能恢复）": "Delete permanently (cannot be undone)",
+    "清理后运行全部": "Run all after cleanup",
+    "全部删除（包括输入和内部文件）": "Delete all (including inputs and internal files)",
+    "已有的清理备份": "Existing cleanup backups",
+    "删除选中的备份…": "Delete selected backup…",
+    "清理所选文件…": "Clean selected files…",
+    "目录：{path}\n项目：{n}\n大小：{size}\n方式：{mode}": "Directory: {path}\nItems: {n}\nSize: {size}\nMethod: {mode}",
+    "清理未完成：{error}\n已处理：{done}\n未处理：{remaining}":
+        "Cleanup incomplete: {error}\nProcessed: {done}\nRemaining: {remaining}",
+    "清理完成": "Cleanup complete",
+    " · 之后已清理（{time}）": " · Cleaned since then ({time})",
+    "清理结果未知。将重新读取文件清单，请核对后再操作。":
+        "Cleanup result is unknown. The file list will refresh. Check it before trying again.",
     # 配置选项校验 (#69)
     "{field} 的值 {value} 不在可选范围内 ({options})":
         "Value {value} for {field} is not one of the supported options ({options})",
@@ -1424,6 +1618,16 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
         "When rebuilding work-directory scripts, override their settings through the run environment.",
     "生成的运行脚本": "Generated run script",
     "默认选择小文件，生成的运行脚本默认不选。": "Small files are selected by default. Generated scripts start unchecked.",
+    # 输入时跳过能级块 (#58)
+    "每块一行；空行或 - 表示跳过": "One line per block. A blank line or - skips the block.",
+    "至少有一个块需要选择能级": "Select levels in at least one block",
+    "各块能级": "Levels per block",
+    "{name} 有 {total} 个对称块 ({blocks})，填写了 {rows} 行。":
+        "{name} has {total} symmetry blocks ({blocks}). Supplied {rows} lines.",
+    "缺少块 {blocks} 的回答。跳过末尾的块请用 -。":
+        "Missing answers for blocks {blocks}. Use - to skip a final block.",
+    "多填了 {extra} 行。": "Remove {extra} extra lines.",
+    "无法读取 {name} 的对称块：{error}": "Cannot read symmetry blocks from {name}: {error}",
 }
 
 
@@ -1510,16 +1714,28 @@ def nonblank_lines(s):
     return [ln.strip() for ln in s.splitlines() if ln.strip()]
 
 
+def block_level_lines(text):
+    """末尾空白不表示新块；写 '-' 可显式跳过末块。"""
+    lines = [line.strip() for line in text.splitlines()]
+    while lines and not lines[-1]:
+        lines.pop()
+    return ["" if line == "-" else line for line in lines]
+
+
 def count_levels(lines):
     """各块能级号 (如 1,2,3 或 1-3) 的总个数；无法解析的项按 1 个计。"""
     n = 0
     for ln in lines:
-        for item in re.split(r"[\s,]+", ln):
+        if ln.strip() in ("", "-"):
+            continue
+        # ITEMS 跳过逗号和空格，包括区间连字符后面的分隔符。
+        ln = re.sub(r"(?<=[0-9])-[ ,]+(?=\+?[0-9])", "-", ln)
+        for item in re.findall(r"[^\s,]+", ln):
             a, _, b = item.partition("-")
             try:
                 n += int(b) - int(a) + 1 if b else 1
             except ValueError:
-                n += 1 if item else 0
+                n += 1
     return n
 
 
@@ -1621,6 +1837,10 @@ class Step:
     def defaults(cls):
         return {f.key: f.default for f in cls.fields if isinstance(f, Field)}
 
+    def saved_values(self, values):
+        """用字段默认值和类型恢复保存的表单参数。"""
+        return {f.key: normalize(f, values.get(f.key, f.default)) for f in self.fields if isinstance(f, Field)}
+
     def validate(self, v):
         """检查表单参数；不合法时由程序页抛出 ValueError。"""
         pass
@@ -1631,6 +1851,14 @@ class Step:
 
     def outputs(self, v, run=None):
         return None
+
+    def side_outputs(self, v, run=None):
+        """程序附带输出，用于工作目录清理。"""
+        return []
+
+    def side_inputs(self, v, run=None):
+        """程序附带输入，用于判别清理前须保留的文件。"""
+        return []
 
     def removes(self, v):
         return []
@@ -1771,6 +1999,10 @@ class RcsfGenerate(Step):
 
     def outputs(self, v, run=None):
         return ["rcsf.out"]
+
+    def side_outputs(self, v, run=None):
+        # rcsfexcitation.f90:39, jjgen15b.f90:58, merge.f90:46。
+        return ["rcsfgenerate.log", "rcsf.log", "clist.new"]
 
 
 class RcsfInteract(Step):
@@ -1927,6 +2159,11 @@ def angular_files(run=None):
     return [os.path.join(run.get("mpitmp", "tmp_mpi"), f"{i:03d}", f"mcp{i:03d}.30") for i in range(count)]
 
 
+def angular_scratch(run):
+    # setmcp.f90 的编号从 30 起；保留目录内其他用户文件。
+    return [name[:-2] + "[3-9][0-9]" for name in angular_files(run)]
+
+
 class RAngular(Step):
     key = name = prog = "rangular"
     mpi = True
@@ -1953,6 +2190,10 @@ class RAngular(Step):
 
     def outputs(self, v, run=None):
         return angular_files(run)
+
+    def side_outputs(self, v, run=None):
+        # setmcp.f90 打开 30 至 32+KMAX；串行与 MPI 使用相同的编号范围。
+        return ["rangular.log"] + angular_scratch(run)
 
 
 class RWfnEstimate(Step):
@@ -1989,7 +2230,14 @@ class RWfnEstimate(Step):
         return ["rwfn.inp"]
 
 
-class RMcdhf(Step):
+class BlockLevelsStep(Step):
+    def validate(self, v):
+        # LODSTATE 会重新读所有块，无法靠后续交互回答退出全跳过。
+        if not any(line.replace(",", "").strip() for line in block_level_lines(v["levels"])):
+            raise ValueError(T("至少有一个块需要选择能级"))
+
+
+class RMcdhf(BlockLevelsStep):
     output_fields = ("save",)
     key = name = prog = "rmcdhf"
     mpi = True
@@ -1999,7 +2247,7 @@ class RMcdhf(Step):
              "NSIC 是首轮 SCF 额外改进自洽性最差的轨道数。默认：EOL 串行为 (NW-NFIX)/4、MPI 为 4+(NW-NFIX)/4，"
              "含变分关联轨道时为 0；AL 为 2+(NW-NFIX)/4 (整数除法)。"),
         Check("mem", "使用内存版本 rmcdhf_mem", False, "角系数一次读入内存：更快，但更占内存"),
-        Text("levels", "各块要优化的能级", "1\n1", "每块一行", lines=3),
+        Text("levels", "各块要优化的能级", "1\n1", "每块一行；空行或 - 表示跳过", lines=3),
         Choice("weights", "能级权重", [("5", "标准 (EOL)"), ("1", "等权重"), ("9", "用户指定")]),
         Entry("uweights", "  用户权重", "", "选 9 时填写, 如 1,1,2"),
         Entry("vary", "变分轨道", "*", "如 *  或 3*  或 2s,2p*"),
@@ -2015,7 +2263,7 @@ class RMcdhf(Step):
 
     def stdin(self, v):
         self.validate(v)
-        levels = nonblank_lines(v["levels"])
+        levels = block_level_lines(v["levels"])
         # 非默认模式先关闭调试输出，并保留光速 / 网格、ACCY 的默认值。
         lines = (["n", "n", "n", "n"] if v.get("modify_nsic") else ["y"]) + levels
         if count_levels(levels) > 1:        # 只优化一个能级时 rmcdhf 不询问权重
@@ -2025,6 +2273,7 @@ class RMcdhf(Step):
         return answers(lines + [v["vary"], v["spec"], v["nscf"]] + self.other_defaults(v))
 
     def validate(self, v):
+        super().validate(v)
         if v.get("modify_nsic") and not re.fullmatch(r"[0-9]+", str(v.get("nsic", "0")).strip()):
             raise ValueError(T("NSIC 必须是非负整数"))
 
@@ -2049,11 +2298,22 @@ class RMcdhf(Step):
         return f"{self.program(v)} -> {s}" if s else self.program(v)
 
     def inputs(self, v, run=None):
-        return ["isodata", "rcsf.inp", "rwfn.inp"] + angular_files(run)
+        return ["isodata", self.level_csf(v), "rwfn.inp"] + angular_files(run)
+
+    def level_csf(self, v):
+        return "rcsf.inp"
 
     def outputs(self, v, run=None):
         state = v["save"].strip()
         return ["rwfn.out", "rmix.out"] + ([state + ext for ext in (".c", ".w", ".m")] if state else [])
+
+    def side_outputs(self, v, run=None):
+        # rscfvu.f90:100,136；保存时也执行 src/tool/rsave:13–15。
+        saved = v["save"].strip()
+        return ["rmcdhf.log", "rmcdhf.sum"] + ([saved + ext for ext in (".log", ".sum", ".alog")] if saved else [])
+
+    def side_inputs(self, v, run=None):
+        return angular_scratch(run) + (["rangular.log"] if v["save"].strip() else [])
 
     def removes(self, v):
         # rsave 移动混合系数文件，不能将 rmix.out 留作后续步骤的现成输入。
@@ -2083,6 +2343,12 @@ class RSave(Step):
     def outputs(self, v, run=None):
         return [v["state"].strip() + ext for ext in (".c", ".w", ".m")]
 
+    def side_outputs(self, v, run=None):
+        return [v["state"].strip() + ext for ext in (".log", ".sum", ".alog")]
+
+    def side_inputs(self, v, run=None):
+        return ["rmcdhf.log", "rmcdhf.sum", "rangular.log"]
+
     def removes(self, v):
         return ["rmix.out"]
 
@@ -2090,7 +2356,7 @@ class RSave(Step):
         return [v["state"].strip() + ".m"]
 
 
-class RCi(Step):
+class RCi(BlockLevelsStep):
     output_fields = ("state",)
     key = name = prog = "rci"
     mpi = True
@@ -2106,12 +2372,13 @@ class RCi(Step):
         Check("sms", "特殊质量移动 (SMS)", False),
         Check("se", "估计自能 (Self-energy)", True),
         Entry("nqed", "  自能计算的最大 n (≤8)", "4"),
-        Text("levels", "各块计算的能级", "1\n1", "每块一行", lines=3),
+        Text("levels", "各块计算的能级", "1\n1", "每块一行；空行或 - 表示跳过", lines=3),
     ] + zero_first_fields("odd2.c") + [
         Entry("log", "输出日志文件", "outodd_rci"),
     ]
 
     def validate(self, v):
+        super().validate(v)
         state_name(v["state"], 127, "rci")            # rci92.f90: NAME*128
 
     def stdin(self, v):
@@ -2128,7 +2395,7 @@ class RCi(Step):
         lines += [yn(v["vp"]), yn(v["nms"]), yn(v["sms"]), yn(v["se"])]
         if v["se"]:
             lines.append(v["nqed"])
-        return answers(lines + nonblank_lines(v["levels"]))
+        return answers(lines + block_level_lines(v["levels"]))
 
     def pre(self, v):
         src, dst = v["copyfrom"].strip(), v["state"].strip()
@@ -2140,11 +2407,18 @@ class RCi(Step):
         return f"rci {v['state']}"
 
     def inputs(self, v, run=None):
-        return ["isodata"] + [v["state"].strip() + ext for ext in (".c", ".w")] + (
+        return ["isodata", self.level_csf(v), v["state"].strip() + ".w"] + (
             [v["zero"].strip()] if v.get("zf") else [])
+
+    def level_csf(self, v):
+        return v["state"].strip() + ".c"
 
     def outputs(self, v, run=None):
         return [v["state"].strip() + ".cm"]
+
+    def side_outputs(self, v, run=None):
+        # rci92.f90:133，setsum.f90:29，setres.f90:55。
+        return [v["state"].strip() + ext for ext in (".csum", ".clog")] + ["rci.res"]
 
     def result_files(self, v):
         return self.outputs(v)
@@ -2212,6 +2486,10 @@ class Jj2lsj(Step):
     def outputs(self, v, run=None):
         return [v["state"].strip() + ext for ext in (
             (".lsj.lbl", ".lsj.c", ".lsj.j") if v.get("coupling_files") else (".lsj.lbl",))]
+
+    def side_outputs(self, v, run=None):
+        # jj2lsj_code.f90:1596–1609。
+        return [v["state"].strip() + ext for ext in (".uni.lsj.lbl", ".uni.lsj.sum")] if v["unique"] else []
 
 
 class Coupling(Step):
@@ -2300,6 +2578,10 @@ class RHfs(Step):
     def outputs(self, v, run=None):
         return [v["state"].strip() + (".ch" if v["ci"] else ".h")]
 
+    def side_outputs(self, v, run=None):
+        # rhfs90/setsum.f90:33–48。
+        return [v["state"].strip() + (".choffd" if v["ci"] else ".hoffd")]
+
 
 class RHfsZeeman95(Step):
     key = name = prog = "rhfszeeman95"
@@ -2355,6 +2637,14 @@ class RIs4(Step):
 
     def title(self, v):
         return f"ris4 {v['state']}"
+
+    def side_inputs(self, v, run=None):
+        return ["isodata"] + [v["state"].strip() + ext for ext in (".c", ".w", ".cm" if v["ci"] else ".m")]
+
+    def side_outputs(self, v, run=None):
+        # ris4/setsum.f90:36、41；ris_cal.f90:255、295。
+        state = v["state"].strip()
+        return [state + (".ci" if v["ci"] else ".i")] + ([state + ".IOB", state + ".ITB"] if v["save"] else [])
 
 
 class NameValidationError(ValueError):
@@ -2534,6 +2824,13 @@ class RTableLevels(Step):
         files = nonblank_lines(v["files"])
         return answers([v["nskip"], str(len(files))] + files)
 
+    def side_inputs(self, v, run=None):
+        return nonblank_lines(v["files"])
+
+    def side_outputs(self, v, run=None):
+        # rtablevels.f90:29–30。
+        return ["energytablelatex.tex", "energytableascii.txt"]
+
 
 class RTabTrans1(Step):
     key = name = prog = "rtabtrans1"
@@ -2549,6 +2846,14 @@ class RTabTrans1(Step):
     def stdin(self, v):
         # 文件名逐行给出，空行结束
         return answers(nonblank_lines(v["files"]) + ["", v["nskip"], v["fmt"]])
+
+    def side_inputs(self, v, run=None):
+        files = nonblank_lines(v["files"])
+        return files + [os.path.splitext(path)[0] + ".lsj.lbl" for path in files]
+
+    def side_outputs(self, v, run=None):
+        # rtabtrans1.f90:143–149。
+        return ["energylabel.ascii" if v["fmt"] == "1" else "energylabel.latex"]
 
 
 class RTabTrans2(Step):
@@ -2577,6 +2882,14 @@ class RTabTrans2(Step):
             lines.append(v["ion"])
         return answers(lines + [v["cutoff"], v["frac"], yn(v["sorted"]), v["digits"]])
 
+    def side_inputs(self, v, run=None):
+        return [v["tfile"].strip(), "energylabel.ascii" if v["fmt"] == "1" else "energylabel.latex"]
+
+    def side_outputs(self, v, run=None):
+        # rtabtrans2.f90:63–71、90–93。
+        ext = ".txt" if v["fmt"] == "1" else ".tex"
+        return ["transitiontable" + ext, "lifetimetable" + ext, "scatterplot.m"]
+
 
 class RBioTransform(Step):
     key = name = prog = "rbiotransform"
@@ -2604,6 +2917,10 @@ class RBioTransform(Step):
     def outputs(self, v, run=None):
         return [v[key].strip() + ext for key in ("init", "final")
                 for ext in (".bw", ".cbm" if v["ci"] else ".bm")]
+
+    def side_outputs(self, v, run=None):
+        # mcpout_gg.f90:117，mcpoutmpi_gg.f90:121。
+        return [v[key].strip() + ".TB" for key in ("init", "final")]
 
 
 class RTransition(Step):
@@ -2644,6 +2961,11 @@ class RTransition(Step):
     def outputs(self, v, run=None):
         return [v["init"].strip() + "." + v["final"].strip() + (".ct" if v["ci"] else ".t")]
 
+    def side_outputs(self, v, run=None):
+        # strsum.f90:56–67；angdata.f90:39–64 定义可重新生成的秩/宇称角系数。
+        stem = v["init"].strip() + "." + v["final"].strip()
+        return [self.outputs(v, run)[0] + ".lsj", stem + ".[+-][0-9]T"]
+
 
 class Custom(Step):
     key = "custom"
@@ -2675,6 +2997,53 @@ STEPS = [RNucleus(), RcsfGenerate(), RcsfInteract(), RcsfSplit(), RcsfZeroFirst(
          RAsfSplit(), RLevels(),
          RTableLevels(), RTabTrans1(), RTabTrans2(),
          RBioTransform(), RTransition(), Custom()]
+
+_BLOCK_LEVEL_STEPS = {step.key: step for step in STEPS if isinstance(step, BlockLevelsStep)}
+
+
+def check_block_levels(path, levels):
+    """用 CSF 索引的块元数据核对输入行数，不展开组态。"""
+    from grasp_index import csf_index
+
+    try:
+        blocks = csf_index(path)["blocks"]
+    except (OSError, ValueError) as e:
+        raise ValueError(T("无法读取 {name} 的对称块：{error}", name=path.name, error=str(e))) from e
+    total, rows = len(blocks), len(block_level_lines(levels))
+    if total == rows:
+        return
+    labels = [f"{n}:{''.join(block['jp'] or ['?'])}" for n, block in enumerate(blocks, 1)]
+    message = T("{name} 有 {total} 个对称块 ({blocks})，填写了 {rows} 行。",
+                name=path.name, total=total, blocks=", ".join(labels), rows=rows)
+    if rows < total:
+        why = T("缺少块 {blocks} 的回答。跳过末尾的块请用 -。", blocks=", ".join(labels[rows:]))
+    else:
+        why = T("多填了 {extra} 行。", extra=rows - total)
+    raise ValueError(message + (" " if LANG == "en" else "") + why)
+
+
+def check_job_block_levels(job, cwd):
+    key, values = job.get("step"), job.get("vals")
+    step = _BLOCK_LEVEL_STEPS.get(key) if isinstance(key, str) else None
+    if step is None or not isinstance(values, dict):
+        return
+    values = step.saved_values(values)
+    path = Path(cwd) / step.level_csf(values)
+    if path.is_file():
+        try:
+            check_block_levels(path, values["levels"])
+        except ValueError as e:
+            raise RuntimeError(str(e)) from e
+
+
+def refresh_block_input(job):
+    """由表单值重建块选择，避免使用旧记录中已删空行的输入。"""
+    key, values = job.get("step"), job.get("vals")
+    step = _BLOCK_LEVEL_STEPS.get(key) if isinstance(key, str) else None
+    if step is None or not isinstance(values, dict):
+        return job
+    return dict(job, stdin=step.stdin(step.saved_values(values)))
+
 
 # 界面左侧程序列表的功能分组 (每个程序恰好出现一次)
 STEP_GROUPS = [
@@ -2818,6 +3187,7 @@ def describe(job, mpi_prefix="", fallback=True):
 
     mpi_prefix 非空 (如 "mpirun -np 4") 时，有并行版本的程序写成 "<mpi_prefix> <prog>_mpi"。
     """
+    stdin = refresh_block_input(job)["stdin"]
     out = (program_fallbacks([job]) if fallback else []) + [action_sh(a) for a in job["pre"]]
     args = " ".join(shlex.quote(x) for x in job["args"])
     if mpi_prefix and job.get("mpi"):
@@ -2826,13 +3196,13 @@ def describe(job, mpi_prefix="", fallback=True):
         cmd = f"{shlex.quote(job['prog'])} {args}".rstrip()
     if job["log"]:
         cmd += f" > {shlex.quote(job['log'])}"
-    if any(ln.startswith(ICCUT + " ") for ln in job["stdin"].split("\n")):
+    if any(ln.startswith(ICCUT + " ") for ln in stdin.split("\n")):
         # 各块的 ICCUT 在运行时由零阶列表算出：不加引号的 here-document，其余各行转义
         lines = [f"$(awk '{ICCUT_AWK}' {shlex.quote(ln.split()[1])})" if ln.startswith(ICCUT + " ")
-                 else re.sub(r"([\\$`])", r"\\\1", ln) for ln in job["stdin"].split("\n")]
+                 else re.sub(r"([\\$`])", r"\\\1", ln) for ln in stdin.split("\n")]
         out.append(f"{cmd} <<EOF\n" + "\n".join(lines) + "EOF")
-    elif job["stdin"].strip():
-        out.append(f"{cmd} <<'EOF'\n{job['stdin']}EOF")
+    elif stdin.strip():
+        out.append(f"{cmd} <<'EOF'\n{stdin}EOF")
     else:
         out.append(cmd + " < /dev/null")
     out += [action_sh(a) for a in job["post"]]
@@ -2937,7 +3307,7 @@ def check_mcp(cwd, np, mpitmp):
 def child_env(**extra):
     """子进程 (GRASP、mpirun、后台运行进程) 的环境变量。"""
     env = dict(os.environ, **extra)
-    if getattr(sys, "frozen", False):
+    if IS_LINUX and getattr(sys, "frozen", False):
         # PyInstaller 打包的程序把 LD_LIBRARY_PATH 指向自带的库；子进程用回原来的值
         orig = env.pop("LD_LIBRARY_PATH_ORIG", None)
         if orig is None:
@@ -3023,6 +3393,7 @@ class Runner:
         self.emit(f"\n===== {job['title']} =====\n", "head")
         for a in job["pre"]:
             self.do_action(a, cfg)
+        check_job_block_levels(job, cfg["cwd"])
         if job["prog"] in ("rmcdhf", "rmcdhf_mem"):
             err = check_mcp(cfg["cwd"], cfg["np"], cfg["mpitmp"])
             if err:

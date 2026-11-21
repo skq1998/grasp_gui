@@ -108,7 +108,7 @@ program `rmcdhf`; MPI `rmcdhf_mpi`; `group`: "odd" / "even"
 | key | type | default | meaning / 含义 |
 |---|---|---|---|
 | `mem` | bool | `false` | 使用内存版本 rmcdhf_mem / Use the in-memory version rmcdhf_mem — 角系数一次读入内存：更快，但更占内存 / angular coefficients kept in memory: faster, but uses more memory |
-| `levels` | text | `"1\n1"` | 各块要优化的能级 / Levels to optimise\nper block — 每块一行 / one line per block |
+| `levels` | text | `"1\n1"` | 各块要优化的能级 / Levels to optimise\nper block — 每块一行；空行或 - 表示跳过 / One line per block. A blank line or - skips the block. |
 | `weights` | choice | `"5"` | 能级权重 / Level weights<br>`5` = 标准 (EOL) / standard (EOL), `1` = 等权重 / equal, `9` = 用户指定 / user |
 | `uweights` | string | `""` | 用户权重 — 选 9 时填写, 如 1,1,2 / for option 9, e.g. 1,1,2 |
 | `vary` | string | `"*"` | 变分轨道 / Orbitals to vary — 如 *  或 3*  或 2s,2p* / e.g. *  or 3*  or 2s,2p* |
@@ -147,7 +147,7 @@ program `rci`; MPI `rci_mpi`; `group`: "odd" / "even"
 | `sms` | bool | `false` | 特殊质量移动 (SMS) / Specific mass shift (SMS) |
 | `se` | bool | `true` | 估计自能 (Self-energy) / Estimate self-energy |
 | `nqed` | string | `"4"` | 自能计算的最大 n (≤8) |
-| `levels` | text | `"1\n1"` | 各块计算的能级 / Levels per block — 每块一行 / one line per block |
+| `levels` | text | `"1\n1"` | 各块计算的能级 / Levels per block — 每块一行；空行或 - 表示跳过 / One line per block. A blank line or - skips the block. |
 | `zf` | bool | `false` | 零阶 / 一阶划分：零阶空间以外的 CSF 按一阶微扰处理 / Zero/first-order partition: CSFs outside the zero-order space treated as first-order perturbations — 先用 rcsfzerofirst 把零阶空间的 CSF 排在各块最前面 / first put the zero-order CSFs at the top of each block with rcsfzerofirst *(2.2.0)* |
 | `zero` | string | `"odd2.c"` | 零阶空间的 CSF 列表 / CSF list of the zero-order space — 各块的 ICCUT 取此列表各块的 CSF 数 (运行时读取) / the ICCUT of each block is the number of CSFs of that block in this list (read when run) *(2.2.0)* |
 | `log` | string | `"outodd_rci"` | 输出日志文件 / Output log file |

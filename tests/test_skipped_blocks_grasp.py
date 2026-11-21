@@ -19,7 +19,7 @@ pytestmark = pytest.mark.grasp
 
 def execute(jobs, directory, bindir):
     script = core.shell_script(jobs, bindir, str(directory))
-    result = subprocess.run(["sh", "-c", script], cwd=directory, env=core.child_env(),
+    result = subprocess.run(["sh", "-ec", script], cwd=directory, env=core.child_env(),
                             capture_output=True, timeout=120)
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
 
@@ -42,16 +42,21 @@ def calculated(tmp_path_factory, grasp_bindir):
         ci = job("rci", state=state, copyfrom="base", levels="1\n1\n1", trans=False,
                  modfreq=False, vp=False, se=False, log=state + ".log")
         lines = ci["stdin"].splitlines()
-        # setmix / lodmix 逐块读一行；当前表单删空行 (#58)，验收夹具直接保留这个已核对的回答。
+        # 对照在终端直接给每个块的回答。
         lines[-3 + skip] = ""
-        ci["stdin"] = "\n".join(lines) + "\n"
-        execute([ci], root, grasp_bindir)
+        level_rows = ["1", "1", "1"]
+        level_rows[skip] = "" if skip == 0 else "-"
+        generated = job("rci", **dict(ci["vals"], levels="\n".join(level_rows)))
+        assert generated["stdin"] == "\n".join(lines) + "\n"
+        execute([generated], root, grasp_bindir)
     # rmcdhf 的默认模式在 y 后逐块读能级；跳过第一块时仍有两个能级，权重回答保持不变。
-    skipped = job("rmcdhf", levels="1\n1\n1", nscf="20", save="skip1", log="skip1.log")
+    # 跳过 2s 态后 2s 不再占据，只变分本次仍占据的 2p 轨道。
+    skipped = job("rmcdhf", levels="1\n1\n1", vary="2p*", nscf="20", save="skip1", log="skip1.log")
     lines = skipped["stdin"].splitlines()
     lines[1] = ""
-    skipped["stdin"] = "\n".join(lines) + "\n"
-    execute([job("rwfnestimate"), skipped], root, grasp_bindir)
+    generated = job("rmcdhf", **dict(skipped["vals"], levels="\n1\n1"))
+    assert generated["stdin"] == "\n".join(lines) + "\n"
+    execute([job("rwfnestimate", use_file=True, wfile="base.w"), generated], root, grasp_bindir)
     for name in ("skip1.m", "ci.cm", "mid.cm"):
         assert (root / name).is_file(), (root / name).read_bytes() if (root / name).exists() else name
     return root

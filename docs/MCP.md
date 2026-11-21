@@ -147,6 +147,7 @@ atomic units.
 | `stop` | `directory` | 停止请求和确认 / Stop request and confirmation |
 | `list_results` | `directory` | 按内容识别的文件 / Files identified by content |
 | `levels` | `directory`, optional `files`, `limit`, `components` (0–20, default 3) | 能量、J、宇称、纯度、jj/LSJ / Energies, J, parity, purity, jj/LSJ |
+| `convergence` | `directory`, exactly one of `files` / `group`, optional `reference`, `threshold`, `limit` | 逐层增量、收敛状态和精细结构分裂 / Layer increments, convergence and fine-structure splittings |
 | `transitions` | `directory`, optional `files`, `limit` | λ、A、gf、S、分支比 / Transition properties |
 | `orbitals` | `directory`, optional `files`, `limit` | 轨道性质 / Orbital properties |
 | `plot_levels` | `directory`, optional `files`, `limit`, `output` | PNG image; optional PNG/SVG/PDF file |
@@ -174,6 +175,16 @@ an explicit error without it and otherwise reuses the viewers offscreen.
 `levels` 可选返回 `errors: [{file, error}]`，逐文件报告读取失败。含 NaN 或正负无穷能量的文件整份拒绝，
 其他文件照常返回；没有错误时省略该字段。The optional `errors` list reports unreadable files, including
 non-finite energies; other level results are retained. Healthy replies omit it.
+
+`convergence` 的 `files` 按层顺序提供，最多 50 个。使用 `group` 时按保存的流程确定该态组的层顺序。
+默认阈值为 1 cm⁻¹。指定 `reference` 时用返回的 `rows[].id` 选作参考能级。
+返回的 `rows` 包含逐层能量与增量、主成分和状态，`splittings` 列出精细结构分裂。
+结果超过行数或响应上限时会设置 `truncated`。
+
+For `convergence`, pass up to 50 files in layer order, or supply `group` to use the saved pipeline order.
+The threshold defaults to 1 cm⁻¹. Set `reference` to a returned `rows[].id` to select a reference level.
+The returned `rows` contain layer energies, increments, leading components and statuses. `splittings`
+lists fine-structure splittings. `truncated` is set when the row or response limit is reached.
 
 ## 运行前检查 / Run preflight
 
@@ -272,6 +283,11 @@ Creating or updating a work-directory record generates both scripts under `grasp
 the background runner. It may update the record when run settings change and return `revision` and `warnings`.
 Script generation errors are reported while the record remains saved. Use the returned revision or refresh
 it with `get_pipeline` before the next edit.
+
+工作目录清理只在本机和服务器的计算界面提供。MCP 没有清理工具，不能通过 MCP 工具移动或删除计算文件。
+
+Work-directory cleanup is available in the local and server calculation windows. MCP provides no cleanup tool
+for moving or deleting calculation files.
 
 ## 目录与命令限制 / Directory and command limits
 

@@ -52,6 +52,10 @@ TOOLS = {
     "levels": ("Read bounded level energies, purity, leading jj/LSJ components",
                {"directory": DIRECTORY, "files": FILES, "limit": LIMIT,
                 "components": schema("integer", minimum=0, maximum=20, default=3)}, ["directory"]),
+    "convergence": ("Compare level convergence over ordered files or all saved layers in one state group",
+                    {"directory": DIRECTORY, "files": FILES, "group": schema("string", enum=list(core.GROUPS)),
+                     "reference": schema("string"), "threshold": schema("number", exclusiveMinimum=0, default=1.0),
+                     "limit": LIMIT}, ["directory"]),
     "transitions": ("Read computed transitions and branching ratios among known decays",
                     {"directory": DIRECTORY, "files": FILES, "limit": LIMIT}, ["directory"]),
     "orbitals": ("Read orbital properties", {"directory": DIRECTORY, "files": FILES, "limit": LIMIT},
@@ -93,13 +97,15 @@ def arguments(name, values):
         raise ValueError("unknown or missing tool arguments")
     for key, value in values.items():
         spec = properties[key]
-        expected = dict(string=str, object=dict, array=list, integer=int, boolean=bool)[spec["type"]]
-        if type(value) is not expected:
+        kind = spec["type"]
+        expected = dict(string=(str,), object=(dict,), array=(list,), integer=(int,),
+                        boolean=(bool,), number=(int, float))[kind]
+        if type(value) not in expected:
             raise ValueError(f"invalid argument type: {key}")
-        if expected is int and (value < spec.get("minimum", value) or value > spec.get("maximum", value)):
+        if kind == "integer" and (value < spec.get("minimum", value) or value > spec.get("maximum", value)):
             raise ValueError(f"argument out of range: {key}")
-        if expected is list and (len(value) > spec.get("maxItems", len(value)) or
-                                 any(not isinstance(x, str) for x in value)):
+        if kind == "array" and (len(value) > spec.get("maxItems", len(value)) or
+                               any(not isinstance(x, str) for x in value)):
             raise ValueError(f"invalid array: {key}")
     return dict(values)
 

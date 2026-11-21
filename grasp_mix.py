@@ -496,7 +496,17 @@ def csf_signature(path):
     return _cached(path, _csf_signature)
 
 
-def find_csf_for(mix_path, cancel=None, progress=None):
+def _allowed_path(path, path_check):
+    if path_check is None:
+        return True
+    try:
+        path_check(path)
+        return True
+    except ValueError:
+        return False
+
+
+def find_csf_for(mix_path, cancel=None, progress=None, path_check=None):
     """按原始块号配对轨道数、CSF 数与 J^π；跳过的空块只检查 CSF 数。
     先试同名的 .c，再试 rcsf.inp / rcsf.out，最后在目录中所有 CSF 文件里找 (新的优先)。"""
     try:
@@ -509,13 +519,14 @@ def find_csf_for(mix_path, cancel=None, progress=None):
     stem = os.path.splitext(base)[0]
     first = [os.path.join(d, stem + ".c"), os.path.join(d, "rcsf.inp"), os.path.join(d, "rcsf.out")]
     try:
-        others = sorted((os.path.join(d, n) for n in os.listdir(d)), key=os.path.getmtime, reverse=True)
+        paths = (os.path.join(d, n) for n in os.listdir(d))
+        others = sorted((p for p in paths if _allowed_path(p, path_check)), key=os.path.getmtime, reverse=True)
     except OSError:
         others = []
     seen = set()
     for p in first + others:
         index.checkpoint(cancel)
-        if p in seen or not os.path.isfile(p):
+        if p in seen or not _allowed_path(p, path_check) or not os.path.isfile(p):
             continue
         seen.add(p)
         if is_csf_file(p):
@@ -541,7 +552,7 @@ def find_csf_for(mix_path, cancel=None, progress=None):
     return None
 
 
-def find_lsj_for(mix_path, blocks):
+def find_lsj_for(mix_path, blocks, path_check=None):
     """找与混合系数文件对应的 jj2lsj 结果：按能级的 J^π 和能量匹配，先试同名的 .lsj.lbl，
     再试目录中其他 *.lsj.lbl；返回 (路径, {(块号, 序号): LSJ 条目})，匹配最多者优先。"""
     d, base = os.path.split(mix_path)
@@ -554,7 +565,7 @@ def find_lsj_for(mix_path, blocks):
     nlev = sum(len(b.levels) for b in blocks)
     best = (None, {})
     for p in [same] + [os.path.join(d, n) for n in names if os.path.join(d, n) != same]:
-        entries = _cached(p, read_lsj) if os.path.isfile(p) else None
+        entries = _cached(p, read_lsj) if _allowed_path(p, path_check) and os.path.isfile(p) else None
         if not entries:
             continue
         matched = match_lsj(blocks, entries)

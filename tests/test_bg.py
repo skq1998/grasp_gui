@@ -1,13 +1,88 @@
 """后台运行进程 (grasp_bg)：启动、接上后收到全部输出、停止、目录锁。用 sh 代替 GRASP 程序。"""
 
+import fcntl
+import hashlib
 import json
 import os
+from pathlib import Path
 import socket
+import stat
+import sys
+import tempfile
 import time
 
 import pytest
 
 import grasp_bg as bg
+import grasp_core as core
+
+
+@pytest.fixture
+def macos_socket_directory(monkeypatch):
+    with tempfile.TemporaryDirectory(prefix="grasp-bg-", dir="/tmp") as tmp:
+        root = Path(tmp)
+        home = root / "h"
+        monkeypatch.setattr(core, "IS_MACOS", True)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        monkeypatch.setattr(bg, "MACOS_SOCKET_TEMP", root / "fallback")
+        yield root, home
+
+
+def test_macos_socket_name_and_directory_permissions(macos_socket_directory, monkeypatch):
+    root, home = macos_socket_directory
+    work = root / "work"
+    work.mkdir()
+    alias = root / "alias"
+    alias.symlink_to(work, target_is_directory=True)
+    path = Path(bg.address(alias))
+    expected = hashlib.sha256(os.fsencode(work.resolve())).hexdigest()[:16] + ".sock"
+    assert path == home / "Library/Caches/grasp_gui/bg" / expected
+    assert bg.address(work) == str(path)
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    path.parent.chmod(0o755)
+    with pytest.raises(PermissionError):
+        bg.address(work)
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o755
+    path.parent.rmdir()
+    path.parent.symlink_to(work, target_is_directory=True)
+    with pytest.raises(PermissionError):
+        bg.address(work)
+    assert path.parent.is_symlink()
+
+    # 强制原路径超过字节上限，也要按同样规则检查回退目录。
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: root / ("家" * 30)))
+    fallback = Path(bg.address(work))
+    assert fallback == bg.MACOS_SOCKET_TEMP / f"grasp_gui-{os.getuid()}" / expected
+    assert len(os.fsencode(fallback)) <= 103
+    assert stat.S_IMODE(fallback.parent.stat().st_mode) == 0o700
+    fallback.parent.chmod(0o755)
+    with pytest.raises(PermissionError):
+        bg.address(work)
+
+
+def test_macos_stale_socket_cleanup_requires_lock(macos_socket_directory, monkeypatch):
+    root, _ = macos_socket_directory
+    endpoint = Path(bg.address(root))
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
+        stale.bind(str(endpoint))
+    assert endpoint.is_socket() and bg.connect(root) is None
+    lock_path = endpoint.with_suffix(".lock")
+    with lock_path.open("a+b") as locked:
+        fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert bg.serve(root) == 1
+        assert endpoint.is_socket()
+
+    def serve_request(workdir, listener):
+        assert workdir == str(root) and listener.getsockname() == str(endpoint)
+        with lock_path.open("rb") as probe:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return 0
+
+    monkeypatch.setattr(bg, "_serve_request", serve_request)
+    assert bg.serve(root) == 0
+    assert not endpoint.exists()
+    assert lock_path.is_file()
 
 
 def sh_job(command):
@@ -60,6 +135,31 @@ def test_run_and_attach(tmp_path):
     assert st["status"] == "ok" and st["titles"] == ["sh", "sh"] and not st["remote"]
     assert "second" in bg.log_tail(str(tmp_path))
     assert not os.path.exists(tmp_path / bg.RUN_REQUEST)
+
+
+def test_macos_background_reconnects_and_stops(tmp_path, macos_socket_directory, monkeypatch):
+    _, home = macos_socket_directory
+    monkeypatch.setenv("HOME", str(home))
+    if sys.platform != "darwin":
+        # 在没有 Mac 的环境中，用同一个后台入口验证文件套接字协议。
+        source = str(Path(bg.__file__).parent)
+        command = (f"import sys; sys.path.insert(0, {source!r}); import grasp_core, grasp_bg; "
+                   "grasp_core.IS_MACOS = True; sys.exit(grasp_bg.serve(sys.argv[1]))")
+        monkeypatch.setattr(bg, "command", lambda: [sys.executable, "-c", command])
+    proc = bg.launch(str(tmp_path), [sh_job("echo started; sleep 30")], run_cfg(tmp_path))
+    try:
+        endpoint = Path(bg.address(tmp_path))
+        with bg.connect(str(tmp_path), timeout=10):
+            wait_status(tmp_path, ("running",))
+        with bg.connect(str(tmp_path), timeout=10) as sock:
+            sock.sendall(b"stop\n")
+            assert messages(sock)[-1] == {"done": "stopped"}
+        assert proc.wait(10) == 0
+        assert not endpoint.exists()
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait(10)
 
 
 def test_instant_run_waits_for_viewer(tmp_path):

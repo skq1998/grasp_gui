@@ -1,5 +1,6 @@
 """缺块文件的完整组成显示，以及文件尚未写完的本机 / 远程提示。"""
 
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -8,12 +9,15 @@ pytestmark = pytest.mark.gui
 pytest.importorskip("PySide6.QtWidgets")
 from PySide6.QtCore import QEvent, QObject  # noqa: E402
 
+import grasp_bg as bg  # noqa: E402
+import grasp_config as config  # noqa: E402
 import grasp_core as core  # noqa: E402
 import grasp_index as index  # noqa: E402
 import grasp_mix as mix  # noqa: E402
 import grasp_remote as remote  # noqa: E402
 from test_gui import no_dialogs, spin, window  # noqa: E402, F401
 from test_skipped_blocks import EXPECTED, files  # noqa: E402, F401
+from test_skipped_blocks_grasp import calculated, job  # noqa: E402, F401
 
 
 def isolate(root, name):
@@ -36,6 +40,44 @@ def test_skipped_files_show_all_levels_with_configuration(qapp, files, monkeypat
         assert all(panel.level_table.item(i, 6).text() for i in range(2))
         assert not panel.partial_files
         assert not no_dialogs
+    finally:
+        assert w.close()
+
+
+@pytest.mark.grasp
+@pytest.mark.parametrize("key,levels,blocks", [
+    ("rmcdhf", "\n1\n1", [2, 3]), ("rci", "-\n1\n1", [2, 3]), ("rci", "1\n-\n1", [1, 3]),
+])
+def test_gui_runs_grasp_with_skipped_blocks(qapp, calculated, grasp_bindir, tmp_path, monkeypatch, no_dialogs,
+                                          key, levels, blocks):
+    monkeypatch.setattr(core, "CONFIG_FILE", str(tmp_path / "preferences.json"))
+    core.save_config(bindir=grasp_bindir, np=1, nice=False)
+    if key == "rmcdhf":
+        prepared = [job("rwfnestimate", use_file=True, wfile="base.w"),
+                    job(key, levels=levels, vary="2p*", nscf="20", save="view", log="scf.log")]
+        inputs = ["rcsf.inp", "base.w", *(p.name for p in calculated.glob("mcp.*"))]
+    else:
+        prepared = [job(key, state="view", copyfrom="base", levels=levels, trans=False,
+                        modfreq=False, vp=False, se=False, log="ci.log")]
+        inputs = ["base.c", "base.w"]
+    root = tmp_path / "work"
+    config.install(config.export(prepared, dict(title="Li")), root)
+    for name in ["isodata", *inputs]:
+        shutil.copyfile(calculated / name, root / name)
+
+    w = window(root)
+    try:
+        w.calc.run_pipeline()
+        assert w.calc.busy and not no_dialogs
+        spin(qapp, lambda: not w.calc.busy)
+        assert bg.status(str(root))["status"] == "ok", w.calc.out.toPlainText()
+        result = root / ("view.cm" if key == "rci" else "view.m")
+        assert [block.nb for block in mix.open_mix(result)] == blocks
+        w.show_tab("levels")
+        panel = w.panel("levels")
+        spin(qapp, lambda: not panel.loading)
+        assert panel.level_table.rowCount() == 2 and not panel.partial_files
+        assert all(panel.level_table.item(i, 6).text() for i in range(2))
     finally:
         assert w.close()
 

@@ -317,6 +317,8 @@ class Client:
                         if item["method"] == "clear_slurm_record" else
                         T("写入结果未确认；先读取服务器流程核对，不能重发。")
                         if item["method"] in ("create_workdir", "update_workdir") else
+                        T("清理结果未知。将重新读取文件清单，请核对后再操作。")
+                        if item["method"] == "clean_workdir" else
                         T("启动或停止的结果无法确认；重连后请先核对状态，不要直接重复操作")))
                 uncertain.add(item["args"].get("directory"))
         self.pending.clear()

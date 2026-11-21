@@ -56,6 +56,8 @@ to regenerate from `.grasp_gui.json`. Keep `grasp_run/` out of shared configurat
    Keys and fields are listed in [STEPS.md](STEPS.md). Give every field. Values are strings, except `bool`
    fields (`true`/`false`) and the `lists` of `rcsfgenerate`; `text` fields use `\n` between lines (e.g. one line of
    levels per J block). `choice` fields take one of the listed codes. Unknown codes are rejected.
+   For `rmcdhf` and `rci`, give one `levels` row per CSF symmetry block, using `-` for any skipped block.
+   Leading or interior blank rows also skip blocks. Trailing blank rows are ignored.
 3. `group` (only for the tabs that have it): `"odd"` or `"even"` by the parity of the states the step works on. It
    chooses the form set in the GUI; file names are free.
 4. Steps exchange files through the working directory by name, as in GRASP (`rcsf.inp`, `rwfn.inp`, `isodata`,
@@ -79,6 +81,7 @@ to regenerate from `.grasp_gui.json`. Keep `grasp_run/` out of shared configurat
    `created_by` (agent 名称)、`jobs`，有结果时写 `reference`。
 2. **每运行一次程序对应一步**，按执行顺序；程序页和参数见 [STEPS.md](STEPS.md)，参数全部给出。除 bool 和 rcsfgenerate 的
    lists 外都是字符串，多行参数用 `\n` 分行 (如每个 J 块一行能级)，choice 取所列代码，未知代码会被拒绝。
+   `rmcdhf` 和 `rci` 的 `levels` 按 CSF 块顺序逐行填写，跳过的块建议写 `-`。开头和中间的空行也表示跳过，末尾空行会被忽略。
 3. `group` 按该步所处理的态的宇称取 odd / even，只决定在界面中放在哪一组表单，文件名不受限制。
 4. 各步按文件名通过工作目录交换文件；复制文件用表单中的字段 (`saveas`、`csf`、`copyfrom`、`save` 等)，不另加复制命令。
    常见顺序见 `demos/` 中的算例。

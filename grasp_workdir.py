@@ -1,11 +1,14 @@
 """本地工作目录的配置差异、备份和清理；只用标准库，不执行计算。"""
 
 from collections import defaultdict, deque
+from contextlib import ExitStack, contextmanager
 import datetime
 import difflib
+import fnmatch
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 import stat
 import tempfile
 
@@ -17,11 +20,114 @@ import grasp_slurm as slurm
 from grasp_core import T
 
 BACKUPS = 5
+CLEANED = ".grasp_gui_cleaned"
+CLEAN_STAMP = "%Y%m%d-%H%M%S-%f"
+MAX_CLEAN_FILES = 50000
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
-def idle(workdir):
+def _internal(name):
+    return any(part.startswith(".grasp_gui") or part == "grasp_run" for part in PurePosixPath(name).parts)
+
+
+def _angular_cleanup_files(names, mpitmp, directory):
+    """匹配串行及实际存在的 MPI 角系数文件，不依赖当前进程数。"""
+    roots = {("tmp_mpi",)}
+    if mpitmp:
+        if os.path.isabs(mpitmp):
+            mpitmp = os.path.relpath(mpitmp, directory) if directory is not None else ".."
+        parts = PurePosixPath(mpitmp).parts
+        if ".." not in parts:
+            roots.add(parts)
+    files = set()
+    for name in names:
+        parts = PurePosixPath(name).parts
+        if len(parts) == 1 and re.fullmatch(r"mcp\.[3-9][0-9]", name):
+            files.add(name)
+        elif len(parts) >= 2 and parts[:-2] in roots:
+            if re.fullmatch(r"([0-9]{3})/mcp\1\.[3-9][0-9]", "/".join(parts[-2:])):
+                files.add(name)
+    return files
+
+
+def cleanup_classes(names, jobs, attached=(), run=None, directory=None, *, recorded_mpitmp=None):
+    """记录每个现有文件第一次被读时是否已由流程写出，再按外部输入优先分类。"""
+    from grasp_summary import page
+
+    names = set(names)
+    external, generated, available = set(attached), set(), set()
+    internal = {name for name in names if _internal(name)}
+    candidates = set(names) - internal
+    mpitmp = recorded_mpitmp or (run or {}).get("mpitmp")
+    angular = _angular_cleanup_files(candidates, mpitmp, directory)
+    directories = defaultdict(list)
+    for name in candidates:
+        directories[os.path.dirname(name)].append(name)
+
+    def matches(pattern, declared_pattern=False):
+        if not pattern:
+            return set()
+        if os.path.isabs(pattern):
+            if directory is None:
+                return set()
+            pattern = os.path.relpath(pattern, directory)
+        parts = PurePosixPath(pattern).parts
+        if not parts or ".." in parts:
+            return set()
+        pattern = PurePosixPath(*parts).as_posix()
+        if not declared_pattern or not any(digits in pattern for digits in ("[0-9]", "[3-9]")):
+            return {pattern} & candidates
+        return {name for name in directories.get(os.path.dirname(pattern), ()) if fnmatch.fnmatchcase(name, pattern)}
+
+    def read(path, declared_pattern=False):
+        external.update(matches(path, declared_pattern) - available)
+
+    def written(path, declared_pattern=False):
+        files = matches(path, declared_pattern)
+        generated.update(files)
+        available.update(files)
+
+    def apply_actions(actions):
+        for action in actions:
+            if action[0] == "cp":
+                read(action[1])
+                written(action[2])
+            elif action[0] == "write":
+                written(action[1])
+
+    for job in jobs:
+        step, vals = page(job)
+        # 未声明的用户命令不推断文件，明确声明的标准输出日志仍可定位。
+        if step is not None:
+            apply_actions(job["pre"] if "pre" in job else step.pre(vals))
+            for name in step.inputs(vals) or []:
+                read(name)
+            for name in step.side_inputs(vals):
+                read(name, declared_pattern=True)
+            if isinstance(step, core.RMcdhf):
+                external.update(angular - available)
+            for name in (step.outputs(vals) or []) + step.result_files(vals):
+                written(name)
+            for name in step.side_outputs(vals):
+                written(name, declared_pattern=True)
+            if isinstance(step, core.RAngular):
+                generated.update(angular)
+                available.update(angular)
+            apply_actions(job["post"] if "post" in job else step.post(vals))
+            for name in step.removes(vals):
+                available.difference_update(matches(name))
+        written(job.get("log"))
+
+    return {name: ("internal" if name in internal else "external" if name in external else
+                   "generated" if name in generated else "unknown") for name in names}
+
+
+def idle(workdir, *, cleaning=False):
     state = bg.status(workdir)
-    scheduled = slurm.status(workdir, state)
+    if cleaning:
+        scheduled = slurm.status(workdir, state, refresh=True, reconcile=False)
+    else:
+        scheduled = slurm.status(workdir, state)
     if scheduled and scheduled.get("active", True):
         raise ValueError(T("已有 Slurm 作业或提交结果未确认，请先核对状态。"))
     if state and state.get("status") == "running":
@@ -350,7 +456,7 @@ SYSTEM_TREES = ("/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sy
                 "/boot", "/System", "/Library", "/Applications")
 
 
-def safe_root(workdir, allow_untracked=False):
+def safe_root(workdir, allow_untracked=False, *, require_idle=True):
     root = os.path.realpath(workdir)
     forbidden = {os.path.realpath(p) for p in SYSTEM_DIRS} | {os.path.realpath(Path.home())}
     system_trees = [os.path.realpath(p) for p in SYSTEM_TREES]
@@ -361,13 +467,249 @@ def safe_root(workdir, allow_untracked=False):
     record = Path(root) / core.SESSION_FILE
     if (not record.is_file() or record.is_symlink()) and not allow_untracked:
         raise ValueError(T("此目录没有工作目录记录，必须另行确认"))
-    idle(root)
+    if require_idle:
+        idle(root, cleaning=True)
     return root
 
 
 def _signature(path):
-    st = os.lstat(path)
+    return _stat_signature(os.lstat(path))
+
+
+def _stat_signature(st):
     return [st.st_dev, st.st_ino, st.st_mode, st.st_size, st.st_mtime_ns]
+
+
+def _mounted_paths():
+    # Linux 的同设备 bind mount 不体现在 st_dev 中。
+    try:
+        lines = Path("/proc/self/mountinfo").read_bytes().splitlines()
+    except FileNotFoundError:
+        return set()
+    return {os.fsdecode(re.sub(rb"\\([0-7]{3})", lambda m: bytes([int(m[1], 8)]), line.split()[4]))
+            for line in lines}
+
+
+@contextmanager
+def _directory(fd, name, path, device, mounts, *, create=False):
+    if create:
+        try:
+            os.mkdir(name, 0o700, dir_fd=fd)
+        except FileExistsError:
+            pass
+    before = os.stat(name, dir_fd=fd, follow_symlinks=False)
+    if path in mounts or before.st_dev != device or not stat.S_ISDIR(before.st_mode):
+        raise ValueError(T("不能清理挂载点或特殊文件：{name}", name=path))
+    child = os.open(name, DIR_FLAGS, dir_fd=fd)
+    try:
+        opened = os.fstat(child)
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            raise ValueError(T("目录内容已改变，请重新预览"))
+        yield child
+    finally:
+        os.close(child)
+
+
+@contextmanager
+def _parent(fd, root, name, mounts, *, create=False):
+    """从已打开的根目录逐层定位，禁止跟随替换进来的链接。"""
+    device = os.fstat(fd).st_dev
+    path = root
+    with ExitStack() as stack:
+        parts = PurePosixPath(name).parts
+        for part in parts[:-1]:
+            path = os.path.join(path, part)
+            fd = stack.enter_context(_directory(fd, part, path, device, mounts, create=create))
+        yield fd, parts[-1]
+
+
+def _files(fd, root, device, mounts, *, scan_backups=False, strict=False):
+    """枚举普通文件和链接，目录、特殊文件及挂载点不可勾选。"""
+    visited = 0
+
+    def walk(current, prefix):
+        nonlocal visited
+        for leaf in sorted(os.listdir(current)):
+            visited += 1
+            if visited > MAX_CLEAN_FILES:
+                raise ValueError(T("目录中的项目过多，无法预览清理"))
+            name = prefix + leaf
+            path = os.path.join(root, name)
+            st = os.stat(leaf, dir_fd=current, follow_symlinks=False)
+            if not scan_backups and _internal(name):
+                yield dict(name=name, count=1, size=st.st_size, mtime=st.st_mtime)
+            elif path in mounts or st.st_dev != device or not (
+                    stat.S_ISDIR(st.st_mode) or stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode)):
+                if strict:
+                    raise ValueError(T("不能清理挂载点或特殊文件：{name}", name=path))
+            elif stat.S_ISDIR(st.st_mode):
+                with _directory(current, leaf, path, device, mounts) as child:
+                    yield from walk(child, name + "/")
+            else:
+                yield dict(name=name, count=1, size=st.st_size, mtime=st.st_mtime,
+                           signature=_stat_signature(st))
+
+    return walk(fd, "")
+
+
+def _clean_stamp(name):
+    try:
+        return datetime.datetime.strptime(name.removesuffix(".deleted"), CLEAN_STAMP)
+    except ValueError:
+        return None
+
+
+def _clean_backups(root, fd, mounts):
+    if CLEANED not in os.listdir(fd):
+        return []
+    path = os.path.join(root, CLEANED)
+    device = os.fstat(fd).st_dev
+    rows = []
+    with _directory(fd, CLEANED, path, device, mounts) as base:
+        for name in sorted(os.listdir(base), reverse=True):
+            moment = _clean_stamp(name)
+            if moment is None or name.endswith(".deleted"):
+                continue
+            dest = os.path.join(path, name)
+            with _directory(base, name, dest, device, mounts) as backup:
+                files = list(_files(backup, dest, device, mounts, scan_backups=True))
+                signature = _stat_signature(os.fstat(backup))
+            rows.append(dict(name=f"{CLEANED}/{name}", time=moment.isoformat(sep=" ", timespec="seconds"),
+                             count=len(files), size=sum(f["size"] for f in files), signature=signature))
+    return rows
+
+
+def last_cleaned(workdir):
+    """从清理子目录名称取得时间；直接删除时只留下一个空标记目录。"""
+    directory = Path(workdir) / CLEANED
+    if not directory.is_dir() or directory.is_symlink():
+        return None
+    try:
+        with os.scandir(directory) as entries:
+            return max((moment for entry in entries if entry.is_dir(follow_symlinks=False)
+                        and (moment := _clean_stamp(entry.name)) is not None), default=None)
+    except OSError:
+        return None
+
+
+def _prepare_clean(workdir, allow_untracked=False, jobs=None, run=None):
+    root = safe_root(workdir, allow_untracked, require_idle=False)
+    with sessions.locked(root):
+        record, revision = sessions.read(root)
+        try:
+            raw = _read_plain(Path(root) / config.INPUTS_FILE)
+        except FileNotFoundError:
+            raw = None
+        attached = config.parse_inputs(raw) if raw is not None else set()
+        mounts = _mounted_paths()
+        fd = os.open(root, DIR_FLAGS)
+        try:
+            opened = os.fstat(fd)
+            identity = [opened.st_dev, opened.st_ino]
+            rows = list(_files(fd, root, opened.st_dev, mounts))
+            saved = _clean_backups(root, fd, mounts)
+        finally:
+            os.close(fd)
+    jobs = (record or {}).get("pipeline", []) if jobs is None else jobs
+    if run is None and jobs:
+        run = core.saved_run_settings(persist=False)
+    kinds = cleanup_classes((row["name"] for row in rows), jobs, attached, run, root,
+                            recorded_mpitmp=(record or {}).get("mpitmp"))
+    groups = {kind: [] for kind in ("generated", "external", "unknown", "internal")}
+    for row in rows:
+        groups[kinds[row["name"]]].append(row)
+    return dict(root=root, revision=revision, signature=identity, classes=groups, backups=saved,
+                entries=groups["generated"] + groups["external"] + groups["unknown"], all_files=False,
+                inputs_expected=raw, allow_untracked=allow_untracked, jobs=jobs, run=run)
+
+
+def preview_clean(workdir):
+    plan = prepare_clear(workdir, classified=True)
+    # 仅传送界面需要的元数据，保留本机预览用的签名与原始清单。
+    def public(rows):
+        return [{key: val for key, val in row.items() if key != "signature"} for row in rows]
+
+    return dict(root=plan["root"], revision=plan["revision"],
+                classes={kind: public(rows) for kind, rows in plan["classes"].items()},
+                backups=public(plan["backups"]))
+
+
+def clean_workdir(workdir, revision, names, mode, *, allow_untracked=False, expected=None):
+    if (mode not in ("move", "delete") or not isinstance(names, list) or not names or len(names) > MAX_CLEAN_FILES
+            or any(not isinstance(name, str) for name in names) or len(names) != len(set(names))):
+        raise ValueError(T("删除列表有误，请重新预览"))
+    root = safe_root(workdir, allow_untracked, require_idle=False)
+    with sessions.locked(root):
+        idle(root, cleaning=True)
+        _, actual_revision = sessions.read(root)
+        if actual_revision != revision:
+            raise sessions.Conflict(T("工作目录记录已被其他程序修改，请重新载入"))
+        plan = _prepare_clean(root, allow_untracked, **(
+            {key: expected[key] for key in ("jobs", "run")} if expected else {}))
+        rows = {row["name"]: row["signature"] for row in plan["entries"]}
+        deleting_backup = (mode == "delete" and len(names) == 1
+                           and names[0] in {row["name"] for row in plan["backups"]})
+        if deleting_backup:
+            rows = {row["name"]: row["signature"] for row in plan["backups"]}
+        if not set(names) <= rows.keys():
+            raise ValueError(T("删除列表有误，请重新预览"))
+        if expected:
+            original = {row["name"]: row["signature"] for row in expected["entries"] + expected["backups"]}
+            if (expected["signature"] != plan["signature"] or expected["inputs_expected"] != plan["inputs_expected"]
+                    or any(rows[name] != original.get(name) for name in names)):
+                raise ValueError(T("目录内容已改变，请重新预览"))
+        return _clean_selected(plan, names, mode, rows, deleting_backup)
+
+
+def _clean_selected(plan, names, mode, rows, deleting_backup):
+    root = plan["root"]
+    mounts = _mounted_paths()
+    fd = os.open(root, DIR_FLAGS)
+    processed, error = [], None
+    timestamp = datetime.datetime.now().strftime(CLEAN_STAMP)
+    backup = f"{CLEANED}/{timestamp}"
+    try:
+        opened = os.fstat(fd)
+        if [opened.st_dev, opened.st_ino] != plan["signature"]:
+            raise ValueError(T("目录内容已改变，请重新预览"))
+        for name in names:
+            try:
+                with _parent(fd, root, name, mounts) as (parent, leaf):
+                    path = os.path.join(root, name)
+                    st = os.stat(leaf, dir_fd=parent, follow_symlinks=False)
+                    if path in mounts or st.st_dev != opened.st_dev:
+                        raise ValueError(T("不能清理挂载点或特殊文件：{name}", name=path))
+                    if deleting_backup:
+                        if _stat_signature(st) != rows[name]:
+                            raise ValueError(T("目录内容已改变，请重新预览"))
+                        with _directory(parent, leaf, path, opened.st_dev, mounts) as child:
+                            list(_files(child, path, opened.st_dev, mounts, scan_backups=True, strict=True))
+                        _remove(parent, leaf, path=path, device=opened.st_dev, mounts=mounts)
+                    else:
+                        if _stat_signature(st) != rows[name]:
+                            raise ValueError(T("目录内容已改变，请重新预览"))
+                        if mode == "move":
+                            if not processed:
+                                with _parent(fd, root, backup, mounts, create=True) as (base, stamp):
+                                    os.mkdir(stamp, 0o700, dir_fd=base)
+                            with _parent(fd, root, f"{backup}/{name}", mounts, create=True) as (target, out):
+                                os.rename(leaf, out, src_dir_fd=parent, dst_dir_fd=target)
+                        else:
+                            os.unlink(leaf, dir_fd=parent)
+                    processed.append(name)
+            except (OSError, ValueError) as exc:
+                error = str(exc)
+                break
+        if processed and mode == "delete" and not deleting_backup:
+            try:
+                with _parent(fd, root, f"{backup}.deleted", mounts, create=True) as (parent, name):
+                    os.mkdir(name, 0o700, dir_fd=parent)
+            except (OSError, ValueError) as exc:
+                error = f"{error}\n{exc}" if error else str(exc)
+    finally:
+        os.close(fd)
+    return dict(processed=processed, remaining=names[len(processed):], error=error,
+                backup=backup if mode == "move" and processed else None)
 
 
 def _measure(fd, name):
@@ -390,7 +732,9 @@ def _measure(fd, name):
     return size, count, signature
 
 
-def prepare_clear(workdir, all_files=False, allow_untracked=False):
+def prepare_clear(workdir, all_files=False, allow_untracked=False, *, classified=False, jobs=None, run=None):
+    if classified and not all_files:
+        return _prepare_clean(workdir, allow_untracked, jobs, run)
     root = safe_root(workdir, allow_untracked)
     inputs_raw = None
     if not all_files:
@@ -402,7 +746,7 @@ def prepare_clear(workdir, all_files=False, allow_untracked=False):
     protected = set(inputs or ()) | {core.SESSION_FILE, config.INPUTS_FILE, "grasp_run"}
     protected.update(p.name for p in backups(root))
     entries, kept = [], []
-    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    fd = os.open(root, DIR_FLAGS)
     try:
         items = [(Path(root) / name, _measure(fd, name)) for name in sorted(os.listdir(fd))]
     finally:
@@ -421,9 +765,12 @@ def prepare_clear(workdir, all_files=False, allow_untracked=False):
                 inputs_expected=inputs_raw)
 
 
-def _remove(fd, name):
+def _remove(fd, name, *, path=None, device=None, mounts=()):
     """用目录描述符逐层删除，路径被替换为链接时也不会进入外部目录。"""
     before = os.stat(name, dir_fd=fd, follow_symlinks=False)
+    if device is not None and (path in mounts or before.st_dev != device or not (
+            stat.S_ISDIR(before.st_mode) or stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode))):
+        raise ValueError(T("不能清理挂载点或特殊文件：{name}", name=path))
     if stat.S_ISDIR(before.st_mode):
         child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
         try:
@@ -431,7 +778,7 @@ def _remove(fd, name):
             if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
                 raise ValueError(T("目录内容已改变，请重新预览"))
             for entry in os.listdir(child):
-                _remove(child, entry)
+                _remove(child, entry, path=os.path.join(path, entry) if path else None, device=device, mounts=mounts)
         finally:
             os.close(child)
         os.rmdir(name, dir_fd=fd)
@@ -440,6 +787,9 @@ def _remove(fd, name):
 
 
 def clear(plan, selected, confirmation=None):
+    if "classes" in plan:
+        return clean_workdir(plan["root"], plan["revision"], sorted(selected), confirmation,
+                             allow_untracked=plan["allow_untracked"], expected=plan)
     with sessions.locked(plan["root"]):
         return _clear(plan, selected, confirmation)
 
@@ -459,7 +809,8 @@ def _clear(plan, selected, confirmation=None):
     selected = set(selected)
     if not selected <= expected.keys():
         raise ValueError(T("删除列表有误，请重新预览"))
-    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    fd = os.open(root, DIR_FLAGS)
+    processed, error = [], None
     try:
         opened = os.fstat(fd)
         if [opened.st_dev, opened.st_ino] != plan["signature"][:2]:
@@ -467,8 +818,17 @@ def _clear(plan, selected, confirmation=None):
         for name in selected:
             if _signature(Path(root) / name) != expected[name]["signature"]:
                 raise ValueError(T("目录内容已改变，请重新预览"))
-        idle(root)
+        idle(root, cleaning=True)
+        mounts = _mounted_paths()
         for name in sorted(selected):
-            _remove(fd, name)
+            try:
+                _remove(fd, name, path=os.path.join(root, name), device=opened.st_dev, mounts=mounts)
+            except (OSError, ValueError) as exc:
+                if not plan["all_files"]:
+                    raise
+                error = str(exc)
+                break
+            processed.append(name)
     finally:
         os.close(fd)
+    return dict(processed=processed, remaining=sorted(selected - set(processed)), error=error, backup=None)
