@@ -1,5 +1,6 @@
 """配置更新保留结果、按内容比较步骤，并能备份恢复。"""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,115 @@ def job(step="rnucleus", **vals):
 
 def session(jobs):
     return config.session(cfg(jobs))
+
+
+def test_cleanup_classifies_pipeline_files_in_read_and_write_order(tmp_path):
+    pipeline = session([job("rwfnestimate"), job("rnucleus"), job("rcsfgenerate", saveas="state.c"),
+                        job("rangular", csf="state.c"), job("rmcdhf", save="state", log="scf.txt"),
+                        job("rci", state="state"), job("custom", prog="sh", args="-c 'echo > mystery'")])["pipeline"]
+    groups = work.cleanup_classes(
+        ["isodata", "rcsf.inp", "state.c", "state.csum", "state.clog", "scf.txt", "rwfn.inp", "mystery",
+         "notes", ".grasp_gui_run.log", ".grasp_gui_cleaned/old/state.c", "grasp_run/run.sh",
+         "scratch/000/mcp000.30", "scratch/001/mcp001.31", "scratch/001/personal", "mcp.29"],
+        pipeline, attached=["state.c"], run=dict(np=2, mpitmp=str(tmp_path / "scratch")), directory=tmp_path)
+    assert {name for name, kind in groups.items() if kind == "external"} == {"isodata", "rcsf.inp", "state.c"}
+    assert {name for name, kind in groups.items() if kind == "generated"} == {
+        "state.csum", "state.clog", "scf.txt", "rwfn.inp", "scratch/000/mcp000.30", "scratch/001/mcp001.31"}
+    assert {name for name, kind in groups.items() if kind == "unknown"} == {
+        "mystery", "notes", "scratch/001/personal", "mcp.29"}
+    assert {name for name, kind in groups.items() if kind == "internal"} == {
+        ".grasp_gui_run.log", ".grasp_gui_cleaned/old/state.c", "grasp_run/run.sh"}
+
+
+@pytest.mark.parametrize("np", [1, 8])
+def test_cleanup_recognizes_both_angular_layouts(np):
+    jobs = session([job("rangular"), job("rmcdhf")])["pipeline"]
+    angular = {"mcp.30", "mcp.37", "tmp_mpi/000/mcp000.30", "tmp_mpi/024/mcp024.34", "recorded/003/mcp003.99"}
+    other = {"current/000/mcp000.30", "tmp_mpi/001/mcp000.30", "tmp_mpi/000/mcp000.29", "mcp.100"}
+    run = dict(np=np, mpitmp="current")
+    names = angular | other
+    expected = dict.fromkeys(angular, "generated") | dict.fromkeys(other, "unknown")
+    assert work.cleanup_classes(names, jobs, run=run, recorded_mpitmp="recorded") == expected
+    assert work.cleanup_classes(names, jobs[1:], run=run, recorded_mpitmp="recorded") == (
+        dict.fromkeys(angular, "external") | dict.fromkeys(other, "unknown"))
+    assert work.cleanup_classes(names, jobs, run=run)["current/000/mcp000.30"] == "generated"
+
+
+def test_cleanup_recognizes_files_written_before_they_are_read():
+    jobs = session([job("rcsfgenerate"), job("rangular", csf="state.c")])["pipeline"]
+    jobs[0]["pre"] += [("write", "state.c", "test")]
+    assert work.cleanup_classes(["state.c", "rcsf.inp"], jobs) == {"state.c": "generated", "rcsf.inp": "generated"}
+
+
+def test_classified_cleanup_preserves_relative_paths_and_reports_partial_failure(tmp_path, monkeypatch):
+    root = tmp_path / "calc"
+    config.install(cfg([job()]), str(root))
+    snapshot = (root / core.SESSION_FILE).read_bytes()
+    (root / "sub").mkdir()
+    (root / "sub/one").write_text("one")
+    (root / "sub/two").write_text("two")
+    (root / "link").symlink_to(tmp_path, target_is_directory=True)
+    os.mkfifo(root / "pipe")
+    plan = work.prepare_clear(root, classified=True)
+    assert {row["name"] for row in plan["entries"]} == {"link", "sub/one", "sub/two"}
+    for name in ("../outside", "/etc/passwd", "pipe", core.SESSION_FILE, "link/calc/sub/one"):
+        with pytest.raises(ValueError, match="删除列表"):
+            work.clear(plan, {name}, "move")
+
+    rename = work.os.rename
+
+    def fail_second_file(source, destination, **kwargs):
+        if source == "two":
+            raise OSError("simulated rename failure")
+        rename(source, destination, **kwargs)
+
+    monkeypatch.setattr(work.os, "rename", fail_second_file)
+    result = work.clear(plan, {"link", "sub/one", "sub/two"}, "move")
+    assert "simulated rename failure" in result["error"]
+    assert result["processed"] == ["link", "sub/one"] and result["remaining"] == ["sub/two"]
+    backup = root / result["backup"]
+    assert (backup / "link").readlink() == tmp_path
+    assert (backup / "sub/one").read_text() == "one"
+    assert (root / "sub/two").read_text() == "two"
+    assert (root / core.SESSION_FILE).read_bytes() == snapshot
+
+    plan = work.prepare_clear(root, classified=True)
+    assert [(row["name"], row["count"]) for row in plan["backups"]] == [(result["backup"], 2)]
+    assert not work.clear(plan, {result["backup"]}, "delete")["error"]
+    assert not backup.exists() and (root / "sub/two").is_file()
+    assert not work.clear(plan, {"sub/two"}, "delete")["error"]
+    assert work.last_cleaned(root) is not None
+    assert not work.preview_clean(root)["backups"]
+
+
+def test_clean_refuses_changed_preview_and_active_task(tmp_path, monkeypatch):
+    config.install(cfg([job()]), str(tmp_path))
+    original = tmp_path / "isodata"
+    original.write_text("original")
+    plan = work.prepare_clear(tmp_path, classified=True)
+    original.write_text("changed content")
+    with pytest.raises(ValueError, match="已改变"):
+        work.clear(plan, {"isodata"}, "delete")
+    with pytest.raises(ValueError, match="已被其他程序修改"):
+        work.clean_workdir(tmp_path, "stale", ["isodata"], "delete")
+    for state in ("queued", "running", "unknown"):
+        monkeypatch.setattr(work.slurm, "status", lambda *a, **k: dict(status=state, active=True))
+        with pytest.raises(ValueError, match="Slurm"):
+            work.clean_workdir(tmp_path, plan["revision"], ["isodata"], "delete")
+    assert original.read_text() == "changed content"
+
+
+def test_clean_skips_mounts_and_refuses_symlinked_backup_directory(tmp_path, monkeypatch):
+    root = tmp_path / "calc"
+    config.install(cfg([job()]), str(root))
+    (root / "mount").mkdir()
+    (root / "mount/data").write_text("keep")
+    monkeypatch.setattr(work, "_mounted_paths", lambda: {str(root / "mount")})
+    assert work.prepare_clear(root, classified=True)["entries"] == []
+    (root / work.CLEANED).symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(ValueError, match="特殊文件"):
+        work.prepare_clear(root, classified=True)
+    assert (root / "mount/data").read_text() == "keep"
 
 
 def test_sequence_differences():

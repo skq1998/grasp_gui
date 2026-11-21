@@ -18,9 +18,10 @@ import time
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog,
-                               QGridLayout, QHBoxLayout,
+                               QGridLayout, QHBoxLayout, QHeaderView,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
-                               QPushButton, QScrollArea, QSplitter, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
+                               QPushButton, QScrollArea, QSplitter, QTabWidget, QTextBrowser, QTreeWidget,
+                               QTreeWidgetItem, QVBoxLayout, QWidget)
 
 import grasp_bg
 import grasp_config
@@ -40,7 +41,7 @@ from gui_common import button, fixed_font, hint_label, recent_menu, text_edit
 class CsfListsWidget(QWidget):
     """rcsfgenerate 的多个 CSF 列表，每个列表一个标签页。"""
 
-    def __init__(self):
+    def __init__(self, construct=None):
         super().__init__()
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 6, 0, 0)
@@ -48,6 +49,8 @@ class CsfListsWidget(QWidget):
         bar.addWidget(QLabel(T("CSF 列表:")))
         bar.addWidget(button("+ 添加列表", lambda: self.add_list(dict(core.CsfLists.EMPTY))))
         bar.addWidget(button("− 删除当前列表", self.del_list))
+        if construct is not None:
+            bar.addWidget(button("从壳层模型构造…", construct))
         bar.addStretch()
         lay.addLayout(bar)
         self.tabs = QTabWidget()
@@ -94,9 +97,10 @@ class CsfListsWidget(QWidget):
 class StepForm(QScrollArea):
     """根据 step.fields 生成的参数表单。"""
 
-    def __init__(self, step, bindir):
+    def __init__(self, step, bindir, element_hint=None):
         super().__init__()
         self.step = step
+        self.element_hint = element_hint
         self.setWidgetResizable(True)
         inner = QWidget()
         g = QGridLayout(inner)
@@ -116,7 +120,7 @@ class StepForm(QScrollArea):
                 g.addWidget(hint_label(f.hint), r, 2)
                 self.get[f.key], self.put[f.key] = w.isChecked, w.setChecked
             elif isinstance(f, core.CsfLists):
-                w = CsfListsWidget()
+                w = CsfListsWidget(self.build_from_shell_model)
                 g.addWidget(w, r, 0, 1, 3)
                 self.get[f.key], self.put[f.key] = w.value, w.set_value
             else:
@@ -161,6 +165,15 @@ class StepForm(QScrollArea):
 
     def values(self):
         return {k: get() for k, get in self.get.items()}
+
+    def build_from_shell_model(self):
+        from shell_model_panel import ShellModelDialog
+
+        dialog = ShellModelDialog(self, self.step, self.values(),
+                                  self.element_hint() if self.element_hint else "Li")
+        if dialog.exec() == QDialog.Accepted:
+            self.set_values(dialog.result_fields)
+        dialog.deleteLater()
 
     def set_values(self, d):
         fields = {f.key: f for f in self.step.fields if isinstance(f, core.Field)}
@@ -642,102 +655,169 @@ def file_size(size):
 
 
 class ClearDialog(QDialog):
-    """永久删除前列出候选和保留项；全部删除需要再次输入目录名。"""
+    """本机和远程共用的清理预览与确认；实际写入由调用方处理。"""
 
-    def __init__(self, parent, workdir, allow_untracked=False):
+    def __init__(self, parent, workdir, allow_untracked=False, *, plan=None, jobs=None, run=None, can_run=True):
         super().__init__(parent)
         self.workdir, self.allow_untracked = workdir, allow_untracked
+        self.jobs, self.run = jobs, run
+        self.remote = plan is not None
+        self.plan, self.backup_to_delete = None, None
         self.setWindowTitle(T("清空工作目录"))
-        self.resize(850, 680)
+        self.resize(880, 690)
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(os.path.realpath(workdir)))
-        warning = QLabel(T("永久删除，不能恢复。选中的子目录及其中的内容将一并删除；符号链接只删除链接本身。"))
-        warning.setWordWrap(True)
-        lay.addWidget(warning)
-        self.all_files = QCheckBox(T("全部删除（默认只删除计算结果）"))
-        lay.addWidget(self.all_files)
-        self.note = QLabel(T("输入清单未知，未自动勾选普通文件；请选择要删除的计算结果。"))
+        lay.addWidget(QLabel(workdir))
+        self.files = QTreeWidget()
+        self.files.setHeaderLabels([T("文件"), T("大小"), T("修改时间")])
+        self.files.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        lay.addWidget(self.files, 3)
+        self.note = QLabel(T("清理外部输入后，流程可能无法从头运行。"))
         self.note.setWordWrap(True)
         lay.addWidget(self.note)
-        split = QSplitter()
-        self.files = QListWidget()
-        self.kept = QListWidget()
-        split.addWidget(self.files)
-        split.addWidget(self.kept)
-        lay.addWidget(QLabel(T("左侧：可删除项目（可取消勾选）；右侧：保留项目")))
-        selection = QHBoxLayout()
-        self.select_all = button("全选", lambda: self.select_files(True))
-        self.select_none = button("全不选", lambda: self.select_files(False))
-        selection.addWidget(self.select_all)
-        selection.addWidget(self.select_none)
-        selection.addStretch()
-        lay.addLayout(selection)
-        lay.addWidget(split, 1)
         self.total = QLabel()
         lay.addWidget(self.total)
-        lay.addWidget(QLabel(T("全部删除时请输入目录名：{name}", name=os.path.basename(os.path.realpath(workdir)))))
+        self.mode = QComboBox()
+        self.mode.addItem(T("移到备份目录"), "move")
+        self.mode.addItem(T("直接删除（不能恢复）"), "delete")
+        self.mode.currentIndexChanged.connect(self.count_changed)
+        self.run_after = QCheckBox(T("清理后运行全部"))
+        self.run_after.setEnabled(can_run)
+        choices = QHBoxLayout()
+        choices.addWidget(self.mode)
+        choices.addWidget(self.run_after)
+        choices.addStretch()
+        lay.addLayout(choices)
+        self.all_files = QCheckBox(T("全部删除（包括输入和内部文件）"))
+        self.all_files.setVisible(not self.remote)
+        lay.addWidget(self.all_files)
         self.confirmation = QLineEdit()
+        self.confirmation.setPlaceholderText(T("全部删除时请输入目录名：{name}", name=os.path.basename(workdir)))
         self.confirmation.textChanged.connect(self.count_changed)
         lay.addWidget(self.confirmation)
+        self.saved_label = QLabel(T("已有的清理备份"))
+        lay.addWidget(self.saved_label)
+        self.saved = QListWidget()
+        lay.addWidget(self.saved, 1)
+        self.remove_backup = button("删除选中的备份…", self.confirm_backup)
+        self.remove_backup.setEnabled(False)
+        self.saved.currentItemChanged.connect(lambda item, _: self.remove_backup.setEnabled(item is not None))
+        lay.addWidget(self.remove_backup)
         bar = QHBoxLayout()
+        self.select_all = button("全选", lambda: self.select_files(True))
+        self.select_none = button("全不选", lambda: self.select_files(False))
+        bar.addWidget(self.select_all)
+        bar.addWidget(self.select_none)
         bar.addStretch()
-        self.ok = button("永久删除所选项目", self.accept)
+        self.ok = button("清理所选文件…", self.accept)
         bar.addWidget(self.ok)
-        bar.addWidget(button("取消", self.reject))
+        cancel = button("取消", self.reject)
+        cancel.setDefault(True)
+        bar.addWidget(cancel)
         lay.addLayout(bar)
         self.files.itemChanged.connect(self.count_changed)
         self.all_files.toggled.connect(self.refresh)
-        self.refresh()
+        if self.remote:
+            self.populate(plan)
+        else:
+            self.refresh()
 
     def refresh(self):
         try:
-            self.plan = workdir_ops.prepare_clear(self.workdir, self.all_files.isChecked(), self.allow_untracked)
+            self.populate(workdir_ops.prepare_clear(self.workdir, self.all_files.isChecked(), self.allow_untracked,
+                                                   classified=True, jobs=self.jobs, run=self.run))
         except (OSError, ValueError) as e:
             self.plan = None
             QMessageBox.warning(self, T("清空工作目录"), str(e))
             self.ok.setEnabled(False)
             self.reject()
-            return
-        self.note.setVisible(self.plan["unknown_inputs"])
+
+    def populate(self, plan):
+        self.plan = plan
+        all_files = self.all_files.isChecked()
+        self.confirmation.setVisible(all_files)
+        self.mode.setEnabled(not all_files)
+        self.run_after.setVisible(not all_files)
+        self.saved_label.setVisible(not all_files)
+        self.saved.setVisible(not all_files)
+        self.remove_backup.setVisible(not all_files)
+        groups = {"generated": "流程生成", "external": "外部输入", "unknown": "未知"}
+        classes = plan.get("classes", {"generated": plan.get("entries", [])})
         self.files.blockSignals(True)
         self.files.clear()
-        for item in self.plan["entries"]:
-            row = QListWidgetItem(f"{item['name']} — {item['count']} / {file_size(item['size'])}")
-            row.setData(Qt.UserRole, item)
-            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
-            row.setCheckState(Qt.Checked if item["checked"] else Qt.Unchecked)
-            self.files.addItem(row)
+        self.rows = []
+        for kind, group in groups.items():
+            parent = QTreeWidgetItem(self.files, [T(group)])
+            parent.setExpanded(True)
+            for item in classes.get(kind, []):
+                date = ""
+                if "mtime" in item:
+                    date = datetime.datetime.fromtimestamp(item["mtime"]).isoformat(sep=" ", timespec="seconds")
+                row = QTreeWidgetItem(parent, [item["name"], file_size(item["size"]), date])
+                row.setData(0, Qt.UserRole, item)
+                row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+                row.setCheckState(0, Qt.Checked if kind == "generated" else Qt.Unchecked)
+                self.rows.append(row)
         self.files.blockSignals(False)
-        self.kept.clear()
-        self.kept.addItems([item["name"] for item in self.plan["kept"]])
-        self.confirmation.setEnabled(self.all_files.isChecked())
+        self.saved.clear()
+        for item in plan.get("backups", []):
+            row = QListWidgetItem(f"{item['time']} — {item['count']} / {file_size(item['size'])}")
+            row.setData(Qt.UserRole, item)
+            self.saved.addItem(row)
         self.count_changed()
 
     def select_files(self, selected):
         self.files.blockSignals(True)
-        for i in range(self.files.count()):
-            self.files.item(i).setCheckState(Qt.Checked if selected else Qt.Unchecked)
+        for row in self.rows:
+            row.setCheckState(0, Qt.Checked if selected else Qt.Unchecked)
         self.files.blockSignals(False)
         self.count_changed()
 
+    def selected(self):
+        return [row.data(0, Qt.UserRole) for row in self.rows if row.checkState(0) == Qt.Checked]
+
     def selected_names(self):
-        return {self.files.item(i).data(Qt.UserRole)["name"] for i in range(self.files.count())
-                if self.files.item(i).checkState() == Qt.Checked}
+        return {row["name"] for row in self.selected()}
 
     def count_changed(self):
         if self.plan is None:
-            self.ok.setEnabled(False)
             return
-        selected = self.selected_names()
-        count = sum(item["count"] for item in self.plan["entries"] if item["name"] in selected)
-        size = sum(item["size"] for item in self.plan["entries"] if item["name"] in selected)
-        self.total.setText(T("将删除 {n} 项，共 {size}", n=count, size=file_size(size)))
+        rows = self.selected()
+        count, size = sum(item["count"] for item in rows), sum(item["size"] for item in rows)
+        self.total.setText(T("已选 {n} 项，共 {size}", n=count, size=file_size(size)))
+        external = {row["name"] for row in self.plan.get("classes", {}).get("external", [])}
+        self.note.setVisible(bool(external & self.selected_names()))
         confirmed = self.confirmation.text() == os.path.basename(self.plan["root"])
-        self.ok.setEnabled(bool(selected) and (not self.all_files.isChecked() or confirmed))
+        self.ok.setEnabled(bool(rows) and (not self.all_files.isChecked() or confirmed))
+
+    def confirm(self, rows, mode, external=False):
+        method = T("移到备份目录") if mode == "move" else T("直接删除（不能恢复）")
+        message = T("目录：{path}\n项目：{n}\n大小：{size}\n方式：{mode}", path=self.plan["root"],
+                    n=sum(row["count"] for row in rows), size=file_size(sum(row["size"] for row in rows)), mode=method)
+        if external:
+            message += "\n\n" + self.note.text()
+        return QMessageBox.question(self, T("清空工作目录"), message,
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes
+
+    def confirm_backup(self):
+        item = self.saved.currentItem().data(Qt.UserRole)
+        if self.confirm([item], "delete"):
+            self.backup_to_delete = item["name"]
+            super().accept()
 
     def accept(self):
-        if self.ok.isEnabled():
+        mode = "delete" if self.all_files.isChecked() else self.mode.currentData()
+        if self.ok.isEnabled() and self.confirm(self.selected(), mode, not self.note.isHidden()):
             super().accept()
+
+
+def clean_result(parent, result):
+    """部分失败报告精确范围；整体失败由调用方在提交前或异常分支报告。"""
+    if not result["error"]:
+        return True
+    message = T("清理未完成：{error}\n已处理：{done}\n未处理：{remaining}", error=result["error"],
+                done=", ".join(result["processed"]) or "—", remaining=", ".join(result["remaining"]) or "—")
+    QMessageBox.warning(parent, T("清空工作目录"), message)
+    return False
 
 
 class ExportDialog(QDialog):
@@ -950,6 +1030,8 @@ class CalcPanel(QWidget):
         self.client = None             # 与后台运行进程的连接 (见 grasp_bg)；连着时 busy
         self.titles = []               # 正在运行的各步标题
         self.last_run = ""             # 本目录上次运行的结果 (结束后留在状态栏的常驻标签中)
+        self.last_run_time = ""
+        self.cleaned_at = None
         self.run_span = None           # 仅本次会话的范围；不扩展后台记录格式
         self.remote = None             # 本目录的计算在另一台机器上运行时：读取其 RUN_LOG 的线程的标记
         self.pipeline = []
@@ -990,7 +1072,11 @@ class CalcPanel(QWidget):
         """运行中：当前步骤、本步已运行的时间和最后一次输出距今的时间 (每秒更新)。
         放在常驻标签中，切换标签页或菜单提示不会把它清掉；GRASP 长时间没有输出时也能看出计算仍在进行。"""
         if not self.busy:
-            self.progress.emit(self.last_run)
+            text = self.last_run
+            if text and self.cleaned_at and self.last_run_time:
+                if self.cleaned_at.isoformat(sep=" ") > self.last_run_time:
+                    text += T(" · 之后已清理（{time}）", time=self.cleaned_at.isoformat(sep=" ", timespec="seconds"))
+            self.progress.emit(text)
             return
         st = grasp_bg.status(self.cur_workdir) or {}
         i, n = st.get("step", 0), len(self.titles)
@@ -1093,7 +1179,7 @@ class CalcPanel(QWidget):
         self.copy_btn.clicked.connect(self.copy_group)
         gb.addWidget(self.copy_btn)
 
-        self.forms = [StepForm(step, self.run.bindir()) for step in core.STEPS]
+        self.forms = [StepForm(step, self.run.bindir(), self.nuclear_element) for step in core.STEPS]
         self.nav = StepNav(self.forms, self.package)
         self.nav.groups.setCornerWidget(corner, Qt.TopRightCorner)
         for f in self.group_forms():
@@ -1111,6 +1197,9 @@ class CalcPanel(QWidget):
         bar.addWidget(button("■ 停止", self.stop_run))
         lay.addLayout(bar)
         return w
+
+    def nuclear_element(self):
+        return next((form.get["z"]() for form in self.forms if form.step.key == "rnucleus"), "Li")
 
     def build_bottom(self):
         split = QSplitter(Qt.Horizontal)
@@ -1315,11 +1404,13 @@ class CalcPanel(QWidget):
         self.cur_workdir = d
         self.session_cleared = False
         self.last_run = ""
+        self.last_run_time = ""
         self.open_workdir(d)
         return True
 
     def open_workdir(self, d):
         self.refresh_remote_copy()
+        self.read_clean_time()
         self.session_revision = None
         # 新目录沿用当前计算内容；只比较打开后实际变动的内容。
         self.session_baseline = deepcopy(self.calculation_fields())
@@ -1499,7 +1590,11 @@ class CalcPanel(QWidget):
                 job = form.job()
             except (ValueError, KeyError):
                 return                    # 设置变化时表单可能尚未填完，保留旧文字且不弹框
-        self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
+        try:
+            text = core.describe(job, self.run.mpi_prefix())
+        except ValueError as e:
+            text = str(e)
+        self.prev.setPlainText(text + "\n")
 
     def check_inputs(self):
         form = self.nav.currentWidget()
@@ -1572,7 +1667,8 @@ class CalcPanel(QWidget):
             self.write(T("[文件检查：{n} 个步骤未声明依赖，需人工核查]", n=len(checked["skipped"])) + "\n", "info")
         self.detach()                      # 不再读取另一台机器上的计算的输出
         try:
-            proc = grasp_bg.launch(self.cur_workdir, jobs, cfg)
+            with sessions.locked(self.cur_workdir):
+                proc = grasp_bg.launch(self.cur_workdir, jobs, cfg)
         except (OSError, RuntimeError) as e:
             QMessageBox.warning(self, T("运行"), str(e))
             return
@@ -1659,6 +1755,7 @@ class CalcPanel(QWidget):
             self.write("\n" + T("*** 后台运行进程意外结束") + "\n", "err")
         st = dict(grasp_bg.status(self.cur_workdir) or {}, status=result)
         self.last_run = run_summary(st, titles, span)
+        self.last_run_time = st.get("end") or st.get("start") or time.strftime("%Y-%m-%d %H:%M:%S")
         if not ok or span and span != (1, span[2], span[2]):
             self.write("\n*** " + self.last_run + "\n", "info" if ok else "err")
         self.status("")                     # 结果只显示在常驻标签中，不再另发一条状态栏消息
@@ -1707,6 +1804,7 @@ class CalcPanel(QWidget):
             return
         span = summary.title_range(self.pipeline, st.get("titles", []))
         self.last_run = run_summary(st, st.get("titles", []), span)
+        self.last_run_time = st.get("end") or st.get("start", "")
         self.update_progress()
         if st.get("seen"):
             self.write(origin, "info")
@@ -1916,14 +2014,25 @@ class CalcPanel(QWidget):
         os.chmod(path, 0o755)
         self.status(T("已导出 {p}", p=path))
 
+    def export_jobs(self):
+        if not self.need_pipeline():
+            return None
+        try:
+            return summary.checked_script_jobs(self.cur_workdir, self.pipeline)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("导出"), str(e))
+            return None
+
     def export_script(self):
-        if self.need_pipeline():
+        jobs = self.export_jobs()
+        if jobs:
             self.save_text(T("导出 shell 脚本"), "sh_gui",
-                           core.shell_script(self.pipeline, self.run.bindir(), self.cur_workdir,
+                           core.shell_script(jobs, self.run.bindir(), self.cur_workdir,
                                              self.run.mpi_prefix(), self.run.mpitmp()))
 
     def export_slurm(self):
-        if not self.need_pipeline():
+        jobs = self.export_jobs()
+        if not jobs:
             return
         dlg = SlurmDialog(self, self.slurm)
         if dlg.exec() != QDialog.Accepted:
@@ -1933,7 +2042,7 @@ class CalcPanel(QWidget):
         if not self.save_session(require_saved=True):
             return
         self.save_text(T("Slurm 作业脚本"), f"{self.slurm['job'] or 'grasp'}.slurm",
-                       core.slurm_script(self.pipeline, self.slurm))
+                       core.slurm_script(jobs, self.slurm))
 
     # ---- 参数保存 / 载入 ----
     def collect(self):
@@ -1990,6 +2099,11 @@ class CalcPanel(QWidget):
             if step is not None and isinstance(values, dict) and warn(
                     step, values, T("第 {i} 步 ({step})", i=i, step=step.key)):
                 job = dict(job, **grasp_config.make_job(job))
+            try:
+                job = core.refresh_block_input(job)
+            except ValueError:
+                # 保留可编辑的旧记录；运行前预检会给出提示。
+                pass
             self.pipeline.append(dict(job, pre=[tuple(a) for a in job["pre"]], post=[tuple(a) for a in job["post"]]))
         self.refresh_list()
         tab = data.get("tab")
@@ -2100,32 +2214,49 @@ class CalcPanel(QWidget):
     def clear_workdir(self):
         if self.check_external() == "cancel":
             return
-        started = False
         try:
             root = workdir_ops.safe_root(self.cur_workdir, allow_untracked=True)
             tracked = os.path.isfile(os.path.join(root, core.SESSION_FILE)) and not os.path.islink(
                 os.path.join(root, core.SESSION_FILE))
-            if not tracked and QMessageBox.question(self, T("清空工作目录"),
-                    T("此目录没有工作目录记录。仍要查看并选择待删除内容吗？")) != QMessageBox.Yes:
+            if not tracked and QMessageBox.question(
+                    self, T("清空工作目录"), T("此目录没有工作目录记录。仍要查看并选择待删除内容吗？"),
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
                 return
-            dlg = ClearDialog(self, root, not tracked)
-            if dlg.plan is None:
-                return
-            if dlg.exec() != QDialog.Accepted:
-                return
-            started = True
-            workdir_ops.clear(dlg.plan, dlg.selected_names(), dlg.confirmation.text())
+            dlg = ClearDialog(self, root, not tracked, jobs=self.pipeline, run=self.run.values(),
+                              can_run=bool(self.pipeline))
         except (OSError, ValueError) as e:
-            QMessageBox.warning(self, T("清空工作目录"),
-                                T("清理未完成，部分项目可能已删除：{e}", e=str(e)) if started else str(e))
-            if not started:
+            QMessageBox.warning(self, T("清空工作目录"), str(e))
+            return
+        try:
+            if dlg.plan is None or dlg.exec() != QDialog.Accepted:
                 return
-        else:
-            self.status(T("已永久删除所选项目"))
-        if not os.path.exists(os.path.join(root, core.SESSION_FILE)):
+            all_files = dlg.all_files.isChecked()
+            backup = dlg.backup_to_delete
+            if all_files:
+                result = workdir_ops.clear(dlg.plan, dlg.selected_names(), dlg.confirmation.text())
+            else:
+                names = {backup} if backup else dlg.selected_names()
+                result = workdir_ops.clear(dlg.plan, names, "delete" if backup else dlg.mode.currentData())
+            success = clean_result(self, result)
+            run_after = success and not (all_files or backup) and dlg.run_after.isChecked()
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, T("清空工作目录"), str(e))
+            return
+        finally:
+            dlg.deleteLater()
+        if success:
+            self.status(T("清理完成"))
+        if all_files and not os.path.exists(os.path.join(root, core.SESSION_FILE)):
             self.apply(dict(pipeline=[], steps={s.key: s.defaults() for s in core.STEPS}, groups={}))
             self.session_cleared = True
+        self.read_clean_time()
+        self.update_progress()
         self.filesChanged.emit()
+        if run_after:
+            self.run_pipeline()
+
+    def read_clean_time(self):
+        self.cleaned_at = workdir_ops.last_cleaned(self.cur_workdir)
 
     def summary_source(self, d):
         """能级图页的结果摘要：本页当前目录的流程和本次会话的运行记录；其他目录返回 None (由调用方读目录记录)。"""

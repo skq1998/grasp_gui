@@ -734,7 +734,7 @@ class LevelPanel(Panel):
     MAX_ROWS = 500
     LOCAL_TRANSITIONS = True
 
-    def __init__(self, workdir, settings=saved_settings):
+    def __init__(self, workdir, settings=saved_settings, *, nist_comparison=True):
         super().__init__()
         self.settings = settings   # 返回运行设置 (bindir, np, mpirun, mpitmp, nice) 的函数
         self.summary_source = None  # 目录 -> (流程, 运行记录) 或 None；主窗口设为计算页的 summary_source
@@ -787,6 +787,8 @@ class LevelPanel(Panel):
         export.setMenu(menu)
         top.addWidget(export)
         top.addWidget(button("结果摘要…", self.open_summary))
+        if nist_comparison:
+            top.addWidget(button("NIST 能级对照…", self.open_nist))
         top.addSpacing(12)
         self.show_links = QCheckBox(T("显示选中能级的全部已算跃迁"))
         self.show_links.setChecked(bool(core.load_config().get("level_links", False)))
@@ -1246,6 +1248,54 @@ class LevelPanel(Panel):
         prefix, rest = mix.abbreviate(full, abbrev_rules())
         return dict(file=fname, J=lv.block.J, twoj=tr.two_j(lv.block), parity=lv.parity, pos=lv.pos, energy=lv.energy,
                     config=rest, prefix=prefix, full=full, term=term, purity=purity, lsj_label=lsj_label, jj=jj)
+
+    def open_nist(self):
+        from grasp_nist import calculated_id
+        from nist_panel import NistDialog
+
+        if not self.levels:
+            QMessageBox.information(self, T("NIST ASD 能级对照"), T("请先勾选要对照的计算能级文件。"))
+            return
+        root = os.path.realpath(self.dir.text())
+        rows = []
+        keys = sorted(self.levels, key=lambda key: self.levels[key][2].energy)
+        for key in keys[:self.MAX_ROWS]:
+            row = self.level_desc(key)
+            _, path, *_ = self.levels[key]
+            row["id"] = calculated_id(os.path.relpath(path, root), row)
+            rows.append(row)
+        dialog = NistDialog(self, rows, self.nist_ion(root), root)
+        if len(keys) > len(rows):
+            dialog.info.setText(dialog.info.text() + "\n" +
+                                T("对照显示最低的 {n} 个计算能级。", n=len(rows)))
+        dialog.exec()
+        dialog.deleteLater()
+
+    def nist_ion(self, root):
+        import grasp_nist as nist
+
+        # 每个已选计算文件至少要有一个配对的 CSF。电子数依据 CSF，而非 LSJ 标记。
+        counts = {}
+        for _, path, level, csfs, _, csf_path, _ in self.levels.values():
+            if path not in counts and csfs and csf_path:
+                core_orbs = self.cached(csf_path, mix.csf_core)
+                if not isinstance(core_orbs, Exception):
+                    active = mix.nonrel_config(level._leading_csf[0])
+                    counts[path] = sum(occ for _, occ in [*core_orbs, *active])
+        if set(counts) != set(self.checked_paths()) or len(set(counts.values())) != 1:
+            return ""
+        electrons = next(iter(counts.values()))
+        if electrons < 1:
+            return ""
+        try:
+            data, _ = sessions.read(root)
+            source = self.summary_source(root) if self.summary_source else None
+            jobs = source[0] if source is not None else (data or {}).get("pipeline", [])
+            nuclear = next(job for job in reversed(jobs) if job.get("step") == "rnucleus")
+            z = int(nuclear["vals"]["z"])
+            return nist.spectrum(z, z - electrons)
+        except (OSError, ValueError, StopIteration, KeyError, TypeError):
+            return ""  # 只有结果文件或核电荷不明确时，请用户填写光谱。
 
     def preview_desc(self):
         """缩写设置对话框中用来预览的能级：当前选中的，否则能量最低的。"""

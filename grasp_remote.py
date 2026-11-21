@@ -23,6 +23,7 @@ import grasp_core as core
 import grasp_service as service
 import grasp_session as sessions
 import grasp_summary as summary
+import grasp_workdir as workdir
 from grasp_core import T
 
 PROTOCOL = 1
@@ -31,8 +32,8 @@ MAX_FRAME = 32 << 20
 COMPRESS_AT = 16384
 READ_ONLY = {"hello", "list_dir", "levels", "transitions", "orbitals", "wavefunctions", "composition",
              "run_status", "tail_log", "pipeline", "run_plan", "export_script", "view", "watch", "summary",
-             "transfer_files", "get_pipeline", "preview_upload"}
-MUTATIONS = {"run", "stop", "clear_slurm_record", "create_workdir", "update_workdir"}
+             "transfer_files", "get_pipeline", "preview_upload", "preview_clean"}
+MUTATIONS = {"run", "stop", "clear_slurm_record", "create_workdir", "update_workdir", "clean_workdir"}
 
 
 def pack(data):
@@ -83,7 +84,13 @@ class Operations(service.Service):
             sys.executable if getattr(sys, "frozen", False) else sys.argv[0])
         return dict(protocol=PROTOCOL, version=core.VERSION, executable=os.path.abspath(executable),
                     home=str(Path.home()), server_types=["workstation", "slurm"],
-                    capabilities=["workdir_write_v1", "run_range_v1", "run_settings_v1"])
+                    capabilities=["workdir_write_v1", "run_range_v1", "run_settings_v1", "workdir_clean_v1"])
+
+    def preview_clean(self, directory):
+        return workdir.preview_clean(self.path(directory, directory=True))
+
+    def clean_workdir(self, directory, revision, names, mode):
+        return workdir.clean_workdir(self.path(directory, directory=True), revision, names, mode)
 
     def get_pipeline(self, directory):
         root, data, revision = self.record(directory)

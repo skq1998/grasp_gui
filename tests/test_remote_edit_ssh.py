@@ -78,6 +78,27 @@ def test_real_ssh_example1_in_two_ranges(peer):
 
 
 @pytest.mark.grasp
+def test_real_ssh_example1_reruns_after_cleanup(peer):
+    assert "workdir_clean_v1" in peer.request("hello", dict(protocol=remote.PROTOCOL)).result(60)["capabilities"]
+    cfg, _ = config.load(Path(__file__).resolve().parents[1] / "demos/example1.json")
+    directory = target()
+    created = call(peer, "create_workdir", directory, configuration=cfg)
+    call(peer, "run", directory, revision=created["revision"], accept_logout=True)
+    wait_done(peer, directory)
+    preview = call(peer, "preview_clean", directory)
+    names = sorted(row["name"] for row in preview["classes"]["generated"])
+    assert {"isodata", *(ref["file"] for ref in cfg["reference"])} <= set(names)
+    result = call(peer, "clean_workdir", directory, revision=preview["revision"], mode="move", names=names)
+    assert set(result["processed"]) == set(names) and not result["remaining"] and not result["error"]
+    after = call(peer, "preview_clean", directory)
+    assert not after["classes"]["generated"] and after["backups"][0]["count"] == len(names)
+    call(peer, "run", directory, revision=after["revision"], accept_logout=True)
+    wait_done(peer, directory)
+    for ref in cfg["reference"]:
+        assert energies(peer, directory, ref["file"]) == pytest.approx(ref["energies"], abs=1e-7)
+
+
+@pytest.mark.grasp
 def test_real_ssh_new_fetch_edit_upload_and_direct_reference(peer, tmp_path, grasp_bindir):
     assert shutil.which("rsync"), "Install local rsync for this opt-in acceptance test"
     example, _ = config.load(Path(__file__).resolve().parents[1] / "demos/example1.json")

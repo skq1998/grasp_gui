@@ -179,7 +179,7 @@ class Service:
 
     def export_script(self, directory, slurm=None):
         root, data, _ = self.record(directory)
-        jobs = data.get("pipeline", [])
+        jobs = summary.checked_script_jobs(root, data.get("pipeline", []), self.path)
         if slurm is not None:
             text = core.slurm_script(jobs, slurm)
         else:
@@ -461,6 +461,40 @@ class Service:
             r["branching_ratio"] = abs(r["A"]) / total if total else None
         return dict(transitions=rows[:limit], truncated=len(rows) > limit,
                     branching_basis="computed transitions only")
+
+    def convergence(self, directory, files=None, group=None, reference=None, threshold=1.0, limit=200):
+        import json
+        import grasp_converge as convergence
+
+        if (files is None) == (group is None):
+            raise ValueError(T("请指定有序文件列表或一个态组。"))
+        if type(limit) is not int or not 1 <= limit <= MAX_ROWS:
+            raise ValueError(T("返回能级数须为 1–1000。"))
+        root = self.path(directory, directory=True)
+        self.path(str(root / core.SESSION_FILE))
+        data, _ = sessions.read(root)
+        jobs = (data or {}).get("pipeline", [])
+        if group is not None:
+            if group not in core.GROUPS:
+                raise ValueError(T("请指定有效的态组。"))
+            files = convergence.ordered_files(root, jobs, group, path_check=self.path)
+        if not isinstance(files, list) or any(not isinstance(name, str) for name in files):
+            raise ValueError(T("请指定有序文件列表或一个态组。"))
+        selected = [self.path(str(root / name)).relative_to(root).as_posix() for name in files]
+        layers = convergence.read_layers(root, selected, jobs=jobs, path_check=self.path)
+        result = convergence.analyze(layers, threshold=threshold, reference=reference, limit=limit)
+        # 帧里还有文本版与结构化版本，给两个表示都留出空间。
+        available = 1 << 20
+        for key in ("rows", "splittings"):
+            candidates, result[key] = result[key], []
+            for row in candidates:
+                length = len(json.dumps(row, ensure_ascii=True).encode()) + 1
+                if length > available:
+                    result["truncated"] = True
+                    break
+                available -= length
+                result[key].append(row)
+        return result
 
     def orbitals(self, directory, files=None, limit=200):
         import grasp_wfn as wfn

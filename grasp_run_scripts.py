@@ -162,7 +162,7 @@ def run_text(data, revision, settings):
         lines += [f"# {number}. {_comment(job['title'])}", _step_comment(job),
                   f'if [ "$start" -le {number} ] && [ "$end" -ge {number} ]; then', f"step={number}",
                   core.describe(job, fallback=False), "fi", ""]
-    lines += ["step=0", 'echo "Completed steps $start–$end"', ""]
+    lines += ["step=0", 'echo "Completed steps ${start}–${end}"', ""]
     return "\n".join(lines)
 
 

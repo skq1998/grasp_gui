@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import shlex
+import sys
 import tarfile
 
 import pytest
@@ -38,6 +39,13 @@ class LocalClient:
 
     def environment(self):
         return os.environ.copy()
+
+
+@pytest.fixture
+def linux_installer():
+    if not sys.platform.startswith("linux"):
+        pytest.skip("executes the Linux server installer locally with GNU readlink and /proc")
+    return install.Installer(LocalClient())
 
 
 def test_bundle_checksum_and_unsafe_members(package):
@@ -80,8 +88,8 @@ def test_special_paths_are_arguments():
             install.command(install.PROBE, invalid)
 
 
-def test_install_checksum_failure_never_switches_and_cleans(package, tmp_path):
-    peer = install.Installer(LocalClient())
+def test_install_checksum_failure_never_switches_and_cleans(package, tmp_path, linux_installer):
+    peer = linux_installer
     root = str(tmp_path / "install 'quoted $directory")
     checked = peer.probe(package, root)
     link = Path(checked["link"])
@@ -149,7 +157,7 @@ def test_bundle_accepts_selected_archive_path(package):
     assert install.bundle(package["path"])["sha256"] == package["sha256"]
 
 
-def test_same_version_keeps_previous_owned_version(package, tmp_path):
+def test_same_version_keeps_previous_owned_version(package, tmp_path, linux_installer):
     root = tmp_path / "versions"
     old = root / "2.7.9"
     old.mkdir(parents=True)
@@ -158,7 +166,7 @@ def test_same_version_keeps_previous_owned_version(package, tmp_path):
     link = Path.home() / ".local/bin/grasp_gui"
     link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(old / "grasp_gui-server")
-    peer = install.Installer(LocalClient())
+    peer = linux_installer
     try:
         peer.install(package, str(root))
         peer.install(package, str(root))
@@ -172,11 +180,11 @@ def test_same_version_keeps_previous_owned_version(package, tmp_path):
         peer.remove(str(root))
 
 
-def test_unmanaged_executable_is_never_replaced(package, tmp_path):
+def test_unmanaged_executable_is_never_replaced(package, tmp_path, linux_installer):
     link = Path.home() / ".local/bin/grasp_gui"
     link.parent.mkdir(parents=True, exist_ok=True)
     link.write_text("administrator installation")
-    peer = install.Installer(LocalClient())
+    peer = linux_installer
     try:
         with pytest.raises(RuntimeError, match="unmanaged executable"):
             peer.install(package, str(tmp_path / "install"))
@@ -191,9 +199,9 @@ def test_numeric_upgrade_only(value, current, expected):
     assert install.older_version(value, current) is expected
 
 
-def test_probe_and_remove_missing_root_do_not_create_it(tmp_path):
+def test_probe_and_remove_missing_root_do_not_create_it(tmp_path, linux_installer):
     root = tmp_path / "missing" / "install"
-    peer = install.Installer(LocalClient())
+    peer = linux_installer
     result = peer.probe(root=str(root))
     assert result["root"] == str(root) and result["versions"] == []
     assert not root.parent.exists()

@@ -63,6 +63,9 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 | *Settings (设置)* | *Allow AI agents via MCP (允许 AI agent 通过 MCP 使用本程序)*: checkable, off by default. Enabling shows a selectable explanation and Claude/Codex/Gemini client configurations; disabling rejects subsequent MCP tools, while background runs continue. 设置项默认关闭；勾选后弹出说明和可复制配置，取消后后台计算继续。See [MCP](MCP.md). |
 | *Language / 语言* | 中文, English (rebuilds the interface; remembered) |
 
+On macOS, Qt maps the documented Ctrl shortcuts to Command. Quit is in the system application menu.
+macOS 上由 Qt 将文档中的 Ctrl 快捷键映射为 Command，退出操作位于系统应用菜单。
+
 ### External session changes / 外部记录修改
 
 Before saving and on focus return, the calculation panel checks whether another program changed its
@@ -302,6 +305,15 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
 * **rmcdhf NSIC**: *Modify NSIC (修改 NSIC)* enables a non-negative count of extra first-cycle orbital improvements; unchecked uses the program default.
   EOL defaults: `(NW-NFIX)/4` serial, `4+(NW-NFIX)/4` MPI, or 0 with varied correlation orbitals; AL: `2+(NW-NFIX)/4` (integer division).
   The page description explains the defaults; older configurations import with this option unchecked and no warning.
+* **Levels per symmetry block / 各对称块能级**. In `rmcdhf` and `rci`, enter one line per block in the order in the
+  CSF file. A blank line or `-` skips a block. Use `-` to skip a final block because trailing blank lines are ignored.
+  Select levels in at least one block. Input checks and script export compare the row count with an existing
+  CSF file when the selected steps will use that file. The application also checks the CSF immediately before
+  launching either program, including when an earlier step in the same run generated it.
+
+  在 `rmcdhf` 和 `rci` 中按 CSF 文件的块顺序填写，每块一行。空行或 `-` 表示跳过。末尾的空行会被忽略，跳过末块时请写 `-`。
+  至少在一个块中选择能级。预检与导出脚本时，若所选步骤将使用现有的 CSF 文件，会核对填写的行数。
+  程序启动前也会核对，包括本次运行中由前序步骤生成的 CSF 文件。
 * **rhfszeeman95**: default-settings mode only. *State name (态名称)* is an ASCII basename of at most 23 characters;
   *Mixing coefficients from CI (混合系数来自 CI 计算)* selects `.cm` rather than `.m`.
   *Compute off-diagonal matrix elements (计算非对角矩阵元)* is checked by default and additionally writes
@@ -489,6 +501,50 @@ or `GRASP_RUN_NICE` in the environment to override settings. MPI launcher prefix
 |---|---|
 | ![传输默认保留脚本](images/zh_run_script_transfer.png) | ![Generated scripts unchecked for transfer](images/en_run_script_transfer.png) |
 
+### Build configurations from a shell model / 从壳层模型构造组态
+
+In **rcsfgenerate → Build from shell model…**, enter an element symbol or atomic number and either an ion
+charge or an electron count, then load the ground state. The initial element comes from the rnucleus form.
+To move one electron, click an occupied shell and then a shell with a vacancy. The relativistic view divides
+the occupation into the smaller- and larger-`j` subshells for illustration. Duplicate a reference to explore a
+different occupation. References with unlike parity generate separate lists.
+
+Set an excitation marker on each occupied shell (`i`, `*`, or a minimum occupation). Choose the core, the
+highest active `n` for each `l`, the 2J limits, and the number of excitations. A suggested core must be fully
+occupied in every reference and leave at least one electron outside it. **Apply to program tab** fills the
+existing fields after showing the exact GRASP input. **Append** keeps the original core so earlier lists
+retain their meaning. Running a calculation still requires the regular run action.
+
+在 **rcsfgenerate → 从壳层模型构造…** 输入元素符号或原子序数，再输入离化度或电子数，点击载入基态。初始元素取自
+rnucleus 程序页。先点有电子的来源壳层，再点有空位的目标壳层，每次移动一个电子。相对论视图先填较小的 `j`，
+只用于展示占据。复制参考后可构造其他占据。混合宇称会拆成独立列表。
+
+为各壳层选择激发标记（`i`、`*` 或最少占据数），并选择闭壳芯、各 `l` 的最大活跃 `n`、2J 和激发数。建议的芯在所有
+参考中均为满占据，且至少留一个芯外电子。“填回程序页”使用现有字段，确认前显示准确的 GRASP 输入。“追加”沿用现有闭壳芯，
+以保留原列表含义。需要通过正常运行入口执行计算。
+
+The offline snapshot contains 6019 element/charge rows from NIST ASD version 5.12, downloaded on 2026-11-17.
+It stores ground-shell occupations, terms, and ionization energies where listed. Missing ground states use the
+Madelung order (ascending `n+l`, then `n`) and are labeled **estimated**. An estimate supplies no energy or
+term. **Settings → About GRASP GUI…** shows the data citation.
+
+The ground term uses spectroscopic notation in plain text, such as `9D°2`. The ionization energy includes the published
+uncertainty when available. Theoretical and semi-empirical values are labeled using the ASD table notes.
+
+离线快照于 2026-11-17 下载自 NIST ASD 5.12，含 6019 个元素和离化度条目，保存该表给出的基态占据、项和电离能。
+缺少基态数据时依次按 `n+l`、`n` 由低到高填充，界面标注“推算”，且不推算基态项和电离能。“设置 → 关于 GRASP GUI…”
+显示引用。生成脚本为 `tools/make_shell_snapshot.py`。程序运行期间只读离线快照。
+
+基态项按光谱学的纯文本写法显示，例如 `9D°2`。电离能附有表中提供的不确定度，理论值和半经验值按 ASD 表注标明。
+
+[Source / 来源: NIST ground states and ionization energies](https://physics.nist.gov/PhysRefData/ASD/ionEnergy.html)
+· [ASD table notes / 表注](https://physics.nist.gov/PhysRefData/ASD/Html/iehelp.html)
+· [NIST ASD DOI](https://doi.org/10.18434/T4W30F)
+
+| 中文 | English |
+|---|---|
+| ![壳层模型](images/zh_shell_model.png) | ![Shell model](images/en_shell_model.png) |
+
 ### Background runs and logging out / 后台运行与退出登录 (KillUserProcesses)
 
 Background runs survive closing the window and an ssh disconnect on most systems. On a machine where systemd-logind
@@ -580,30 +636,44 @@ session formats are unchanged.
 
 ### Clear a working directory / 清空工作目录
 
-*Program output → Working directory → Clear working directory… (程序输出 → 工作目录 → 清空工作目录…)* lists items to
-delete (left, uncheck to retain), retained items (right), and the selected count and total size. Sizes use B / KB /
-MB / GB with one decimal place. *All / None (全选 / 全不选)* above the list changes only deletable items. Results-only
-mode is the default: preserve the session, its backups, `.grasp_gui_inputs.json`, and the attached inputs named in
-that list; run-state/log files and `.grasp_gui/` caches can be removed. Import writes the input list as a JSON array
-of validated basenames, including an empty array when there are no attachments. Updates add new attached names to
-the existing list without dropping earlier inputs. The list survives restarting the GUI. For an old directory
-without a list, ordinary items remain unchecked until explicitly selected. A malformed list is reported and
-results-only cleanup is refused. Shared configuration and session formats are unchanged.
-*Delete everything (全部删除)* includes inputs and the record, and requires typing the directory name. Deletion is
-permanent, including selected subdirectories; symbolic links are only unlinked. Root, home and system directories
-are refused; a directory without a session requires a separate confirmation. Clearing everything also clears the
-visible pipeline, and closing the window does not recreate the removed record.
-Refusal before deletion begins (for example, an active run) reports only its reason. Errors after deletion
-begins warn that some selected items may already have been deleted.
+Open **Program output → Working directory → Clear working directory…**. Only files generated by the saved or
+current pipeline are selected initially. The **External inputs** category includes attached inputs from
+`.grasp_gui_inputs.json` and files read before a step creates them. Selecting one displays a warning.
+Unrecognized files, including undeclared custom-command outputs, start unchecked. Internal files, including run
+records, are hidden in this mode.
 
-“清空工作目录…”先列出删除与保留项、总数量和大小（B / KB / MB / GB，保留一位小数），可取消勾选或用“全选 / 全不选”
-批量选择可删除项；默认只删结果，保留工作目录记录、备份、输入清单及清单中的附带输入，运行状态、日志和缓存可以清理。
-导入时把经校验的附带输入基名写入 `.grasp_gui_inputs.json`（无附带输入时为空数组）；更新时合并新旧输入名，恢复记录不移除输入，
-重启后仍可自动选中清单之外的结果。没有清单的旧目录不猜测输入，普通项目默认不勾选；损坏的清单会报错并拒绝只删结果。
-“全部删除”包括输入、清单和记录，必须输入目录名确认；删除不能恢复，选中的子目录会递归删除，
-符号链接只删除链接本身。根目录、家目录、系统目录禁止清空；没有工作目录记录的目录另行确认。
-全部删除后界面流程也清空，关闭窗口不会重新生成记录。
-开始删除前被拒绝（例如仍有任务运行）时只显示原因；开始删除后才发生的错误才提示可能已有部分项目被删除。
+Cleanup recognizes serial and MPI angular coefficient files regardless of the current process count. It checks the
+recorded MPI working directory, or the current setting if absent, and also checks the default `tmp_mpi` directory.
+
+The default moves selected files to `.grasp_gui_cleaned/<timestamp>/` and keeps their relative paths.
+Choose **Delete permanently** to free space. The dialog shows the directory, count, total size, and method before
+asking for confirmation, with **No** selected by default. The backup list shows time, file count, and size.
+Select a backup to delete it after confirmation. Cleanup refuses active background and Slurm runs, including
+unconfirmed scheduler states. A failure during cleanup lists the processed and remaining items. Symbolic links
+are handled as links. Mount points and special files cannot be cleaned.
+
+**Run all after cleanup** enters the normal run workflow after successful cleanup. The last run label shows the
+cleanup time if cleanup happened later. Permanent cleanup stores the time in an empty timestamped `.deleted`
+directory under `.grasp_gui_cleaned/`. Ordinary cleanup preserves the pipeline and run records. Select
+**Delete all (including inputs and internal files)** and type the directory name to use the original full deletion.
+A directory without a work record requires separate confirmation. When the full deletion removes the record,
+the visible pipeline clears and closing the window leaves the record absent.
+
+计算页从 **程序输出 → 工作目录 → 清空工作目录…** 打开。初始只勾选流程生成的文件。附带输入和首次读取前尚未由流程生成的
+文件归入“外部输入”，勾选时会提示重跑风险。未知文件（包括自定义命令未声明的输出）默认不勾选，内部文件和运行记录不显示。
+清理识别串行和 MPI 角系数文件。MPI 目录优先使用工作记录的设置，缺少时使用当前设置，同时检查默认的 `tmp_mpi`。
+
+默认将文件移到 `.grasp_gui_cleaned/<时间>/`，保持相对路径。要释放空间可选“直接删除”。最终确认列出目录、数量、大小
+和方式，默认选“否”。备份列表显示时间、数量和大小，选中后可以确认删除。后台运行中或 Slurm 作业未结束、状态未知时
+拒绝清理。中途出错时列出已处理和未处理项目。符号链接只处理链接本身，挂载点和特殊文件不可清理。
+
+勾选“清理后运行全部”会在清理成功后进入正常运行流程。如果清理晚于上次运行，状态栏附上清理时间。永久删除只在备份
+目录下留下带时间的空 `.deleted` 标记目录。常规清理保留流程和运行记录。“全部删除”仍可用，包含输入与内部文件并要求
+输入目录名。没有记录的目录需另行确认。全部删除若移除了记录，界面流程随之清空，关闭窗口也不会重新写出记录。
+
+| 中文 | English |
+|---|---|
+| ![清理文件和备份](images/zh_workdir_cleanup.png) | ![Cleanup files and backups](images/en_workdir_cleanup.png) |
 
 ### Export configuration (导出配置)
 
@@ -760,6 +830,47 @@ remote path. Older servers without these fields use `unknown` for `.cm`, with th
 
 Screenshots / 截图：[English](images/en_energy_zero.png) / [中文](images/zh_energy_zero.png)。
 
+### Compare NIST levels / 对照 NIST 能级
+
+Select the calculation files in **Levels**, then open **Compare NIST levels…**. If the pipeline has an
+rnucleus step and the selected CSF configurations agree on the number of electrons, the comparison starts
+with that spectrum. You can type a spectrum such as `Li I` or `Fe XV`.
+
+**Fetch from NIST** connects to `physics.nist.gov` only when clicked. A cached spectrum is reused unless
+**Refresh cache** is checked. The request uses the HTTPS proxy configured in the environment, if set.
+For offline use, import the NIST CSV or tab-delimited output with energy in cm⁻¹.
+The date shown records when this copy was fetched or imported. The dialog shows the NIST citation.
+
+**Levels** has adjacent columns for calculated and NIST levels. The default calculated zero is the lowest
+chosen calculated level. Select another reference above the diagram to change that zero. The experimental
+column uses the lowest NIST level as zero. **Level comparison table** compares equal J and parity, ranking
+candidates by known configuration and LS term. The comparison allows omitted filled inner shells in the NIST
+configuration. Ties and a candidate shared by two calculated states stay marked for review. Select a row
+and choose its experimental level to match it manually. Applied matches are saved in the working directory
+as `.grasp_gui/nist-matches.json`. If the calculated energy or leading component changes, or the matched
+level is missing from refreshed NIST data, the row is marked **Review match**. Apply an experimental level
+again to confirm it, or apply **Automatic match** to clear the saved choice. **Export comparison CSV…**
+includes both energies, the difference in cm⁻¹ and the relative error when the experimental energy is nonzero.
+
+先在 **能级图** 勾选计算文件，再点 **NIST 能级对照…**。流程包含 rnucleus 且各所选文件的 CSF 电子数一致时自动填光谱。
+也可输入 `Li I` 或 `Fe XV` 等光谱。只有点击“从 NIST 获取”才连接 `physics.nist.gov`。同一光谱优先读取缓存，
+勾选“刷新缓存”可主动重新下载。请求可使用环境变量中设置的 HTTPS 代理。离线时可导入能量单位为 cm⁻¹ 的 NIST CSV 或制表符文件。
+对话框列出数据下载或导入日期及引用。
+
+能级图的两栏对应计算与实验。计算能量默认以所选计算结果的最低能级为零，可改选参考。实验列以 NIST 最低能级为零。
+对照表按 J 和宇称找候选，再用已知组态和谱项排序，允许 NIST 省略已占满的内层壳。多个候选并列、或两个计算态匹配到同一个
+实验候选时标为待核对。选中一行后可手动配置对应能级，应用后保存在工作目录的 `.grasp_gui/nist-matches.json`。
+计算能量或主成分变化，或刷新后 NIST 数据缺少原配对能级时，该行标为“待核对”。重新选择并应用实验能级可确认配对，
+选择“自动匹配”并应用可清除已保存的配对。可导出 CSV，含两侧能量、cm⁻¹ 差值和非零实验能量的相对误差。
+
+[NIST ASD Energy Levels Form / 查询表单](https://physics.nist.gov/PhysRefData/ASD/levels_form.html)
+
+Fe XV screenshots / 截图：
+[Levels](images/en_nist_levels.png) / [能级图](images/zh_nist_levels.png) ·
+[Comparison table](images/en_nist_comparison.png) / [对照表](images/zh_nist_comparison.png)。
+
+[Reviewing a saved Li I match](images/en_nist_match_review.png) / [核对已保存的 Li I 配对](images/zh_nist_match_review.png)。
+
 ### Transitions on demand / 计算跃迁
 
 For the selected pair: header `upper → lower`, ΔE and λ; a plan (whether `rbiotransform` is needed — skipped when both
@@ -870,6 +981,37 @@ Screenshots / 界面截图（本地协议替身，不连接真实 SSH）：
 | No input files / 不传输入 | [只写流程](images/zh_upload_pipeline_only.png) | [Pipeline only](images/en_upload_pipeline_only.png) |
 | Update preview / 更新预览 | [更新](images/zh_upload_update.png) | [Update](images/en_upload_update.png) |
 | Completion / 完成后 | [打开远程窗口](images/zh_upload_complete.png) | [Open remote window](images/en_upload_complete.png) |
+
+## Convergence panel / 收敛面板
+
+Open **Convergence** in the last main-window tab with **Ctrl+4**. The **Window** menu also opens it in a separate
+window. Switching the main working directory cancels the previous read and loads the new directory in the background.
+
+Choose a state group to list its existing mixing files in calculation order. Check the orbital layers to include,
+use **Move up** and **Move down** to change their order, or choose other mixing files in the working directory.
+Select a reference level or use the lowest level of each layer. The threshold starts at 1 cm⁻¹ and follows the
+energy unit from the Levels tab.
+
+Each layer column shows excitation energy and its increment. Hover over a cell to see the leading CSF, coupling
+and purity. The last columns show the final total-energy increment, ratio, estimated remainder, purity and
+status. The fine-structure view compares splittings and increments. The layer header tooltip shows the available
+SCF log details. The logarithmic plot can show only selected rows. **Copy as text** and **Export CSV** use the same
+filtered levels and report excitation energies and increments in cm⁻¹.
+
+主窗口最后一页为“收敛”，可用 **Ctrl+4** 打开。“窗口”菜单也可在独立窗口打开收敛面板。切换主工作目录时会撤销旧的读取，
+并在后台读取新目录。
+
+选择态组后，现有混合系数文件按计算顺序排列。勾选要比较的轨道层，用“上移”和“下移”调整顺序，也可选择工作目录中的
+其他混合系数文件。可指定参考能级或采用各层最低能级。阈值默认为 1 cm⁻¹，显示单位沿用能级图设置。
+
+各层列显示激发能和增量，悬停可看主 CSF、耦合和纯度。末尾各列显示最终总能量增量、比值、余量估计、纯度和状态。
+可切换到精细结构视图比较分裂值及增量。悬停在层表头可看已有的 SCF 日志信息。对数图可仅绘制选中态。
+“复制为文本”和“导出 CSV”使用同一批筛选后的能级，以 cm⁻¹ 报告激发能和增量。
+
+| 中文 | English |
+| --- | --- |
+| ![主窗口的收敛页](images/zh_convergence_tab.png) | ![Convergence tab in the main window](images/en_convergence_tab.png) |
+| ![Fe XV 收敛面板](images/zh_convergence.png) | ![Fe XV convergence panel](images/en_convergence.png) |
 
 ## Direct server configuration import / 直接导入到服务器
 

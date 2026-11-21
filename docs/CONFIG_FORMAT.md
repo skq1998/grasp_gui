@@ -85,6 +85,13 @@ Missing fields retain the existing default behavior.
 选项值必须使用 [STEPS.md](STEPS.md) 中列出的代码。导入时遇到未知代码会报告步骤、字段、原值和可用代码并拒绝导入。
 兼容 `"5 标准 (EOL)"` 这类旧写法，按首个代码 `5` 读取。缺少字段时仍使用默认值。
 
+For `rmcdhf` and `rci`, `levels` has one row per symmetry block in CSF order. An empty row or `-` skips its
+block. Use `-` for a skipped final block because trailing blank rows are ignored. Older configurations with
+leading or interior blank rows now keep those rows as skipped blocks.
+
+`rmcdhf` 和 `rci` 的 `levels` 按 CSF 块顺序填写，每块一行。空行或 `-` 表示跳过。末尾空行会被忽略，跳过末块请写 `-`。
+旧配置中位于开头和中间的空行，现在也会保留为跳过指定块。
+
 ### Name lengths / 名称长度
 
 GRASP reads state and file names into fixed-length character variables. A longer name is cut off silently, and

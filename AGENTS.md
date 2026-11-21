@@ -110,7 +110,14 @@ GRASP_SLOW=1 GRASP_BINDIR=… python3 -m pytest tests      # 全部算例 (约�
 - 依赖、打包 (`build.sh`)、CI；
 - 新增标签页、菜单或改变主窗口布局。
 
-## 10. 文档
+## 10. 联网原则
+
+- 桌面程序只有在用户明确点击能级页的 **从 NIST 获取** 时才请求 NIST。只允许 HTTPS 连接 `physics.nist.gov`，
+  可经用户在环境变量中设置的 HTTPS 代理连接。请求只包含光谱和输出选项。不在后台联网、检查更新或发送统计信息。
+- 缓存读取、手动导入、默认能级显示均离线。服务器版、远程分析服务端、MCP 和命令行不发出 NIST 请求。
+- 只允许一次 NIST 请求同时运行。用户可主动刷新，也可以在无网环境从 CSV 或制表符文件导入。
+
+## 11. 文档
 
 - 改了界面：更新 `docs/INTERFACE.md` (中英文两部分)；`README.md` 只放简短的功能列表，不写细节。
 - 改了程序页的字段：`python3 grasp_config.py steps > docs/STEPS.md` (有测试检查是否同步)。

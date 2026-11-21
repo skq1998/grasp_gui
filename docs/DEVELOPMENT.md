@@ -432,6 +432,16 @@ CI、非 CI 的常数表部分 (A、B、g_J、delta g_J、total g_J) 均与 rhfs
 `--workers 1/2/4` 可以只测一种进程数，默认遵守小文件串行阈值；`--force-parallel` 用于测量忽略阈值后的启动开销，
 输出同时给出实际采用的阈值。首次扫描仍须读过源文件，后续打开和交互复用索引与摘要。
 
+## 能级收敛判据 (#35)
+
+层按保存流程的输出顺序或显式提供的文件顺序比较。先按 J 和宇称划分，再比较主 CSF 的组态与耦合文本。
+唯一 LSJ 标记可以帮助区分同组态；主成分互换时也接受双向唯一的主要成分证据。同一主 CSF 有多个候选时，
+按每层的能量次序配对并标为不唯一。无法对应的能级保留，缺层处不计算增量。
+
+每层以最低能级或选定的参考态计算激发能。主判据是相邻层的激发能增量，另列总能量增量。
+两次连续增量的比值在 0 到 1 之间时给出几何级数剩余量的粗估。纯度为最高权重的 CSF，主成分改变独立标记。
+精细结构分裂按同组态、谱项和宇称的相邻 J 计算。自洽迭代摘要复用 `grasp_summary.scf_log`，只有可对应的日志参与。
+
 ## 测试方法
 
 自动测试在 `tests/` 中 (`python3 -m pytest tests`，GitHub Actions 对每个 PR 运行)：算例的配置检查和生成脚本的标准结果
@@ -511,6 +521,35 @@ GUI 与 MCP 共用记录写入层 `grasp_session.py`：SHA-256 修订号只在 R
 异步 loader，复用勾选/复制/保存，桌面按编号撤销旧请求的接收并忽略迟到回答。配置可用性由服务器返回，保存默认选本机家目录。
 协议和操作限制见 [REMOTE.md](REMOTE.md)。
 
+## Apple Silicon macOS source setup / Apple Silicon macOS 源码运行
+
+Use an arm64 Python 3.10–3.12 installation from Homebrew or python.org.
+
+用 Homebrew 或 python.org 提供的 arm64 Python 3.10–3.12，安装依赖后从源码启动。
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+python grasp_gui.py
+```
+
+The native Qt desktop uses system fonts and keeps settings in `~/.config/grasp_gui.json`. The macOS
+arm64 CI job runs the offscreen suite without building GRASP. The Linux tests continue to cover real
+GRASP references. macOS users can view their own files or connect to a Linux server.
+
+macOS 原生 Qt 使用系统字体，设置仍放在 `~/.config/grasp_gui.json`。arm64 CI 用 offscreen 运行不依赖 GRASP 的测试。
+Linux 继续校验真实 GRASP 的参考能量。macOS 可查看本机文件，也可连接 Linux 服务器执行计算。
+
+On macOS the background process uses a filesystem socket under `~/Library/Caches/grasp_gui/bg/` in
+a directory restricted to its owner. If the encoded socket path exceeds 103 bytes, it uses `/tmp/grasp_gui-<uid>/`
+with the same directory checks. The listener holds an exclusive lock while serving and removing stale sockets.
+Linux continues to use abstract sockets.
+
+macOS 后台进程使用 `~/Library/Caches/grasp_gui/bg/` 下的文件套接字，目录只允许属主访问。套接字路径编码后超过
+103 字节时，改用 `/tmp/grasp_gui-<uid>/` 并执行相同的目录检查。监听期间持有排他锁，清理旧套接字也必须持锁。
+Linux 继续使用抽象套接字。
+
 ## 分支与后续计划
 
 - **V1**：停在 v1.3.0，不再更新；GitHub 上保留分支 `v1`（指向 v1.3.0）。
@@ -548,3 +587,5 @@ GUI 与 MCP 共用记录写入层 `grasp_session.py`：SHA-256 修订号只在 R
     移位、真空极化、自能。需要这两个程序的程序页，并在能级图中显示各项修正。作者注明仍在开发中。GRASP2018 自带 `rci` 中的真空极化和
     自能估计已在 V2 中支持。
   - **grasp-continuum**：连续态计算。
+
+- **macOS**：面向 Apple Silicon (arm64)，先支持源码运行。未签名的应用打包与发布另开议题，服务器端安装沿用 #19。

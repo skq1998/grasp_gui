@@ -37,6 +37,21 @@ jobs:
       - run: pip install "pyside6-essentials>=6.8.3,<6.9" pytest
       - run: python -m pytest tests -ra
 
+  macos-arm64:
+    runs-on: macos-15
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Check Apple Silicon runner
+        run: test "$(uname -m)" = arm64
+      - run: pip install "pyside6-essentials>=6.8.3,<6.9" pytest
+      - run: python -m pytest tests -ra -m 'not grasp'
+
   grasp:
     runs-on: ubuntu-24.04
     steps:

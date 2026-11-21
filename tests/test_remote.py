@@ -80,6 +80,56 @@ def test_protocol_no_mcp_permission_pipeline_and_results(tmp_path):
         peer.close()
 
 
+def test_protocol_cleanup_preview_move_and_revision(tmp_path):
+    config.install(document(), tmp_path)
+    (tmp_path / "isodata").write_text("generated")
+    (tmp_path / "notes").write_text("keep")
+    directory = str(tmp_path)
+    peer = Peer()
+    try:
+        assert "workdir_clean_v1" in peer.call("hello", protocol=1)["result"]["capabilities"]
+        preview = peer.call("preview_clean", directory=directory)["result"]
+        assert {row["name"] for row in preview["classes"]["generated"]} == {"isodata"}
+        assert {row["name"] for row in preview["classes"]["unknown"]} == {"notes"}
+        params = dict(directory=directory, names=["isodata"], mode="move")
+        assert peer.call("clean_workdir", revision="old", **params)["error"]
+        result = peer.call("clean_workdir", revision=preview["revision"], **params)["result"]
+        assert result["processed"] == ["isodata"] and not result["remaining"] and not result["error"]
+        updated = peer.call("preview_clean", directory=directory)["result"]
+        assert not updated["classes"]["generated"] and updated["revision"] == preview["revision"]
+        assert updated["backups"][0]["name"] == result["backup"]
+        assert (tmp_path / result["backup"] / "isodata").read_text() == "generated"
+        assert (tmp_path / "notes").read_text() == "keep"
+    finally:
+        peer.close()
+
+
+def test_server_cleanup_uses_recorded_mpitmp_and_ignores_saved_np(tmp_path, monkeypatch):
+    directory = tmp_path / "calc"
+    directory.mkdir()
+    step = config.STEPS["rangular"]
+    jobs = [step.job(step.defaults())]
+    assert core.save_session(str(directory), dict(pipeline=jobs, mpitmp="recorded"))
+    expected = {"mcp.30", "tmp_mpi/000/mcp000.30", "recorded/008/mcp008.37"}
+    for name in expected | {"current/000/mcp000.30"}:
+        target = directory / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("angular coefficients")
+    home = tmp_path / "home"
+    prefs = home / ".config/grasp_gui.json"
+    prefs.parent.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    for np in (1, 8):
+        prefs.write_text(json.dumps(dict(np=np, mpitmp="current")))
+        peer = Peer()
+        try:
+            preview = peer.call("preview_clean", directory=str(directory))["result"]["classes"]
+            assert {row["name"] for row in preview["generated"]} == expected
+            assert {row["name"] for row in preview["unknown"]} == {"current/000/mcp000.30"}
+        finally:
+            peer.close()
+
+
 def test_streamed_radial_properties_match_existing_reader(tmp_path):
     path = tmp_path / "state.w"
     wavefunction(path)
@@ -211,6 +261,70 @@ def test_remote_readonly_pipeline_and_custom_confirmation(tmp_path, qapp, monkey
     assert not panel.run_button.isEnabled() and not panel.run_selected.isEnabled()
 
 
+@pytest.mark.gui
+@pytest.mark.parametrize("server_type", ["workstation", "slurm"])
+@pytest.mark.parametrize("lost", [False, True])
+def test_remote_cleanup_confirmation_refresh_and_run(tmp_path, qapp, monkeypatch, server_type, lost):
+    from calc_panel import ClearDialog
+    from remote_panel import RemoteCalculation
+    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtWidgets import QDialog, QMessageBox
+
+    config.install(document(), tmp_path)
+    (tmp_path / "isodata").write_text("result")
+
+    class Source(QObject):
+        push = Signal(object)
+        notice = Signal(str)
+
+        def __init__(self):
+            super().__init__()
+            self.server_type = server_type
+            self.server = {"capabilities": [], "server_types": [server_type]}
+            self.calls = []
+
+        def submit(self, method, args, callback, **kwargs):
+            self.calls.append((method, args))
+            if method == "watch":
+                callback(dict(text="", state=None), None)
+                return
+            operation = remote.Operations()
+            reply = getattr(operation, method)(**dict(args, directory=str(tmp_path)))
+            if method == "clean_workdir" and lost:
+                callback(None, ssh.UnknownOutcome("connection lost"))
+            else:
+                callback(reply, None)
+
+    source = Source()
+    panel = RemoteCalculation(source, str(tmp_path))
+    assert not panel.clean_button.isEnabled() and "更新服务器版" in panel.clean_button.toolTip()
+    source.server["capabilities"].append("workdir_clean_v1")
+    panel.show_state(None)
+    assert panel.clean_button.isEnabled()
+    warnings, runs, selections = [], [], []
+    monkeypatch.setattr(panel, "prepare_run", lambda start: runs.append(start))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args[2]))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Yes)
+
+    def choose(dialog):
+        selections.append(dialog.selected_names())
+        if dialog.selected_names():
+            dialog.run_after.setChecked(True)
+            dialog.accept()
+            return dialog.result()
+        return QDialog.Rejected
+
+    monkeypatch.setattr(ClearDialog, "exec", choose)
+    panel.clean_button.click()
+    methods = [method for method, _ in source.calls]
+    assert methods.count("clean_workdir") == 1
+    assert methods.count("preview_clean") == (2 if lost else 1)
+    assert selections == ([{"isodata"}, set()] if lost else [{"isodata"}])
+    assert runs == ([] if lost else [1])
+    assert bool(warnings) == lost
+    assert not (tmp_path / "isodata").exists()
+
+
 def test_user_scope_requires_explicit_logout_choice(tmp_path, monkeypatch):
     import grasp_bg as bg
     import grasp_session as sessions
@@ -242,7 +356,8 @@ def test_user_scope_requires_explicit_logout_choice(tmp_path, monkeypatch):
     assert command[0][1]["stdin"] == subprocess.DEVNULL
 
 
-@pytest.mark.parametrize("method", ["list_dir", "run", "clear_slurm_record", "create_workdir", "update_workdir"])
+@pytest.mark.parametrize("method", ["list_dir", "preview_clean", "run", "clear_slurm_record", "create_workdir",
+                                   "update_workdir", "clean_workdir"])
 def test_disconnect_retries_only_reads_and_bounds_reconnects(tmp_path, method):
     marker = tmp_path / "called"
     code = "\n".join([
@@ -262,7 +377,7 @@ def test_disconnect_retries_only_reads_and_bounds_reconnects(tmp_path, method):
                         cache=ssh.Cache(method, root=tmp_path / "cache"))
     try:
         future = client.request(method, dict(directory=str(tmp_path)))
-        if method != "list_dir":
+        if method not in remote.READ_ONLY:
             with pytest.raises(ssh.UnknownOutcome):
                 future.result(timeout=15)
             assert client.request("run_status", dict(directory=str(tmp_path))).result(timeout=15)["state"] is None

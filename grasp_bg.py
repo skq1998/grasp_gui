@@ -6,19 +6,22 @@
     请求        RUN_REQUEST：界面写入的任务和运行设置，运行进程读取后删除
     状态        RUN_STATE：pid、主机、开始 / 结束时间、各步标题、当前步、结果 (running / ok / failed / stopped)
     输出        RUN_LOG：全部输出 (纯文本)；界面连不上运行进程时 (如在另一台登录节点上打开目录) 读这个文件
-    通道        Linux 抽象命名空间的 Unix 套接字 (不在目录中留下文件)，名称由用户和目录决定，同时用作锁：
+    通道        Linux 使用抽象 Unix 套接字。macOS 使用私有目录中的 Unix 套接字和锁文件。
                 一个目录同一时间只有一个运行进程。
 
 通道上的消息每行一个 JSON：运行进程 -> 界面 {"s": 文本, "tag": 标记}、{"step": i}、{"done": 结果}；
 界面 -> 运行进程 "stop"。界面连上时先收到最近的输出 (HISTORY 字节以内)，然后是实时输出，不丢也不重复。
 """
 
+import fcntl
 import hashlib
 import json
 import os
+from pathlib import Path
 import pwd
 import re
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -33,10 +36,24 @@ RUN_LOG = ".grasp_gui_run.log"
 HISTORY = 1 << 20              # 界面连上时补发的最近输出 (字节)
 ATTACH_WAIT = 10               # 运行进程开始计算前等待启动它的界面连上的秒数 (与界面的 connect 超时相同)
 RESULTS = ("ok", "failed", "stopped")
+MACOS_SOCKET_LIMIT = 103
+MACOS_SOCKET_TEMP = Path("/tmp")
 
 
 def address(workdir):
-    """运行进程的通道名 (抽象命名空间)：按用户和目录区分。"""
+    """按用户和工作目录选择监听地址。"""
+    if core.IS_MACOS:
+        name = hashlib.sha256(os.fsencode(os.path.realpath(workdir))).hexdigest()[:16] + ".sock"
+        path = Path.home() / "Library/Caches/grasp_gui/bg" / name
+        if len(os.fsencode(path)) > MACOS_SOCKET_LIMIT:
+            path = MACOS_SOCKET_TEMP / f"grasp_gui-{os.getuid()}" / name
+        if len(os.fsencode(path)) > MACOS_SOCKET_LIMIT:
+            raise OSError(T("后台套接字路径过长：{path}", path=path))
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        info = path.parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise PermissionError(T("后台套接字目录不安全：{path}", path=path.parent))
+        return str(path)
     h = hashlib.sha1(os.path.realpath(workdir).encode()).hexdigest()[:20]
     return f"\0grasp_gui-{os.getuid()}-{h}"
 
@@ -121,6 +138,8 @@ def logout_kills():
     """登录会话结束 (ssh 断开、退出登录) 时，systemd-logind 是否会结束本会话中的全部进程，包括后台计算：
     KillUserProcesses=yes、当前用户不在 KillExcludeUsers 中、且本进程在登录会话的 scope (session-*.scope) 中。
     无法确定时为 False。说明见 docs/INTERFACE.md。"""
+    if not core.IS_LINUX:
+        return False
     try:
         with open("/proc/self/cgroup", encoding="utf-8") as f:
             if not re.search(r"/session-[^/]*\.scope", f.read()):
@@ -145,6 +164,8 @@ def command():
 
 def launch(workdir, jobs, cfg, started_by=None, user_scope=False, stderr=None):
     """在后台启动运行进程。返回 Popen (界面用它回收进程)；目录中已有运行进程时抛出 RuntimeError。"""
+    if core.IS_MACOS:
+        address(workdir)  # 启动时向调用方报告目录检查失败；查询状态时仍可回退到日志。
     probe = connect(workdir)
     if probe:
         probe.close()
@@ -283,14 +304,7 @@ class Server:
         self.listener.close()
 
 
-def serve(workdir):
-    """运行进程的主体：读取请求，执行，结束后退出。返回退出码。"""
-    workdir = os.path.abspath(workdir)
-    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        listener.bind(address(workdir))        # 同一目录已有运行进程时失败
-    except OSError:
-        return 1
+def _serve_request(workdir, listener):
     listener.listen(8)
     try:
         with open(os.path.join(workdir, RUN_REQUEST), encoding="utf-8") as f:
@@ -306,6 +320,50 @@ def serve(workdir):
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
     server.run()
     return 0
+
+
+def _serve_macos(workdir, listener, endpoint):
+    path = Path(endpoint)
+    try:
+        lock = os.open(path.with_suffix(".lock"), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    except OSError:
+        return 1
+    try:
+        if not stat.S_ISREG(os.fstat(lock).st_mode):
+            return 1
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                if not stat.S_ISSOCK(info.st_mode):
+                    return 1
+                path.unlink()
+            listener.bind(endpoint)
+        except OSError:
+            return 1
+        try:
+            return _serve_request(workdir, listener)
+        finally:
+            listener.close()
+            path.unlink(missing_ok=True)
+    finally:
+        os.close(lock)
+
+
+def serve(workdir):
+    """运行进程的主体：读取请求，执行，结束后退出。返回退出码。"""
+    workdir = os.path.abspath(workdir)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+        if core.IS_MACOS:
+            return _serve_macos(workdir, listener, address(workdir))
+        try:
+            listener.bind(address(workdir))    # 同一目录已有运行进程时失败
+        except OSError:
+            return 1
+        return _serve_request(workdir, listener)
 
 
 if __name__ == "__main__":

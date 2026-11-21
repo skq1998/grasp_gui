@@ -41,9 +41,12 @@ if __name__ == "__main__" and sys.argv[1:2] == ["_run"] and len(sys.argv) == 3:
     sys.exit(grasp_bg.serve(sys.argv[2]))
 
 
+import grasp_core as core
+
+
 def fix_wsl_display():
     """WSL 启用 systemd 后 $XDG_RUNTIME_DIR 中常缺少 WSLg 的 wayland 套接字；直接指向它并优先用 Wayland。"""
-    if os.environ.get("QT_QPA_PLATFORM"):
+    if not core.IS_LINUX or os.environ.get("QT_QPA_PLATFORM"):
         return
     wl = os.environ.get("WAYLAND_DISPLAY")
     if not wl:
@@ -83,7 +86,9 @@ def fix_fontconfig():
     """打包的程序自带构建机器上的 fontconfig 库；系统的 /etc/fonts 若来自更新的 fontconfig，
     旧库读它时会打印大量 "invalid attribute 'xsi:nil'" 之类的错误。因此改用一份只列出字体目录的
     简单配置 (系统和用户字体照常可用；打包的字体在 load_fonts 中直接注册)。"""
-    if not getattr(sys, "frozen", False) or os.environ.get("FONTCONFIG_FILE") or os.environ.get("FONTCONFIG_PATH"):
+    if not core.IS_LINUX or not getattr(sys, "frozen", False):
+        return
+    if os.environ.get("FONTCONFIG_FILE") or os.environ.get("FONTCONFIG_PATH"):
         return
     cache = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "grasp_gui")
     path = os.path.join(cache, "fonts.conf")
@@ -103,7 +108,8 @@ fix_wsl_display()
 fix_fontconfig()
 # 打包的 libxkbcommon 可能比系统的 Compose 文件旧，读到新的按键名 (如 dead_hamza) 时会打印大量 ERROR；
 # 这些行被跳过，不影响使用，因此只显示严重错误
-os.environ.setdefault("XKB_LOG_LEVEL", "critical")
+if core.IS_LINUX:
+    os.environ.setdefault("XKB_LOG_LEVEL", "critical")
 
 from PySide6.QtCore import QByteArray, QEvent, QObject, QPointF, Qt  # noqa: E402
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QFontDatabase, QKeySequence, QPainter,  # noqa: E402
@@ -126,6 +132,8 @@ DEFAULT_PT = 10.0          # 系统默认字号 (main 中按 QApplication 的默
 def load_fonts():
     """注册随程序打包的字体 (build.sh 放在 fonts/ 中)，使没有安装字体的机器也能正常显示。
     系统已有的字体照常可用；查找位置为可执行文件内部和程序所在目录的 fonts/。"""
+    if core.IS_MACOS:
+        return
     dirs = [os.path.join(getattr(sys, "_MEIPASS", ""), "fonts"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")]
     for d in dirs:
@@ -146,12 +154,17 @@ def level_panel(workdir, settings=gc.saved_settings):
     return LevelPanel(workdir, settings)
 
 
+def convergence_panel(workdir):
+    from convergence_panel import ConvergencePanel
+    return ConvergencePanel(workdir)
+
+
 # ---------------------------------------------------------------------------
-#  主窗口：工作目录和运行设置，下面是计算、径向波函数、能级图三个标签页
+#  主窗口：工作目录和运行设置，下面是计算和结果查看标签页
 # ---------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
-    TABS = [("calc", "计算"), ("wfn", "径向波函数"), ("levels", "能级图")]
+    TABS = [("calc", "计算"), ("wfn", "径向波函数"), ("levels", "能级图"), ("convergence", "收敛")]
 
     def __init__(self, workdir=None, tab=None):
         super().__init__()
@@ -166,7 +179,7 @@ class MainWindow(QMainWindow):
         self.remote_windows = []
         self.panels = {}           # 已创建的查看器面板：种类 -> 面板 (第一次切换到该标签页时创建)
         self.pending = {}          # 重新创建面板后要恢复的勾选文件：种类 -> [路径]
-        gc.PANEL_FACTORIES.update(wfn=wfn_panel, levels=self.make_level_panel)
+        gc.PANEL_FACTORIES.update(wfn=wfn_panel, levels=self.make_level_panel, convergence=convergence_panel)
         self.build()
         self.restore_layout()
         core.save_config(workdir=self.cur_workdir)
@@ -179,8 +192,11 @@ class MainWindow(QMainWindow):
         """创建全部控件；切换语言或字号时重新调用 (面板由 rebuild 保留或重新创建)。"""
         # 中文界面优先用中文字体，英文界面优先用西文字体；另一种文字由 Qt 自动换用其他字体显示
         app = QApplication.instance()
-        family = gc.first_family(gc.CJK_FONTS + gc.LATIN_FONTS if core.LANG == "zh"
-                                 else gc.LATIN_FONTS + gc.CJK_FONTS)
+        candidates = gc.CJK_FONTS + gc.LATIN_FONTS if core.LANG == "zh" else gc.LATIN_FONTS + gc.CJK_FONTS
+        if core.IS_MACOS:
+            candidates = (["PingFang SC", "Helvetica Neue"] if core.LANG == "zh" else
+                          ["Helvetica Neue", "PingFang SC"]) + candidates
+        family = gc.first_family(candidates)
         font = app.font()
         if family:
             font.setFamily(family)
@@ -265,7 +281,10 @@ class MainWindow(QMainWindow):
         fm.addMenu(gc.recent_menu(fm, self.change_workdir, T("最近的工作目录"), self.pick_workdir))
         fm.addSeparator()
         fm.addAction(T("连接服务器…")).triggered.connect(self.connect_server)
-        fm.addAction(T("退出")).triggered.connect(self.close)
+        quit_action = fm.addAction(T("退出"))
+        if core.IS_MACOS:
+            quit_action.setMenuRole(QAction.QuitRole)
+        quit_action.triggered.connect(self.close)
         vm = mb.addMenu(T("视图"))
         for text, keys, step in [("放大字体", [QKeySequence.ZoomIn, "Ctrl+="], 1),
                                  ("缩小字体", [QKeySequence.ZoomOut], -1), ("默认字体大小", ["Ctrl+0"], 0)]:
@@ -282,6 +301,7 @@ class MainWindow(QMainWindow):
         self.mcp_action.setCheckable(True)
         self.mcp_action.setChecked(core.load_config().get("mcp_enabled", False))
         self.mcp_action.toggled.connect(self.toggle_mcp)
+        settings_menu.addAction(T("关于 GRASP GUI…")).triggered.connect(self.about)
         wm = mb.addMenu(T("窗口"))
         for kind, title in self.TABS[1:]:
             wm.addAction(T("在新窗口中打开{t}", t=T(title))).triggered.connect(
@@ -299,6 +319,15 @@ class MainWindow(QMainWindow):
         win = connect_window(self)
         if win is not None:
             self.remote_windows.append(win)
+
+    def about(self):
+        from grasp_shells import snapshot
+
+        metadata, _ = snapshot()
+        text = ("GRASP GUI " + core.VERSION + "\n\n"
+                + T("壳层模型的离线数据 · 下载于 {date}", date=metadata["retrieved"]) + "\n"
+                + metadata["citation"])
+        QMessageBox.about(self, T("关于 GRASP GUI…"), text)
 
     def make_level_panel(self, d):
         p = level_panel(d, lambda: self.run.values())
@@ -494,6 +523,7 @@ class MainWindow(QMainWindow):
             p.setParent(None)
             if not p.busy():
                 self.pending[kind] = p.checked_paths()
+                p.shutdown()
                 p.deleteLater()
                 del self.panels[kind]
         self.build()
@@ -632,6 +662,8 @@ def main():
     rc = app.exec()
     # 在 WSLg 的 Wayland 下，进程退出时 Qt 的收尾清理会卡住几十秒以上；
     # 参数在操作时已保存，运行中的程序已在 closeEvent 中结束，因此直接退出
+    if core.IS_MACOS:
+        sys.exit(rc)
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(rc)

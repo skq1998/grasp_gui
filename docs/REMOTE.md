@@ -379,6 +379,14 @@ See the [acceptance review](https://github.com/skq1998/grasp_gui/pull/47#pullreq
 The current unexecuted-write recovery changes have local GUI coverage; the maintainer will repeat SSH acceptance
 before merging. This development environment still has no dedicated sshd container.
 
+Run the cleanup integration check with the same dedicated SSH fixture described above.
+
+同一夹具可用于真实 GRASP 的清理与重跑验收。
+
+```sh
+python3 -m pytest tests/test_remote_edit_ssh.py -k reruns_after_cleanup
+```
+
 ### 安装服务器端
 
 优先使用无 Qt 的服务器目录版 (glibc ≥ 2.17)，可在下方的安装对话框中明确确认后安装。
@@ -457,6 +465,26 @@ OpenSSH 的 `confirm` 提示仍用默认“否”的确认框；`none` (如 FIDO
 每个连接身份最多 128 MiB，优先清理最久未用的条目。再次打开先显示缓存，再用一次请求验证；文件变动后重新分析。
 状态栏显示测得的请求往返时间 (包含服务器处理时间)。本地和远程目录互不写入；数据文件没有下载到桌面。
 
+### Clear calculation files / 清空工作目录
+
+In the server Calculation tab, open **Clear working directory…**. The common dialog selects generated files and
+moves them to `.grasp_gui_cleaned/<timestamp>/` by default. External inputs and unknown files require explicit
+selection. You can choose permanent deletion or delete an old backup. The server checks the saved pipeline
+revision and task state under the directory lock before changing files. Active background runs and pending,
+running, or unknown Slurm jobs block cleanup. **Run all after cleanup** opens the normal workstation or Slurm
+run confirmation once cleanup succeeds.
+
+If the reply is lost, the client reads a new preview and shows the current file list. Review it before choosing
+whether to clean again. Older servers disable the button with an **Install / update server build…** hint.
+See [the shared dialog and screenshots](INTERFACE.md#clear-a-working-directory--清空工作目录).
+
+服务器计算页的 **清空工作目录…** 使用同一对话框。默认勾选流程生成文件并移到 `.grasp_gui_cleaned/<时间>/`，
+外部输入和未知文件需手动勾选。可选择直接删除或删除旧备份。服务器在目录锁中核对已保存流程的修订号和运行状态，后台
+运行或 Slurm 排队、运行中、状态未知时拒绝清理。清理成功后，“清理后运行全部”进入原有工作站或 Slurm 运行确认流程。
+
+丢失回答后，客户端重新预览并显示当前文件清单，由用户核对后决定是否再次清理。旧服务器禁用入口并提示安装或更新服务器版。
+[共用对话框和界面截图](INTERFACE.md#clear-a-working-directory--清空工作目录)
+
 ### 断线与后台计算
 
 启动使用现有 `grasp_bg.launch`，新会话、无终端、输出写服务器日志，不与 SSH 持有管道。`remote` 在启动后的十秒内
@@ -493,6 +521,12 @@ remote grouping. Older servers without these fields are shown as unknown for `.c
 `levels` 和 `view(kind=levels)`（含预览）逐行返回哈密顿量组及警告；由服务器读取 `.csum`，不增加请求或改变协议号。
 目录签名已有 `.csum` 大小/修改时间，单独更新总结文件也使远程缓存失效；旧端缺字段时按未知组提示，不查本机文件。
 
+`hello.capabilities` includes `workdir_clean_v1` when the two cleanup requests are available. To delete an old
+backup, pass its single relative name from `preview_clean.backups` with `mode: delete`. The server validates
+the name against its current inventory. A partial result includes an error and, for a move, the backup path.
+清理能力由 `workdir_clean_v1` 标识。删除旧备份时传入预览给出的单个备份相对路径和 `delete`，服务端重新核对名称。
+部分完成时返回错误信息，移入备份的结果还返回备份路径。
+
 Two server workers permit pipelined reads; run/stop are serialized. Server code uses only the Python standard library.
 `levels` / `view(kind=levels)` may additionally return `errors: [{file, error}]` for unreadable mixing files.
 Non-finite energies reject the whole affected file while retaining other results, including the brief preview.
@@ -526,6 +560,8 @@ while incomplete readable files retain their levels and warnings. 两种字段�
 | `preview_upload` | Read-only new/update validation, changes, input checks, pending/existing files, additive `missing_programs` from server bindir/PATH; no directory creation |
 | `create_workdir` | Mutation: checked configuration and explicit custom-command authorization; absent/empty target under lock |
 | `update_workdir` | Mutation: revision, configuration and explicit custom authorization; locked conflict and idle checks |
+| `preview_clean` | Directory; read-only four file classes, metadata, backups and saved pipeline revision |
+| `clean_workdir` | Mutation: directory, revision, selected relative names and `move` or `delete`; returns processed and remaining names |
 | `run_plan` | Revision and range-specific custom commands; optional inclusive `start`/`end`; `server_type: slurm` returns Slurm defaults |
 | `clear_slurm_record` | Mutation: explicit `confirmed: true`, matching record revision, fresh queue check, then archival |
 | `run` | Revision, inclusive one-based `start`/`end`, explicit custom/logout/scope confirmations; Slurm accepts reviewed `slurm` settings |

@@ -10,12 +10,50 @@ import pytest
 import grasp_config as config
 import grasp_core as core
 import grasp_mix
+import grasp_summary
+import grasp_wfn
+import grasp_workdir
 from conftest import DEMOS
 
 pytestmark = pytest.mark.grasp
 FAST = ["example1", "example2", "example8", "example9", "manual_tools"]
 SLOW = ["case4", "example3", "example4", "example5", "case1", "case2", "case3", "manual_zf", "manual_asfsplit", "manual_accumulate"]
 TOLERANCE = 1e-7          # Hartree：不同编译器 / BLAS 的舍入差别
+
+
+def test_example1_reruns_after_cleanup(grasp_bindir, tmp_path):
+    cfg, _ = config.load(os.path.join(DEMOS, "example1.json"))
+    config.install(cfg, str(tmp_path))
+    jobs = config.session(cfg)["pipeline"]
+    script = core.shell_script(jobs, grasp_bindir, ".")
+
+    def run():
+        result = subprocess.run(["sh", "-c", script], cwd=tmp_path, capture_output=True, text=True,
+                                env=core.child_env(), timeout=300)
+        assert result.returncode == 0, result.stderr[-3000:]
+
+    run()
+    files = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file() and not p.name.startswith(".grasp")}
+    plan = grasp_workdir.prepare_clear(tmp_path, classified=True, run=dict(np=8))
+    names = {row["name"] for row in plan["classes"]["generated"]}
+    assert names == files.keys()
+    result = grasp_workdir.clear(plan, names, "move")
+    backup = tmp_path / result["backup"]
+    assert not result["error"] and not result["remaining"]
+    assert {p.name: p.read_bytes() for p in backup.iterdir()} == files
+    assert not any((tmp_path / name).exists() for name in names)
+    assert not grasp_mix.find_mix_files(str(tmp_path))
+    assert not grasp_wfn.find_w_files(str(tmp_path))
+    report = grasp_summary.collect(tmp_path, cfg, jobs)
+    assert not report["csfs"] and all(layer["missing"] for layer in report["levels"])
+    checked = grasp_summary.check_files(tmp_path, jobs[1:])
+    assert any(row["file"] == "isodata" for row in checked["missing"])
+    run()
+    for ref in cfg["reference"]:
+        assert config.reference_energies(str(tmp_path / ref["file"])) == pytest.approx(ref["energies"], abs=TOLERANCE)
+    # 去掉生成 isodata 的步骤后，已存在的 isodata 是外部输入。
+    external = grasp_workdir.prepare_clear(tmp_path, classified=True, jobs=jobs[1:], run=dict(np=1))
+    assert "isodata" in {row["name"] for row in external["classes"]["external"]}
 
 
 def test_manual_csfs(grasp_bindir, tmp_path):
