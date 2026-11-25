@@ -1,11 +1,76 @@
 # SSH remote access / SSH 远程连接
 
+| Name / 名称 | Use and setting / 用途和设置位置 | Example / 示例 |
+|---|---|---|
+| Working directory / 工作目录 | Calculation inputs and results. Choose it in the local workspace or the SSH connection dialog. / 计算输入和结果，在本机工作区或连接对话框中选择。 | `~/calc/Fe_XVII` |
+| GRASP GUI server (program path) / GRASP GUI 服务器版 (程序路径) | SSH service executable. In the connection dialog, leave blank to use discovery. / SSH 服务的可执行程序，连接对话框中留空可自动查找。 | `~/.local/bin/grasp_gui` |
+| GRASP programs (bin directory) / GRASP 程序目录 (bin) | GRASP executables such as `rmcdhf` and `rci`. Set in local or server run settings. / `rmcdhf`、`rci` 等程序，在本机或服务器运行设置中填写。 | `/opt/grasp/bin` |
+
+## GRASP check / GRASP 程序检查
+
+The connection dialog and server workspace show the programs directory discovered by the GRASP GUI server,
+its source and missing common serial/MPI programs. A nonempty path saved on the desktop for this host takes
+precedence over `GRASP_BINDIR` and the directory of `rmcdhf` on `PATH`. The check shows which program files
+could not be found there or on `PATH`. The run preflight checks executability. When a workstation has no
+desktop override yet, the form and the check use the server's run-plan defaults. A blank programs path
+automatically checks `GRASP_BINDIR`, the directory of `rmcdhf` on `PATH`, and then the installation tree.
+If no programs are found, **Settings…** opens server run settings. The diagnostic includes the actual
+`GRASP_BINDIR` and `PATH` because non-interactive SSH cannot see variables set only for interactive shells.
+Reconnect to repeat the check. Saving server run settings updates the display. Older GRASP GUI servers
+show an update hint. On Slurm the check describes only the login node. A submitted job or a systemd user scope
+may have a different environment.
+
+连接对话框和服务器工作区显示服务器版发现的程序目录、来源和缺失的常用串行及 MPI 程序。优先使用桌面为该主机保存的
+非空程序目录，再查 `GRASP_BINDIR` 和 `PATH` 中 `rmcdhf` 所在的目录。检查会列出该目录和 `PATH` 中未找到的程序文件，
+运行预检会核对可执行性。工作站尚无桌面设置时，界面和检查采用服务器运行计划的默认值。保存空路径时自动依次查找
+`GRASP_BINDIR`、`PATH` 中 `rmcdhf` 所在的目录和安装树。
+未找到 GRASP 时，点“设置…”打开服务器运行设置。
+提示会列出实际的 `GRASP_BINDIR` 和 `PATH`，便于排查仅在交互终端中设置的变量。重新连接和保存运行设置时更新显示，
+旧版服务器显示更新提示。Slurm 的结果只代表登录节点，提交的作业和 systemd 用户 scope 可能有不同的环境。
+
 ## 使用
 
 桌面版选“文件 → 连接服务器…”。服务器只运行 `grasp_gui remote`，不需要显示设备、Qt 导入或另装 Python
 (使用独立可执行文件时)。结果文件留在服务器，分析结果和重新取样后的曲线通过同一次 SSH 登录的标准输入输出传回。
 不使用 X11、TCP/agent 转发、反向隧道或监听端口；不自动检查更新或上传程序。
 Slurm 类型通过服务器已有的 Slurm 命令访问集群调度/记账服务，不访问互联网。
+
+### Local files / 本机保存的文件
+
+Preferences live in `~/.config/grasp_gui.json` on Linux and macOS. `remote_hosts` stores settings by the
+effective SSH user, host and port, including aliases, program and installation paths, the last directory,
+server type, run settings and transfer preferences. The first connection using an old alias migrates its
+settings. If a connection already has settings, it keeps them and adds the alias. `remote_recent` lists
+recent server directories, and `remote_copies` links editable local copies to their server directories.
+If an alias is redirected to a previously unconfigured host, a program path inherited from the old
+host is cleared so the GRASP GUI server can be discovered automatically.
+A damaged preferences file is renamed to `grasp_gui.json.broken-YYYYmmdd-HHMMSS` and defaults are used.
+The desktop shows its backup path and reports write failures in the status bar. An unreadable file stays in place.
+
+| Path | Contents |
+|---|---|
+| `~/.config/grasp_gui/drafts/` | Unsaved server edits. Keep these files to restore drafts. |
+| `~/.config/grasp_gui/session-locks/` | Locks used while saving settings or work records. |
+| `~/.cache/grasp_gui/ssh/`, `remote/`, `index/` | SSH controls, cached remote results and analysis indexes. These can be rebuilt after closing the application. |
+| `~/grasp_calcs/remote/` | Default location for downloaded files and editable copies. May contain user data. |
+
+GRASP GUI stores no passwords. OpenSSH manages `known_hosts`.
+
+Linux 和 macOS 的设置均保存到 `~/.config/grasp_gui.json`。`remote_hosts` 按生效的 SSH 用户、主机和端口保存
+别名、程序及安装路径、上次目录、服务器类型、运行和传输设置。第一次用旧别名连接时迁移该条目。标识下已有设置时保留
+已有设置，并加入别名。`remote_recent` 保存最近服务器目录，`remote_copies` 关联可编辑的本机副本与服务器目录。
+别名改指向没有设置的新主机时，会清空从旧主机预填的程序路径，按默认规则查找服务器版。
+设置文件损坏时将原件改名为 `grasp_gui.json.broken-YYYYmmdd-HHMMSS`，再使用默认设置。桌面会提示备份位置。
+保存失败时在状态栏提示。暂时读不了的文件保留原位。
+
+| 路径 | 内容 |
+|---|---|
+| `~/.config/grasp_gui/drafts/` | 尚未保存到服务器的草稿，恢复草稿需要这些文件。 |
+| `~/.config/grasp_gui/session-locks/` | 保存设置或工作记录时使用的锁。 |
+| `~/.cache/grasp_gui/ssh/`、`remote/`、`index/` | SSH 控制、远程结果和分析索引缓存，退出程序后可删除重建。 |
+| `~/grasp_calcs/remote/` | 下载文件和可编辑副本的默认位置，可能包含用户数据。 |
+
+GRASP GUI 不保存密码。`known_hosts` 由 OpenSSH 管理。
 
 ### Server workspaces / 服务器工作区
 
@@ -17,10 +82,20 @@ in either workspace, with Ctrl+4 for Convergence in the Local workspace. Languag
 open tabs, sessions and in-progress reads and transfers. To reconnect after restarting the application,
 choose a saved directory in the connection dialogue.
 
+Use the **Working directory on server** bar inside a server tab to switch without opening another SSH session. Enter a path,
+choose **Browse…**, open **Siblings** to list the parent directory, or open **Recent** for this host. The server
+resolves paths. If the target is already open, its tab becomes active. A switch keeps the selected page, closes
+the previous directory's extra viewers and cancels its pending reads. Active transfers require confirmation.
+Drafts use the same Save, Keep or Discard choices as tab closure. A server calculation continues in its directory.
+
 “文件 → 连接服务器…”在主窗口的标签中打开所选目录。SSH 用户、主机、端口及服务器绝对路径一致时复用标签。
 每个标签都有独立的 SSH 会话、“服务器操作”菜单和单独打开的查看器。服务器标签激活时，本机目录、导入导出和参数命令禁用。
 Ctrl+PgUp/PgDn 切换工作区，Ctrl+1–3 切换当前工作区页面，Ctrl+4 打开本机收敛页。切换语言或字号时保留标签、会话、
-进行中的读取和传输。重启应用后，可从连接对话框手动打开最近使用的服务器目录。
+进行中的读取和传输。重启应用后，可从连接对话框手动打开最近使用的服务器上的工作目录。
+
+服务器标签内的“服务器上的工作目录”栏可以直接切换，沿用 SSH 会话。可以输入路径，点“浏览…”，从“同级”选择上一级的子目录，
+或从“最近”打开这台主机用过的目录。路径由服务器解析。目标已有标签时激活它。切换后保留当前页，关闭旧目录的独立
+查看器并取消未完成的读取。传输进行中须确认，草稿沿用关闭标签时的保存、保留或放弃选项。服务器上的计算继续运行。
 
 [English screenshot](images/en_server_workspaces.png) / [中文截图](images/zh_server_workspaces.png)。
 
@@ -30,7 +105,7 @@ With a server advertising `workdir_write_v1`, the Calculation page of a server w
 pages, pipeline list and input preview as the Local workspace. Missing inputs are checked by the server
 (**Check input files** calls `preview_upload`). No new request was added and the protocol number is unchanged:
 reading uses `get_pipeline` and writing uses `update_workdir`. Older servers stay read-only with an
-**Install / update server build…** hint.
+**Install / update GRASP GUI server build…** hint.
 
 Edits are saved as a local draft, and the tab shows **●**. Drafts live in
 `~/.config/grasp_gui/drafts/<digest>.json` (also on macOS). The directory is 0700 and each file is 0600,
@@ -62,7 +137,7 @@ quitting asks per workspace: Save to server, Keep draft (default) or Discard dra
 
 支持 `workdir_write_v1` 的服务器上，服务器工作区的计算页使用与本机相同的程序页、流程列表和输入预览；缺少的输入由服务器
 检查 (“检查输入文件”调用 `preview_upload`)。读取用 `get_pipeline`，写入用 `update_workdir`，不新增请求，也不改协议号。
-旧服务器端只读，并提示用“安装 / 更新服务器版…”更新。
+旧服务器端只读，并提示用“安装 / 更新 GRASP GUI 服务器版…”更新。
 
 修改保存为本机草稿，标签显示 ●。草稿位于 `~/.config/grasp_gui/drafts/<digest>.json` (macOS 也一样)，目录 0700、
 文件 0600，原子替换写入；`digest` 是紧凑 JSON `["user@host:port", "/绝对路径"]` 的 SHA-256，与标签去重用同一个标识。
@@ -106,7 +181,7 @@ sbatch. `sbatch`, `squeue` and `scancel` must be available in the server session
 ### Workstation run settings / 工作站运行设置
 
 Every workstation run opens **Server run settings**, including creation/upload followed by a run and selected
-ranges. The fields reuse the local RunSettings widget: server GRASP bin directory, MPI process count, mpirun,
+ranges. The fields reuse the local RunSettings widget: server GRASP programs (bin directory), MPI process count, mpirun,
 MPI_TMP and nice. No desktop directory picker or desktop CPU limit is used. Host-specific desktop preferences
 win over the server's defaults. Opening the dialog, **Check**, and confirmation after edits request fresh server
 checks. The report lists missing serial/MPI programs and launcher, plus input preflight for the chosen range.
@@ -121,19 +196,20 @@ inspection does not persist a default process count. Explicit settings use defau
 reading saved server preferences, and travel through the existing background request. `run_plan` adds optional
 `missing_programs` and `checked` metadata. Preview uploads use saved desktop host settings when supported.
 Invalid saved settings fall back to server defaults for upload checks, with optional `run_settings_warning`
-shown in the preview and confirmation. Actual run checks remain strict. Empty bin fields stay empty in forms;
-immediately before starting, the server substitutes its nonempty default bin without reading saved preferences.
+shown in the preview and confirmation. Actual run checks remain strict. The bin field can stay empty in the
+form. The server uses automatic discovery during preflight and startup, without reading server preferences
+for that explicitly blank field.
 No server preferences, shared configuration, workdir record or background request formats change.
 
 | Field | Server validation |
 |---|---|
-| `bindir` | Empty (use PATH), or an existing absolute server directory; `~` is expanded on the server |
+| `bindir` | Empty (automatic discovery), or an existing absolute server directory. The server expands `~`. |
 | `np` | Integer 1–100000; booleans are rejected |
 | `mpirun`, `mpitmp` | Strings of at most 4096 characters, without control characters or newlines |
 | `nice` | Boolean |
 
 Unknown keys are rejected; `bindir` also has the string length/control-character checks above. Older servers
-receive no `run_settings`: the dialog shows their settings read-only and suggests **Install / update server…**;
+receive no `run_settings`: the dialog shows their settings read-only and suggests **Install / update GRASP GUI server…**;
 running remains available. Slurm and server-side MCP retain their existing settings and behavior.
 
 This does not add environment setup commands such as `module load` or `source env.sh`. Use an absolute mpirun
@@ -146,7 +222,7 @@ path, or arrange the required library paths in the server's noninteractive login
 工作区的“服务器操作 → 服务器运行设置…”可针对已载入的流程检查、保存而不运行。旧服务器只读显示、提示更新，
 不发送新参数；Slurm 和服务器 MCP 不变。远程预检不保存首次默认进程数，显式设置也不读写服务器偏好。
 上传预览遇到失效的主机设置时改用服务器默认值检查，返回可选 `run_settings_warning`，在预览和确认中显示；
-实际运行保持严格校验。表单留空表示 PATH，启动交接前补非空默认目录，避免 PATH 中出现代表当前目录的空项。
+实际运行保持严格校验。表单留空表示自动查找，预检与启动都使用服务器环境解析目录。
 不提供 `module load` / `source` 等环境准备命令；可填绝对 mpirun 路径，或在非交互登录环境中配置库路径。
 
 Screenshots / 截图：[中文](images/zh_server_run_settings.png) / [English](images/en_server_run_settings.png).
@@ -314,7 +390,7 @@ file, or clipboard text (including fenced JSON). The default destination is a ch
 using a sanitized configuration title; edit it to choose another absent/empty server directory.
 **Update current working directory** is hidden. No local calculation directory or local-copy association is created.
 
-选好主机、服务器类型并浏览目录后，点“在此新建计算…”，从示例、配置文件或剪贴板选择配置。默认目标为当前服务器目录下
+选好主机、服务器类型并浏览目录后，点“在此新建计算…”，从示例、配置文件或剪贴板选择配置。默认目标为当前服务器上的工作目录下
 经清理的配置标题，可自行修改；已有非空目录会被拒绝。程序是否可用按服务器保存的 GRASP 路径及 PATH 检查，不受本机安装影响。
 
 The existing upload dialog previews the pipeline, missing server programs/inputs, attached files and custom
@@ -332,12 +408,12 @@ from an empty server workspace it replaces the tab using the same SSH connection
 **Create and run** opens the ordinary run-plan/confirmation flow for the chosen Workstation or Slurm type.
 If a create reply is lost, read the server pipeline and compare its fingerprint; never resend automatically.
 An absent/empty target must be proved before a new user-confirmed retry. Pending verification lives only in this
-creation dialog; after closing it, browse the server directory to inspect the outcome. Servers lacking
+creation dialog; after closing it, browse the working directory on server to inspect the outcome. Servers lacking
 `workdir_write_v1`, or the preview's additive `missing_programs` response field, show an update instruction before writes.
 Existing local import/upload remains compatible with older preview responses; no RPC or configuration format changes.
 
 新建回复丢失时先读取流程核对指纹，不自动重发；只有再次证明目标仍为空，才允许用户重新确认。待核对信息仅在当前新建窗口中，
-关闭后应重新浏览服务器目录确认结果。旧服务器缺少能力或程序检查字段时提示更新，拒绝直接新建；原有本机导入和上传流程不变。
+关闭后应重新浏览服务器上的工作目录确认结果。旧服务器缺少能力或程序检查字段时提示更新，拒绝直接新建；原有本机导入和上传流程不变。
 
 Screenshots / 截图：configuration / 配置 [English](images/en_remote_import_config.png) / [中文](images/zh_remote_import_config.png)；
 preview / 预览 [English](images/en_remote_import_preview.png) / [中文](images/zh_remote_import_preview.png)。
@@ -358,7 +434,7 @@ This evidence precedes the confirmation/entry-visibility review fixes; repeat ag
 To edit an offline copy instead of the server workspace, use **Edit locally…** and continue in the Local
 workspace; both ways remain available. This requires a server advertising
 `capabilities: ["workdir_write_v1"]`. Missing capability disables the edit button and gives an explicit
-Install / update server message before any upload request. Protocol/GREETING remain 1; `server_types` is unchanged.
+Install / update GRASP GUI server message before any upload request. Protocol/GREETING remain 1; `server_types` is unchanged.
 
 1. **New calculation:** in a local Calculation tab, choose **Upload to server…** or **Upload and run…** beside
    the pipeline run buttons. The existing connection dialog selects the host and browses an existing parent;
@@ -461,7 +537,7 @@ python3 -m pytest tests/test_remote_edit_ssh.py -k reruns_after_cleanup
 
 ### 安装服务器端
 
-优先使用无 Qt 的服务器目录版 (glibc ≥ 2.17)，可在下方的安装对话框中明确确认后安装。
+优先使用无 Qt 的服务器上的工作目录版 (glibc ≥ 2.17)，可在下方的安装对话框中明确确认后安装。
 手动安装时，把服务器版压缩包和校验文件上传到服务器，先核对校验和，再解压到新的版本目录：
 
 ```sh
@@ -477,7 +553,7 @@ mv -Tf "$HOME/.local/bin/grasp_gui.next" "$HOME/.local/bin/grasp_gui"
 指定完整路径；成功选择目录时按主机保存实际路径和目录 (`remote_hosts` 用户偏好)。找不到、不能启动或协议不兼容时，
 对话框显示原始错误输出，可明确选择安装捆绑版、使用已有路径或取消。手动更新后也可设置完整路径重试。
 示例中的版本目录需替换为所下载的版本，不覆盖仍运行的版本；管理员可统一安装到 `/opt` 或通过 module 提供路径。
-工作站上的 GRASP bin、MPI 等运行设置在桌面端的“服务器运行设置”中核对；Slurm 作业的路径、资源和模块命令在提交对话框中核对。
+工作站上的 GRASP 程序目录 (bin)、MPI 等运行设置在桌面端的“服务器运行设置”中核对；Slurm 作业的路径、资源和模块命令在提交对话框中核对。
 
 ### 登录
 
@@ -526,7 +602,7 @@ OpenSSH 的 `confirm` 提示仍用默认“否”的确认框；`none` (如 FIDO
 能级图的“结果摘要…”在服务器调用 `grasp_summary.collect/render`，沿用同一个预览/勾选/复制/保存对话框。
 每块能级数和包含部分改变后重新请求；摘要最多 200 KiB，按现有协议压缩传回，不下载原始结果文件。
 运行证据只来自服务器保存的流程及状态，不能使用桌面本次会话的参数指纹。没有流程时禁用“附带完整配置”。
-对话框标题标明服务器来源，保存文件在本机选择 (初始为本机家目录)，不把服务器目录当成本机路径。
+对话框标题标明服务器来源，保存文件在本机选择 (初始为本机家目录)，不把服务器上的工作目录当成本机路径。
 关闭/替换请求后丢弃旧回答，不改剪贴板。
 
 波函数先显示粗线，再补细线 (默认每轨道最多 1000 点，服务器按原网格索引作线性插值)；
@@ -547,7 +623,7 @@ running, or unknown Slurm jobs block cleanup. **Run all after cleanup** opens th
 run confirmation once cleanup succeeds.
 
 If the reply is lost, the client reads a new preview and shows the current file list. Review it before choosing
-whether to clean again. Older servers disable the button with an **Install / update server build…** hint.
+whether to clean again. Older servers disable the button with an **Install / update GRASP GUI server build…** hint.
 See [the shared dialog and screenshots](INTERFACE.md#clear-a-working-directory--清空工作目录).
 
 服务器计算页的 **清空工作目录…** 使用同一对话框。默认勾选流程生成文件并移到 `.grasp_gui_cleaned/<时间>/`，
@@ -657,7 +733,7 @@ transition results. A changed signature invalidates the cached view.
 ## English usage
 
 Choose **File → Connect to server…**, select an SSH alias or enter `user@host`, optionally set the server executable's
-full path, browse the server directories and choose **Use this directory**. Install/update the standalone legacy
+full path, browse the server directories and choose **Open this working directory**. Install/update the standalone legacy
 executable manually with the scp commands above; the desktop never uploads it. Defaults try `~/.local/bin/grasp_gui`
 then PATH. A successful connection remembers the executable's full path and working directory per host.
 OpenSSH retains key/agent/ProxyJump behavior; ≥8.4 additionally supports password and verification-code dialogs.
@@ -788,12 +864,12 @@ Tests skip without the dedicated fixture or local rsync. Never point the test di
 
 ## Bundled installation / 从桌面端安装服务器版
 
-In **Connect to server**, **Install / update server…** opens an explicit installation dialog;
+In **Connect to server**, **Install / update GRASP GUI server…** opens an explicit installation dialog;
 **Remove from server…** uses the same host settings. The application never installs automatically. When the
 server program cannot be started, a build with a bundle offers installation, an existing path, or cancel;
 authentication, host-key, network and timeout errors only update the status. Only a numerically older compatible
 server version offers an update, with No as the default; newer servers never prompt for a downgrade. An
-incompatible protocol is reported in the status area: use **Install / update server…** or choose another server
+incompatible protocol is reported in the status area: use **Install / update GRASP GUI server…** or choose another server
 executable.
 
 The dialog displays the host, bundled version/size, install root, executable link, architecture, glibc and free
@@ -818,17 +894,17 @@ Build the server archive on legacy first, then use
 (or GRASP_SERVER_BUNDLE). The adjacent .sha256 file and SERVER_VERSION inside the archive must match this
 desktop release/protocol. Every published desktop release must include the server archive. For development,
 CI or self-built binaries, omitting the option still builds normally; the installation button is then disabled
-with **This build does not include the server package**, and removal remains available. Legacy builds do not
+with **This build does not include the GRASP GUI server package**, and removal remains available. Legacy builds do not
 bundle it. No runtime downloads or external server connections occur.
 
-“连接服务器”中的“安装 / 更新服务器版…”和“从服务器移除…”沿用每台主机的设置。程序不自动安装；
-服务器端程序不能启动时，带捆绑包的构建可选安装、使用已有路径或取消；认证、主机密钥、网络和超时错误只显示在状态栏。
-只有服务器版本较旧且协议兼容时才提示更新 (默认否)，较新的服务器不会提示降级；协议不兼容时在状态栏说明，可手动安装 / 更新
+“连接服务器”中的“安装 / 更新 GRASP GUI 服务器版…”和“从服务器移除…”沿用每台主机的设置。程序不自动安装；
+GRASP GUI 服务器版不能启动时，带捆绑包的构建可选安装、使用已有路径或取消；认证、主机密钥、网络和超时错误只显示在状态栏。
+只有GRASP GUI 服务器版较旧且协议兼容时才提示更新 (默认否)，较新的服务器不会提示降级；协议不兼容时在状态栏说明，可手动安装 / 更新
 或改用其他程序。安装对话框先列主机、版本、大小、目录和链接，检查架构/glibc/空间/写权限及 noexec
-(安装目录还不存在时检查最近的已存在上级目录，不创建目录)，再由用户明确确认。
+(GRASP GUI 服务器版安装目录还不存在时检查最近的已存在上级目录，不创建目录)，再由用户明确确认。
 分析会话先关闭，安装通过 SSH 标准输入传输，不需要 scp、sftp、端口转发、管理员权限或外网。
 校验、解压及版本/握手检查通过后才原子切换链接；保留上一版及仍运行的旧版，取消或失败清理临时目录。
 移除前列出本程序安装的版本和链接，运行中的版本拒绝移除；不动工作目录、计算结果、无所有权标记的目录和管理员程序，
-同时清除上一版记录；安装目录不存在时不做任何操作。
-正式桌面发行版全部捆绑服务器包。开发、CI 或自行构建时可不捆绑，仍可连接已有程序，安装按钮禁用并明确显示“本构建不含服务器版”，
+同时清除上一版记录；GRASP GUI 服务器版安装目录不存在时不做任何操作。
+正式桌面发行版全部捆绑服务器包。开发、CI 或自行构建时可不捆绑，仍可连接已有程序，安装按钮禁用并明确显示“本构建不含 GRASP GUI 服务器版”，
 移除仍可用。

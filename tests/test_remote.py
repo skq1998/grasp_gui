@@ -298,7 +298,7 @@ def test_remote_cleanup_confirmation_refresh_and_run(tmp_path, qapp, monkeypatch
 
     source = Source()
     panel = RemoteCalculation(source, str(tmp_path))
-    assert not panel.clean_button.isEnabled() and "更新服务器版" in panel.clean_button.toolTip()
+    assert not panel.clean_button.isEnabled() and "更新 GRASP GUI 服务器版" in panel.clean_button.toolTip()
     source.server["capabilities"].append("workdir_clean_v1")
     panel.show_state(None)
     assert panel.clean_button.isEnabled()

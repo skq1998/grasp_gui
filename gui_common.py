@@ -1,5 +1,5 @@
 """
-界面各部分共用的控件：字体与小控件、GRASP bin 目录和 MPI 设置、最近的目录，以及查看器面板的基类
+界面各部分共用的控件：字体与小控件、GRASP 程序目录 (bin) 和 MPI 设置、最近的目录，以及查看器面板的基类
 (Panel) 和单独显示一个面板的窗口 (PanelWindow)。
 
 主窗口 (grasp_gui.py) 有三个标签页：计算 (calc_panel.py)、径向波函数 (wfn_panel.py)、能级图 (level_panel.py)。
@@ -129,7 +129,7 @@ def viewer_for(path):
 
 
 # ---------------------------------------------------------------------------
-#  GRASP bin 目录和 MPI 设置 (计算和跃迁共用)
+#  GRASP 程序目录 (bin) 和 MPI 设置 (计算和跃迁共用)
 # ---------------------------------------------------------------------------
 
 class RunSettings(QWidget):
@@ -146,7 +146,7 @@ class RunSettings(QWidget):
         top = QVBoxLayout(self)
         top.setContentsMargins(0, 0, 0, 0)
         self.toggle = QPushButton()
-        self.toggle.setToolTip(T("展开或收起 GRASP bin 目录和 MPI 设置"))
+        self.toggle.setToolTip(T("展开或收起 GRASP 程序目录 (bin) 和 MPI 设置"))
         self.toggle.clicked.connect(lambda: self.show_box(not self.box.isVisible()))
         self.summary = hint_label("")
         top.addWidget(self.summary)
@@ -157,10 +157,11 @@ class RunSettings(QWidget):
         self.bindir_edit = QLineEdit(cfg["bindir"])
         if not remote:
             self.bindir_edit.editingFinished.connect(self.launcher_changed)
-        g.addWidget(QLabel(T("GRASP bin 目录")), 0, 0)
+        g.addWidget(QLabel(T("服务器上的 GRASP 程序目录 (bin)" if remote else "GRASP 程序目录 (bin)")), 0, 0)
         g.addWidget(self.bindir_edit, 0, 1)
         if not remote:
             g.addWidget(button("浏览…", self.pick_bindir), 0, 2)
+        g.addWidget(hint_label("rmcdhf、rci 等 GRASP 程序所在的目录"), 1, 1, 1, 2)
         mp = QHBoxLayout()
         self.np_spin = QSpinBox()
         self.np_spin.setRange(1, 100000 if remote else max(os.cpu_count() or 1, 1))
@@ -180,13 +181,13 @@ class RunSettings(QWidget):
             w.setToolTip(mpi_hint)
             mp.addWidget(w)
         mp.addStretch()
-        g.addLayout(mp, 1, 0, 1, 3)
+        g.addLayout(mp, 2, 0, 1, 3)
         g.setColumnStretch(1, 1)
         top.addWidget(self.box)
 
         self.bindir_edit.textChanged.connect(self.update_summary)
         self.np_spin.valueChanged.connect(self.update_summary)
-        # 按上次的收起状态显示；GRASP bin 目录中找不到 GRASP 时总是展开，提醒检查路径
+        # 按上次的收起状态显示；GRASP 程序目录 (bin)中找不到 GRASP 时总是展开，提醒检查路径
         collapsed = False if remote else prefs.get("settings_collapsed", True)
         if not remote and not os.path.isfile(os.path.join(cfg["bindir"], "rmcdhf")):
             collapsed = False
@@ -203,7 +204,7 @@ class RunSettings(QWidget):
     def update_summary(self):
         n = self.np_spin.value()
         mpi = T("MPI {n} 进程", n=n) if n > 1 else T("串行")
-        self.summary.setText(T("GRASP bin：{b}　·　{m}", b=self.bindir_edit.text(), m=mpi))
+        self.summary.setText(T("GRASP 程序目录 (bin)：{b}　·　{m}", b=self.bindir_edit.text(), m=mpi))
 
     def pick_bindir(self):
         d = QFileDialog.getExistingDirectory(self, "", self.bindir_edit.text() or os.getcwd())
@@ -286,7 +287,7 @@ class RunSettings(QWidget):
 
 
 def saved_settings():
-    """没有主窗口时的运行设置：主窗口保存的 GRASP bin 目录和 MPI 设置。"""
+    """没有主窗口时的运行设置：主窗口保存的 GRASP 程序目录 (bin) 和 MPI 设置。"""
     return core.saved_run_settings()
 
 

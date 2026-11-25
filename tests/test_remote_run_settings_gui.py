@@ -89,7 +89,7 @@ def test_check_reports_missing_programs_and_defaults_to_cancel(qapp, preferences
         assert source.calls[-1][1]["start"] == 2 and source.calls[-1][1]["end"] == 3
         dialog.ok.click()
         assert dialog.result() == QDialog.Accepted
-        assert core.load_config()["remote_hosts"]["fixture"]["run"]["np"] == 256
+        assert core.load_config()["remote_hosts"]["@fixture:22"]["run"]["np"] == 256
     finally:
         dispose(qapp, dialog)
 
@@ -109,7 +109,7 @@ def test_dirty_confirmation_rechecks_and_stale_or_closed_answers_are_ignored(qap
         current = source.pending.pop()
         current(source.plan(dict(run_settings=dialog.settings.values())), None)
         assert dialog.result() == QDialog.Accepted
-        assert core.load_config()["remote_hosts"]["fixture"]["run"]["np"] == 2
+        assert core.load_config()["remote_hosts"]["@fixture:22"]["run"]["np"] == 2
         saved = preferences.read_bytes()
         old(None, ValueError("late reply"))
         assert preferences.read_bytes() == saved
@@ -177,7 +177,7 @@ def test_standalone_settings_can_be_saved_without_starting(qapp, preferences):
     QTimer.singleShot(0, save)
     try:
         panel.edit_run_settings()
-        assert core.load_config()["remote_hosts"]["fixture"]["run"]["mpitmp"] == "standalone"
+        assert core.load_config()["remote_hosts"]["@fixture:22"]["run"]["mpitmp"] == "standalone"
         assert not any(method == "run" for method, _ in source.calls)
     finally:
         dispose(qapp, panel)

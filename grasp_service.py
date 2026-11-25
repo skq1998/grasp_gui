@@ -31,11 +31,11 @@ def checked_run_settings(values):
         try:
             path = Path(bindir).expanduser()
         except RuntimeError as error:
-            raise ValueError(T("GRASP bin 目录必须是服务器上存在的绝对路径，或留空。")) from error
+            raise ValueError(T("GRASP 程序目录 (bin) 必须是服务器上存在的绝对路径，或留空。")) from error
         if not path.is_absolute() or not path.is_dir():
-            raise ValueError(T("GRASP bin 目录必须是服务器上存在的绝对路径，或留空。"))
+            raise ValueError(T("GRASP 程序目录 (bin) 必须是服务器上存在的绝对路径，或留空。"))
         bindir = str(path.resolve())
-    elif bindir is None:
+    else:
         bindir = core.default_bindir(use_saved=False)
     mpirun = values.get("mpirun", "mpirun")
     count = values.get("np")

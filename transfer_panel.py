@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QForm
                                QLabel, QLineEdit, QMessageBox, QProgressBar, QSpinBox, QTableWidget,
                                QTableWidgetItem)
 
-import grasp_core as core
+import grasp_ssh as ssh
 import grasp_transfer as transfer
 from grasp_core import T
 from gui_common import button, renew_layout
@@ -41,7 +41,7 @@ class TransferDialog(QDialog):
         self.source_label.setWordWrap(True)
         layout.addWidget(self.source_label)
         form = QFormLayout()
-        profile = core.load_config().get("remote_hosts", {}).get(source.client.host, {})
+        profile = ssh.host_profile(source.client)
         self.rsync = QLineEdit(profile.get("rsync", "rsync"))
         form.addRow(T("服务器 rsync"), self.rsync)
         self.target = QLineEdit(directory if self.upload else
@@ -256,10 +256,8 @@ class TransferDialog(QDialog):
 
     def begin_transfer(self, rows):
         """调用者已确认清单；流程上传在写入记录成功后复用同一传输。"""
-        profiles = core.load_config().get("remote_hosts", {})
-        profiles.setdefault(self.source.client.host, {}).update(
+        ssh.save_host_profile(self.source.client,
             rsync=self.rsync.text().strip(), transfer_threshold_mb=self.threshold.value())
-        core.save_config(remote_hosts=profiles)
         self.controls(True)
         self.job = transfer.Transfer(self.source.client)
         local = self.local if self.upload else self.target.text()

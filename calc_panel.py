@@ -274,7 +274,7 @@ class SlurmDialog(QDialog):
     FIELDS = [("job", "作业名", ""), ("partition", "分区 (partition)", "空 = 默认分区"),
               ("nodes", "节点数", ""), ("ntasks", "每节点 MPI 进程数", ""),
               ("time", "时间限制", "如 2-00:00:00 (2 天)"), ("mem", "内存", "如 64G；空 = 不指定"),
-              ("bindir", "服务器上的 GRASP bin 目录", ""),
+              ("bindir", "服务器上的 GRASP 程序目录 (bin)", ""),
               ("modules", "加载模块等命令", "每行一条，如 module load openmpi"),
               ("mpirun", "MPI 启动命令", ""), ("mpitmp", "MPI 临时目录 (MPI_TMP)", ""),
               ("mail", "邮件通知地址", "空 = 不通知"), ("extra", "其他 #SBATCH 选项", "每行一条，如 --account=xxx")]
@@ -830,7 +830,7 @@ class ExportDialog(QDialog):
         self.workdir, self.pipeline = workdir, pipeline
         self.to_clipboard, self.cfg = clipboard, None
         lay = QVBoxLayout(self)
-        note = QLabel(T("配置保存当前流程中各步的参数，不含计算结果，也不含 GRASP bin 目录、MPI 进程数等与机器有关的设置。"
+        note = QLabel(T("配置保存当前流程中各步的参数，不含计算结果，也不含 GRASP 程序目录 (bin)、MPI 进程数等与机器有关的设置。"
                         "别人导入后可以从头重复这个计算。"))
         note.setWordWrap(True)
         lay.addWidget(note)

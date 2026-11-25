@@ -143,11 +143,11 @@ def test_missing_bundle_and_cancel_do_not_install(qapp, monkeypatch):
     from types import SimpleNamespace
     from install_panel import InstallDialog
     def missing():
-        raise ValueError("本构建不含服务器版")
+        raise ValueError("本构建不含 GRASP GUI 服务器版")
     monkeypatch.setattr(install, "bundle", missing)
     dialog = InstallDialog(SimpleNamespace(host="host"))
     assert not dialog.action.isEnabled() and not dialog.check_button.isEnabled()
-    assert "不含服务器版" in dialog.details.toPlainText()
+    assert "不含 GRASP GUI 服务器版" in dialog.details.toPlainText()
     dialog.busy = True
     dialog.reject()
     assert dialog.installer.cancelled.is_set()
@@ -240,7 +240,7 @@ def test_connection_offers_only_bundled_upgrades(qapp, monkeypatch, package, ver
     from remote_panel import ConnectDialog
     def bundle():
         if not bundled:
-            raise ValueError("本构建不含服务器版")
+            raise ValueError("本构建不含 GRASP GUI 服务器版")
         return package
     monkeypatch.setattr(install, "bundle", bundle)
     shown = []
@@ -254,7 +254,7 @@ def test_connection_offers_only_bundled_upgrades(qapp, monkeypatch, package, ver
         assert bool(shown) is prompt
         assert dialog.install_button.isEnabled() is bundled
         if not bundled:
-            assert "不含服务器版" in dialog.install_button.toolTip()
+            assert "不含 GRASP GUI 服务器版" in dialog.install_button.toolTip()
     finally:
         dialog.reject()
 
@@ -321,6 +321,6 @@ def test_unavailable_program_offers_explicit_installation(qapp, monkeypatch, pac
     monkeypatch.setattr(remote_panel, "QMessageBox", Box)
     try:
         dialog.loaded(None, ssh.ServerUnavailable("grasp_gui not found"))
-        assert len(shown) == 1 and "可安装捆绑服务器版" in dialog.status.text()
+        assert len(shown) == 1 and "可安装捆绑的 GRASP GUI 服务器版" in dialog.status.text()
     finally:
         dialog.reject()

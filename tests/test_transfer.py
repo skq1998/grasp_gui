@@ -171,7 +171,7 @@ def test_gui_threshold_confirmation_progress_and_cancel(qapp, monkeypatch, tmp_p
             dialog.poll()
             time.sleep(.01)
         assert not dialog.busy and "已取消" in dialog.status.text()
-        assert core.load_config()["remote_hosts"]["fixture"]["transfer_threshold_mb"] == 50
+        assert core.load_config()["remote_hosts"]["@fixture:22"]["transfer_threshold_mb"] == 50
     finally:
         dialog.reject()
 

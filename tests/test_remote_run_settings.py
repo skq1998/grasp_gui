@@ -49,8 +49,7 @@ def test_remote_start_never_passes_an_empty_bin_directory(tmp_path, monkeypatch,
     revision = install(root, [job("rnucleus")])
     op = remote.Operations()
     plan = op.run_plan(str(root), run_settings=settings)
-    if settings is None or settings.get("bindir") == "":
-        assert plan["run_settings"]["bindir"] == ""
+    assert plan["run_settings"]["bindir"] == ("" if settings is None else absent)
     op.run(str(root), revision, run_settings=settings, accept_logout=True)
     assert launches[0][1]["bindir"] == absent
     assert Path(core.CONFIG_FILE).read_bytes() == original

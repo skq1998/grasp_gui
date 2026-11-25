@@ -393,7 +393,7 @@ def test_pending_target_keeps_an_existing_default_directory(environment, monkeyp
     assert dialog.pending_target
     dialog.accept()
     assert dialog.result() == QDialog.Accepted and dialog.directory == pending
-    assert core.load_config()["remote_hosts"]["fixture"]["directory"] == expected
+    assert core.load_config()["remote_hosts"]["@fixture:22"]["directory"] == expected
     assert not Path(pending).exists()
     assert not any(method in remote.MUTATIONS for method, _ in e.source.calls)
 

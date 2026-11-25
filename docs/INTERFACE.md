@@ -13,7 +13,7 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 ```
 ┌ Menu: File  View  Settings  Window  Language ──────────────────────────────────────────┐
 │ Working directory [__________________________] Browse… Recent▾ ▸Settings     │
-│ GRASP bin: /opt/grasp/bin · serial          (summary; ▾Settings expands it)  │
+│ GRASP programs (bin directory): /opt/grasp/bin · serial          (summary; ▾Settings expands it)  │
 │ ┌ Calculation ┬ Radial wave functions ┬ Levels ┐          Open in new window │
 │ │  tab contents                                                              │
 │ └───────────────────────────────────────────────────────────────────────────┘│
@@ -24,23 +24,23 @@ without starting it). Labels are given as *English (中文)*. Screenshots: `docs
 * **Working directory (工作目录)**: edit + *Browse… (浏览…)* + *Recent (最近)* menu (its first item, *Open another
   directory… (打开其他目录…)*, opens a folder dialog). Changing it saves the previous session when needed,
   loads the new one's, and refreshes the viewers. On start the last directory is opened.
-* **Settings (设置)** toggle: collapsed it shows a one-line summary (`GRASP bin: … · serial` / `MPI n processes`);
-  expanded: *GRASP bin directory (GRASP bin 目录)* + *Browse…*, *MPI processes (MPI 进程数)*, *mpirun command
+* **Settings (设置)** toggle: collapsed it shows a one-line summary (`GRASP programs (bin directory): … · serial` / `MPI n processes`);
+  expanded: *GRASP programs (bin directory) (GRASP 程序目录 (bin))* + *Browse…*, *MPI processes (MPI 进程数)*, *mpirun command
   (mpirun 命令)*, *MPI_TMP*, *Lower priority of calculations (nice) (降低计算进程优先级)*. With more than one process
   `rangular`, `rmcdhf`, `rci`, `rbiotransform`, `rtransition` run as `mpirun -np N <prog>_mpi`. The collapsed state
   is remembered. For a new user, the process count defaults to `min(physical cores, 4)` when the configured
   MPI launcher and the MPI versions of rangular, rmcdhf, rci, rbiotransform and rtransition can be found
-  through the normal GRASP bin/PATH lookup;
+  through the normal GRASP programs directory or PATH lookup;
   otherwise it defaults to 1. Physical cores come from Linux CPU topology or macOS `hw.physicalcpu`, with
   a fallback of half the logical cores (at least 1). The initial value is saved immediately. Editing or browsing
   for the bin directory or editing the launcher recalculates the automatic default, with a status message
   when it changes. Counts entered by hand or loaded from a parameter file are retained. Older saved counts
   with no source indicator are treated as user choices. The input maximum
   remains the logical core count. Its tooltip explains that hyperthreading offers little benefit for GRASP.
-  初始值立即保存。编辑或浏览选择 GRASP bin 目录、编辑 mpirun 命令后，自动默认值重新计算，数值改变时状态栏提示一次。
+  初始值立即保存。编辑或浏览选择 GRASP 程序目录 (bin)、编辑 mpirun 命令后，自动默认值重新计算，数值改变时状态栏提示一次。
   手动输入、载入参数文件指定的进程数，以及没有来源标记的旧设置均保留。
   [English screenshot](images/en_mpi_default.png) / [中文截图](images/zh_mpi_default.png)。
-* **GRASP bin lookup**: `$GRASP_BINDIR` → last used → directory of `rmcdhf` on `PATH` → `../bin` of the program.
+* **GRASP programs directory lookup**: `$GRASP_BINDIR` → last used → directory of `rmcdhf` on `PATH` → `../bin` of the program.
 * **Tabs (标签页)**: *Calculation (计算)*, *Radial wave functions (径向波函数)*, *Levels (能级图)*; bold labels.
   The viewer tabs show the working directory and refresh after a run finishes. *Open in new window (在新窗口中打开)*
   (corner button, viewer tabs only) opens the current viewer in a separate window with its own directory bar
@@ -91,10 +91,13 @@ MCP 打开时，打开该来源的计算会在输出区显示来源；关闭时�
 
 ### Connect to server / 连接服务器
 
-**File → Connect to server… (文件 → 连接服务器…)** opens an SSH dialog: editable aliases from ssh_config,
-server executable (default discovery or full path), directory, Connect/refresh, Parent directory, file metadata,
-and Use this directory. Double-click directories to browse. Host-specific executable/directory preferences persist;
+**File → Connect to server… (文件 → 连接服务器…)** opens an SSH dialog with the SSH host, server type,
+working directory on server and optional GRASP GUI server program path. Double-click directories to browse
+and choose **Open this working directory**. Host-specific executable/directory preferences persist;
 credentials do not.
+Aliases for the same effective SSH user, host and port share settings. If an alias resolves to a different
+saved host, the connection dialog applies that host's settings and shows its connection identity.
+[Connection identity (English)](images/en_server_profile_identity.png) / [连接标识](images/zh_server_profile_identity.png).
 **Server type (服务器类型)** selects Workstation (existing background execution) or Slurm cluster (batch submission,
 scheduler state and cancellation); it is saved per host. Unclassified profiles require an explicit choice; the dialog
 explains that login nodes should not run calculations directly. Slurm needs
@@ -104,8 +107,16 @@ prompts use OpenSSH ASKPASS; old OpenSSH supports keys only. First-contact host-
 prompt/fingerprint with a visible input field and a verification reminder; passwords remain hidden. Hardware-key
 notifications have no input or reply and close when ssh finishes the operation. Details and installation: [REMOTE.md](REMOTE.md).
 
+The connection status and server workspace show the GRASP programs directory and its source. If GRASP
+is missing, **Settings…** opens server run settings. Slurm reports describe the login node.
+[Connection dialog (English)](images/en_connect_grasp.png) / [连接对话框](images/zh_connect_grasp.png).
+
 The main window has one permanent **Local** workspace followed by the server directories you open.
 Each server tab displays the full directory, server type and connection state above its three pages.
+Enter a path in **Working directory on server**, or choose **Browse…**, **Siblings**, or **Recent**. The tab keeps
+its SSH session and current page. Switching uses the same draft and transfer prompts as closing a tab.
+An already open target is activated without changing the current directory of the original tab.
+[Directory bar (English)](images/en_server_directory_switch.png) / [目录栏](images/zh_server_directory_switch.png).
 Aliases that resolve to the same SSH user, host and port reuse an open tab for that directory.
 **Ctrl+PgUp / Ctrl+PgDn** switch workspaces. **Ctrl+1–3** switch pages in the active workspace, and **Ctrl+4**
 opens Convergence in the Local workspace. Local directory, import, export and parameter commands are disabled
@@ -138,18 +149,20 @@ If a file transfer is active, closing the tab asks whether to cancel it and defa
 [English screenshot](images/en_server_workspaces.png) / [中文截图](images/zh_server_workspaces.png).
 
 Workstation runs always open **Server run settings**, including runs after creation/upload and selected ranges.
-The shared RunSettings fields show the server's GRASP bin path, process count, mpirun, MPI_TMP and nice.
-Saved desktop values for this host take precedence over server defaults. Checks run on opening, on **Check**,
+The shared RunSettings fields show the server's GRASP programs (bin directory), process count, mpirun, MPI_TMP and nice.
+An explicit programs directory saved on the desktop for this host takes precedence over server `GRASP_BINDIR`
+and the directory of `rmcdhf` on `PATH`. The dialog preserves the saved field, including a blank value.
+Checks run on opening, on **Check**,
 and automatically before confirmation if values changed. Missing programs (including MPI variants/launcher)
 and input preflight are shown; missing programs default to Cancel but allow explicit continuation.
 Confirming saves only this host's desktop preferences. **Server actions → Server run settings…** also checks/saves without
 starting a calculation. Older servers show read-only settings and an update instruction; their run requests remain
-unchanged. Slurm continues to use its resource dialog. [中文截图](images/zh_server_run_settings.png) /
-[English screenshot](images/en_server_run_settings.png).
+unchanged. Slurm continues to use its resource dialog. [中文截图](images/zh_server_grasp_settings.png) /
+[English screenshot](images/en_server_grasp_settings.png).
 
 If saved host settings become invalid, upload previews warn and check against server defaults instead, so a moved
 bin directory does not block uploading. Run confirmation still validates settings strictly. An empty bin field
-continues to mean PATH; the server supplies a nonempty default before handing settings to the run process.
+uses automatic discovery on the server for both the run check and startup.
 
 For Slurm, **Submit Slurm job (提交 Slurm 作业)** reviews resource settings and asks for default-No confirmation.
 The state shows the job ID and scheduler state; pending/running/unknown jobs disable submission. Stop uses
@@ -178,30 +191,40 @@ Old servers without `workdir_write_v1` show an update instruction and receive no
 路径不匹配的有效记录不属于当前目录，不影响副本使用。新连接提示说明集群登录节点不宜直接运行计算。
 
 “连接服务器”对话框可选 SSH 别名或手输 user@host、设置程序完整路径、浏览目录；成功使用目录后保存每台主机的
-程序位置与目录，不保存密码。连接失败显示原始诊断和手动安装提示。主窗口保留一个不可关闭的本机工作区，已打开的服务器目录
+程序位置与目录，不保存密码。连接失败显示原始诊断和手动安装提示。
+连接标识（SSH 用户、主机和端口）相同的别名共用主机设置。别名实际指向另一个已保存的主机时，
+连接对话框采用那个主机的设置，并显示生效的连接标识。
+主窗口保留一个不可关闭的本机工作区，已打开的服务器目录
 各占一个标签。服务器标签顶部显示完整路径、服务器类型和连接状态。SSH 别名解析到同一用户、主机和端口时，同一目录复用标签。
+在“服务器上的工作目录”栏输入路径，或用“浏览…”、“同级”、“最近”切换工作目录。切换沿用连接并保留当前页，
+草稿和传输按关闭标签时的规则确认。
+目标已经打开时激活对应标签，原标签仍在原目录。
 Ctrl+PgUp / Ctrl+PgDn 切换工作区，Ctrl+1–3 切换当前工作区的页面，Ctrl+4 在本机打开收敛页。服务器工作区激活时，
-本机目录、导入导出和参数菜单禁用。切换语言或字号会保留工作区、连接、读取和传输。启动时恢复本机页面，最近使用的服务器目录
+本机目录、导入导出和参数菜单禁用。切换语言或字号会保留工作区、连接、读取和传输。启动时恢复本机页面，最近使用的服务器上的工作目录
 可通过连接对话框手动打开。服务器工作区及独立查看器显示服务器来源。服务器支持写入 (`workdir_write_v1`) 时，计算页使用与本机相同的
-程序页、流程列表和输入预览，“检查输入文件”由服务器按服务器目录检查。修改先保存为本机草稿，有草稿时标签显示 ●。
+程序页、流程列表和输入预览，“检查输入文件”由服务器按服务器上的工作目录检查。修改先保存为本机草稿，有草稿时标签显示 ●。
 “保存到服务器…”先预览差异，自定义命令单独确认，最终确认默认为“否”。服务器流程已改变或有计算正在运行时拒绝写入，
 草稿保留；“草稿”菜单可导出草稿为配置或重新读取服务器流程 (放弃草稿)，不提供强制覆盖。失去回答时不重发，读取服务器流程
 按修订号和指纹核对。运行前先要求保存草稿。重新打开有草稿的目录时选择“恢复草稿 / 放弃草稿”；关闭标签或退出程序时逐个选择
 “保存到服务器 / 保留草稿 / 放弃草稿”，默认保留草稿。断线时草稿保留，标签显示“重新连接”。旧服务器端只读并提示更新。
+
+连接对话框显示 SSH 主机、服务器类型和服务器上的工作目录。GRASP GUI 服务器版程序路径可留空自动查找。连接后自动显示 GRASP 程序目录和来源，未找到时点“设置…”打开服务器运行设置。Slurm 的检查只代表登录节点。
+
 可运行、停止和跟踪日志，自定义命令须确认。会受退出登录清理影响时默认取消，
 用户可选 scope、导出 Slurm 或明确照常启动。能级/组成、粗/细曲线渐进显示；选中、悬停、缩放和平移使用缓存，
 “读取更多组成”才补取数据。远程跃迁页只读已有结果，图上标记不写文件。“窗口”菜单可开共享连接的查看器，“服务器操作”菜单可重新连接。
 远程“结果摘要…”由服务器读流程、状态并生成文本；勾选/能级数改变后重新请求，复制与本机保存沿用同一对话框。
-标题显示服务器来源，保存从本机家目录开始选择；不使用桌面会话历史，不在桌面读取服务器目录，取消或旧回答不改变剪贴板。
+标题显示服务器来源，保存从本机家目录开始选择；不使用桌面会话历史，不在桌面读取服务器上的工作目录，取消或旧回答不改变剪贴板。
 关闭服务器标签会关闭这些查看器和连接，后台计算继续。传输中关闭时询问是否取消传输，默认否。完整协议、缓存/重连限制见 [REMOTE.md](REMOTE.md)。
 
 工作站每次运行（含新建后运行、上传后运行和选定范围）先显示“服务器运行设置”，复用本机的路径、进程数、
-mpirun、MPI_TMP 和 nice 控件；该主机在桌面保存过的值优先，否则用服务器默认值。打开时、点“检查”时，
+mpirun、MPI_TMP 和 nice 控件。优先使用桌面为该主机保存的非空程序目录，再查 `GRASP_BINDIR` 和 `PATH`；
+对话框原样显示已保存的字段。打开时、点“检查”时，
 以及修改后确认前均在服务器检查，显示缺少的程序（包括 MPI 程序和启动器）和输入预检。缺少程序时默认取消，
 仍可明确继续。确认只保存桌面端的该主机偏好；“服务器操作 → 服务器运行设置…”可单独检查、保存而不启动。
 旧服务器只读显示并提示更新，运行请求不增加参数；Slurm 仍用资源设置对话框。
 按主机保存的运行设置失效时，上传预览提示原因并改用服务器默认值检查，不阻断上传；运行时仍严格校验。
-bin 留空仍表示 PATH，服务器只在交给运行进程前补上非空默认目录。
+bin 留空表示自动查找，服务器预检和启动使用相同的目录解析规则。
 上传警告截图：[中文](images/zh_upload_run_settings_warning.png) / [English](images/en_upload_run_settings_warning.png)。
 
 The workspace's **Server actions** menu offers **Download to this computer…**, **Upload from this computer…**
@@ -222,7 +245,7 @@ a server workspace also asks before cancelling active transfers. The default dow
 传输中关闭传输窗口会询问是否取消，默认否；拒绝时窗口保持打开，传输继续。取消保留部分数据。
 传输中关闭工作区也要确认取消。下载目录可自行选择。
 
-The connection dialog also has **Install / update server…** and **Remove from server…**. They show the host,
+The connection dialog also has **Install / update GRASP GUI server…** and **Remove from server…**. They show the host,
 bundled version/size, editable installation root, checks and exact paths before a default-No confirmation.
 Transfer progress and Cancel are available; returning from installation verifies the server and saves its path.
 Development or self-built binaries without a bundle disable the installation button with a clear message; removal remains available.
@@ -573,7 +596,7 @@ Remedies / 解决办法:
 Dialog *Import configuration (导入配置)*: an explanatory line at the top; left the list of examples (GRASP2018 manual:
 example1–5, 8, 9, case1–4; case2 is C IV at Z=6, case3 Fe XV at Z=26; manual_csfs covers §§5.1–5.8, manual_zf covers §14.1) or, with *Open configuration file… (打开配置文件…)*, a file; right an information
 pane: title, origin (*Example included with the program*), summary, *Estimated time (预计时间)*, *Package (程序包)*,
-*Pipeline (流程)* (n steps), *Programs used (用到的程序)* (missing ones in the GRASP bin directory marked), attached
+*Pipeline (流程)* (n steps), *Programs used (用到的程序)* (missing ones in the GRASP programs (bin directory) marked), attached
 files, compatibility warnings, **custom commands** (orange, on a light background: *Custom* tab steps and steps
 stored as commands — they can run any program), *Reference results (参考结果)* (energies of the mixing coefficient
 files). Bottom: *Import into directory (导入到目录)* + *Browse…* (default `~/grasp_demos/<id>` for examples,
@@ -903,7 +926,7 @@ cannot handle paths longer than 128 characters; the GUI then falls back to the s
 
 The pipeline run-button group has one **Upload to server… (上传到服务器…)** action. Linked copies instead
 show **Update server pipeline… (更新服务器流程…)** and reconnect to their fixed host/directory. In the target
-dialog the browsed **Server directory** is the upload target; **Upload to this directory** confirms that path.
+dialog the browsed **Working directory on server** is the upload target; **Upload to this directory** confirms that path.
 **New subdirectory…** defaults to the local workdir name. Empty names, `/`, `.` and `..` are rejected. An existing
 subdirectory is entered normally. A new subdirectory or a directly typed nonexistent path is shown as
 **Created when the upload is confirmed**, beside the path and in the final confirmation; choosing it does not
@@ -936,9 +959,9 @@ are reconciled before retry; mutations are never automatically resent. **Unlink 
 and changes only desktop preferences. The source label and confirmation for running a server copy locally remain.
 
 计算页保留一个“上传到服务器…”入口，已关联副本时改为“更新服务器流程…”，固定使用关联主机和目录。
-目标对话框的“服务器目录”就是上传位置；“上传到此目录”确认当前路径。“新建子目录…”默认填本机目录名，
+目标对话框的“服务器上的工作目录”就是上传位置；“上传到此目录”确认当前路径。“新建子目录…”默认填本机目录名，
 拒绝空名、含 `/`、`.` 和 `..`；同名目录存在时直接进入。不存在的子目录或手输路径在路径旁和最终确认中标注
-“确认上传时创建”，选择时不创建服务器目录，返回上一级可取消候选目标；普通连接对话框行为不变。
+“确认上传时创建”，选择时不创建服务器上的工作目录，返回上一级可取消候选目标；普通连接对话框行为不变。
 待创建目标把最近浏览的已有目录保存为默认目录（新建子目录时就是上级）；尚未浏览时用服务器 HOME，取消上传也不会留下不存在的默认路径。
 
 未关联且目标已有计算时，在确认目标时提示“取出到本机编辑…”，默认使用新的本机目录，明确本机当前修改不会带过去，
@@ -1013,7 +1036,7 @@ Lost replies trigger fingerprint verification and never automatic replay. Older 
 复用配置选择窗口：示例、文件、剪贴板均可；隐藏“更新当前工作目录”，
 默认服务器子目录取经清理的配置标题，可选“新建并运行”。缺少程序/输入由服务器检查。复用上传清单，可选现有本机输入目录；
 缺少外部输入也可稍后上传。创建目标必须不存在或为空，最终主机/路径确认默认否，自定义命令另行确认。
-不创建本机计算目录或关联；写入核对状态仅留在当前窗口。关闭后重新浏览服务器目录核对结果。
+不创建本机计算目录或关联；写入核对状态仅留在当前窗口。关闭后重新浏览服务器上的工作目录核对结果。
 成功后打开新目录；从空服务器工作区发起时沿用 SSH 连接替换该标签。运行仍经过普通工作站/Slurm 预检与确认。
 回复丢失不自动重发，旧服务器明确提示更新。
 
@@ -1024,7 +1047,7 @@ Screenshots / 截图：[configuration English](images/en_remote_import_config.pn
 
 | Where | What |
 |---|---|
-| `~/.config/grasp_gui.json` | language, font size, last working directory, recent directories, GRASP bin, MPI settings, settings collapsed, window geometry, calculation splitter, last tab, Slurm settings, energy unit, energy-zero mode (`level_zero`), level-export options, configuration abbreviations, transition process count, show-links option, configuration author |
+| `~/.config/grasp_gui.json` | language, font size, last working directory, recent directories, GRASP programs directory, MPI settings, settings collapsed, window geometry, calculation splitter, last tab, Slurm settings, energy unit, energy-zero mode (`level_zero`), level-export options, configuration abbreviations, transition process count, show-links option, configuration author |
 | `<workdir>/.grasp_gui.json` | session: parameters per group, current group, pipeline |
 | `<workdir>/.grasp_gui.json.bak-<timestamp>` | original session records before updating/restoring; latest five retained / 更新及恢复前的记录备份，保留五份 |
 | `<workdir>/.grasp_gui_inputs.json` | validated attached-input basenames for cleanup after restarting / 附带输入基名清单，重启后清理仍会保留这些输入 |

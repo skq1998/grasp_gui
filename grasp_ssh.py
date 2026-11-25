@@ -78,6 +78,78 @@ def connection_identity(client, *, resolve=True):
     return f"{user}@{host}:{port}"
 
 
+def identity(client):
+    return getattr(client, "identity", None) or connection_identity(client, resolve=False)
+
+
+def host_profiles():
+    profiles = core.load_config().get("remote_hosts")
+    return profiles if isinstance(profiles, dict) else {}
+
+
+def profile_aliases(key, profile):
+    aliases = profile.get("aliases") if isinstance(profile, dict) else None
+    return [alias for alias in aliases if isinstance(alias, str)] if isinstance(aliases, list) else [key]
+
+
+def profile_for_alias(host, profiles=None):
+    profiles = host_profiles() if profiles is None else profiles
+    for key, entry in profiles.items():
+        if isinstance(entry, dict) and host in profile_aliases(key, entry):
+            return key, entry
+    return "", {}
+
+
+def host_profile(client):
+    profiles = host_profiles()
+    profile = profiles.get(identity(client), profiles.get(client.host))
+    return profile if isinstance(profile, dict) else {}
+
+
+def _update_host_profile(client, changes=None):
+    host, key = client.host, identity(client)
+    result = {}
+
+    def update(profiles):
+        canonical = profiles.get(key)
+        legacy = profiles.get(host) if host != key else None
+        if isinstance(legacy, dict) and "aliases" not in legacy:
+            result["merged"] = isinstance(canonical, dict)
+            profiles.pop(host)
+        else:
+            legacy = None
+        profile = canonical if isinstance(canonical, dict) else legacy
+        if profile is None and changes is None:
+            return False
+        before = dict(profiles)
+        aliases = [alias for alias in profile_aliases(key, profile) if alias != host] if profile else []
+        if profile and "aliases" not in profile:
+            aliases = []
+        profiles[key] = dict(profile or {}, **(changes or {}), aliases=[host, *aliases])
+        for other, entry in before.items():
+            if other != key and isinstance(entry, dict) and "aliases" in entry:
+                aliases = profile_aliases(other, entry)
+                if host in aliases:
+                    profiles[other] = dict(entry, aliases=[alias for alias in aliases if alias != host])
+        return legacy is not None or profiles != before
+
+    return core.update_config("remote_hosts", update) and result.get("merged", False)
+
+
+def migrate_host_profile(client):
+    return _update_host_profile(client)
+
+
+def save_host_profile(client, **changes):
+    if not getattr(client, "identity_ready", True):
+        def update(profiles):
+            key, profile = profile_for_alias(client.host, profiles)
+            profiles[key or client.host] = dict(profile, **changes)
+        core.update_config("remote_hosts", update)
+        return
+    _update_host_profile(client, changes)
+
+
 def private_dir(path):
     path = Path(path)
     path.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -100,7 +172,7 @@ def startup(program=""):
     if "\x00" in program or "\n" in program:
         raise ValueError("invalid server executable")
     if program and not program.startswith(("/", "~/")):
-        raise ValueError(T("服务器端程序请填写完整路径或 ~/ 路径"))
+        raise ValueError(T("GRASP GUI 服务器版程序路径请填写完整路径或 ~/ 路径"))
     if program.startswith("~/"):
         select = 'p="$HOME"/' + shlex.quote(program[2:])
     elif program:
@@ -170,12 +242,14 @@ class Cache:
 
 
 class Client:
-    def __init__(self, host, program="", ssh="ssh", options=(), cache=None, command=None):
+    def __init__(self, host, program="", ssh="ssh", options=(), cache=None, command=None, *, profile_key=None):
         if not host or host.startswith("-") or any(c.isspace() or ord(c) < 32 for c in host):
             raise ValueError(T("请输入有效的 SSH 主机或 user@host"))
         self.host, self.program, self.ssh, self.options = host, program, ssh, tuple(options)
         self.command_override = command
         self.identity = connection_identity(self, resolve=False)
+        self.identity_ready = False
+        self.profile_key = profile_key
         self.events, self.outbound, self.incoming = queue.Queue(), queue.Queue(), queue.Queue()
         self.pending, self.counter, self.generation = {}, 0, 0
         self.guard = threading.Lock()
@@ -242,7 +316,7 @@ class Client:
                     break
                 if not seen:
                     if raw.startswith(b"GRASP_GUI_REMOTE ") and raw.rstrip() != protocol.GREETING.encode():
-                        raise ValueError(T("远程协议不兼容，请更新服务器端程序"))
+                        raise ValueError(T("远程协议不兼容，请更新 GRASP GUI 服务器版"))
                     if raw.rstrip() == protocol.GREETING.encode():
                         seen = True
                         self.incoming.put((generation, dict(event="greeting")))
@@ -300,7 +374,7 @@ class Client:
                     code = None
                 error = ServerUnavailable if value["event"] == "eof" and code not in (None, 255) else ConnectionError
                 raise error(self.diagnostics or value.get("text") or
-                            T("服务器握手失败，请检查程序路径并安装或更新服务器端"))
+                            T("服务器握手失败，请检查程序路径并安装或更新 GRASP GUI 服务器版"))
         else:
             raise TimeoutError(T("SSH 登录或服务器握手超时"))
         while not self.closed.is_set() and time.monotonic() < deadline:
@@ -312,7 +386,7 @@ class Client:
                 continue
             if value.get("id") == 0:
                 if "error" in value or value.get("result", {}).get("protocol") != protocol.PROTOCOL:
-                    raise ConnectionError(value.get("error", T("远程协议不兼容，请更新服务器端程序")))
+                    raise ConnectionError(value.get("error", T("远程协议不兼容，请更新 GRASP GUI 服务器版")))
                 self.rtt = time.monotonic() - started
                 if not self.custom_cache:
                     canonical = value["result"]["executable"]
@@ -368,6 +442,14 @@ class Client:
         try:
             # 在首个目录请求完成之前取得生效配置，避免阻塞 Qt。
             self.identity = connection_identity(self)
+            self.identity_ready = True
+            if self.profile_key is not None and self.profile_key != self.identity:
+                profile = host_profiles().get(self.identity)
+                if isinstance(profile, dict):
+                    self.program = profile.get("program", "")
+                elif self.profile_key and self.profile_key != self.host:
+                    # 旧别名条目首次迁移时仍使用其路径；已解析的旧主机设置不能用于新主机。
+                    self.program = ""
             while not self.closed.is_set():
                 try:
                     if not self.connected:

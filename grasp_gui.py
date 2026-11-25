@@ -11,6 +11,7 @@ GRASP 图形界面 (Qt / PySide6)。主窗口上方是工作目录和运行设�
 """
 
 import os
+import queue
 import sys
 
 if __name__ == "__main__":
@@ -111,7 +112,7 @@ fix_fontconfig()
 if core.IS_LINUX:
     os.environ.setdefault("XKB_LOG_LEVEL", "critical")
 
-from PySide6.QtCore import QByteArray, QEvent, QObject, QPointF, Qt  # noqa: E402
+from PySide6.QtCore import QByteArray, QEvent, QObject, QPointF, Qt, QTimer  # noqa: E402
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QFontDatabase, QKeySequence, QPainter,  # noqa: E402
                            QPalette, QShortcut)
 from PySide6.QtWidgets import (QApplication, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,  # noqa: E402
@@ -348,8 +349,8 @@ class MainWindow(QMainWindow):
     def local_workspace_title(self):
         return T("本机：{name}", name=os.path.basename(self.cur_workdir) or self.cur_workdir)
 
-    def add_remote_tab(self, workspace):
-        index = self.workspaces.addTab(workspace, "")
+    def add_remote_tab(self, workspace, index=-1):
+        index = self.workspaces.insertTab(index, workspace, "")
         self.workspaces.setTabToolTip(index, f"{workspace.label}\n{workspace.server_label()}")
         self.update_remote_title(workspace)
 
@@ -363,7 +364,7 @@ class MainWindow(QMainWindow):
             self.workspaces.setTabText(index, f"{mark}{workspace.client.host}:{title}")
 
     def open_remote_workspace(self, source, directory, *, refresh=False, run_after_load=False, replace=None):
-        from remote_panel import RemoteWorkspace, remote_recent_entries, workspace_key
+        from remote_panel import RemoteWorkspace, workspace_key
 
         key = workspace_key(source, directory)
         workspace = self.remote_workspaces.get(key)
@@ -371,7 +372,10 @@ class MainWindow(QMainWindow):
             workspace = RemoteWorkspace(source, key[1], self, run_after_load)
             workspace.draftChanged.connect(lambda: self.update_remote_title(workspace))
             self.remote_workspaces[key] = workspace
-            self.add_remote_tab(workspace)
+            index = self.workspaces.indexOf(replace) if replace is not None else -1
+            if index > 0:
+                workspace.tabs.setCurrentIndex(replace.tabs.currentIndex())
+            self.add_remote_tab(workspace, index)
             if len(self.remote_workspaces) == 1:
                 QApplication.instance().installEventFilter(self)
                 for shortcut in self.workspace_shortcuts:
@@ -386,12 +390,45 @@ class MainWindow(QMainWindow):
         elif all(item.source is not source for item in self.remote_workspaces.values()):
             source.close()
         self.workspaces.setCurrentWidget(workspace)
-        identity, directory = key
-        aliases = {workspace.client.host, source.client.host}
+        self.remember_remote_directory(workspace, source.client.host)
+        return workspace
+
+    def remember_remote_directory(self, workspace, alias):
+        from remote_panel import remote_recent_entries
+
+        identity, directory = workspace.key
+        aliases = {workspace.client.host, alias}
         recent = [(host, path, saved) for host, path, saved in remote_recent_entries()
                   if path != directory or (saved != identity if saved else host not in aliases)]
         core.save_config(remote_recent=[(workspace.client.host, directory, identity), *recent[:11]])
-        return workspace
+
+    def switch_remote_workspace(self, workspace, directory):
+        from remote_panel import workspace_key
+
+        key = workspace_key(workspace.source, directory)
+
+        def activate_existing():
+            existing = self.remote_workspaces.get(key)
+            if existing is None:
+                return False
+            workspace.set_directory_switching(False)
+            self.workspaces.setCurrentWidget(existing)
+            self.remember_remote_directory(existing, workspace.client.host)
+            return True
+
+        if activate_existing():
+            return
+
+        def resolved(ok):
+            if workspace.closed:
+                return
+            if not ok or not getattr(workspace.client, "connected", True):
+                workspace.set_directory_switching(False)
+                return
+            if not activate_existing():
+                self.open_remote_workspace(workspace.source, directory, replace=workspace)
+
+        self.leave_remote_directory(workspace, resolved, switching=True)
 
     def active_remote(self):
         return self.workspaces.currentWidget() if self.workspaces.currentIndex() > 0 else None
@@ -437,20 +474,24 @@ class MainWindow(QMainWindow):
     def close_remote_tab(self, index):
         if index > 0:
             workspace = self.workspaces.widget(index)
-            if not workspace.may_close():
-                return
-            choice = "keep"
-            if workspace.has_draft():
-                from remote_editor import DraftsDialog
-                dialog = DraftsDialog(self, [workspace])
-                if dialog.exec() != QDialog.Accepted:
-                    return
-                choice = dialog.selected()[0][1]
-
             def resolved(ok):
                 if ok and workspace in self.remote_workspaces.values():
                     self.remove_remote_workspace(workspace)
-            workspace.resolve_draft(choice, resolved)
+            self.leave_remote_directory(workspace, resolved)
+
+    def leave_remote_directory(self, workspace, done, *, switching=False):
+        if not workspace.may_close(switching=switching):
+            done(False)
+            return
+        choice = "keep"
+        if workspace.has_draft():
+            from remote_editor import DraftsDialog
+            dialog = DraftsDialog(self, [workspace])
+            if dialog.exec() != QDialog.Accepted:
+                done(False)
+                return
+            choice = dialog.selected()[0][1]
+        workspace.resolve_draft(choice, done, wait_for_save=switching)
 
     def resolve_drafts(self):
         """退出前处理各服务器工作区的草稿；需要等待保存时返回 False，保存全部成功后再次关闭窗口。"""
@@ -823,17 +864,23 @@ class WindowStyle(QObject):
 
 def main():
     args = sys.argv[1:]
+    import grasp_config
+    lang = None
     if "--lang" in args and args.index("--lang") + 1 < len(args):
-        i = args.index("--lang")
-        core.set_lang(args[i + 1])
+        index = args.index("--lang")
+        lang = args[index + 1]
+        del args[index:index + 2]
+    notices = queue.SimpleQueue()
+    if not args or (args[0] not in grasp_config.COMMANDS and args[0] not in ("-h", "--help")):
+        core.config_notice = lambda kind, text, values: notices.put((kind, text, values))
+    if lang is not None:
+        core.set_lang(lang)
         core.save_config(lang=core.LANG)
-        del args[i:i + 2]
     else:
         core.set_lang(core.load_config().get("lang", "zh"))
     if args[:1] in (["-h"], ["--help"]):
         print(T(USAGE))
         return
-    import grasp_config
     if args[:1] and args[0] in grasp_config.COMMANDS:      # 共享配置的命令行工具，不打开窗口
         sys.exit(grasp_config.cli(args))
     start = start_window(args)
@@ -848,6 +895,18 @@ def main():
     app.window_style = WindowStyle(app, frames=app.platformName().startswith("wayland"))
     win = MainWindow(workdir, tab)
     win.show()
+
+    def show_config_notices():
+        while not notices.empty():
+            kind, text, values = notices.get_nowait()
+            if kind == "broken":
+                QMessageBox.warning(win, T("本机设置"), T(text, **values))
+            else:
+                win.statusBar().showMessage(T(text, **values), 10000)
+
+    settings_timer = QTimer(win)
+    settings_timer.timeout.connect(show_config_notices)
+    settings_timer.start(200)
     if path:
         win.open_path(path)
     rc = app.exec()

@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogBut
                                QHBoxLayout, QLabel, QListWidget, QMessageBox, QPlainTextEdit, QVBoxLayout, QWidget)
 
 import grasp_config as config
-import grasp_core as core
 import grasp_drafts as drafts
 import grasp_ssh as ssh
 import grasp_summary as summary
@@ -37,6 +36,7 @@ class RemoteEditor(PipelineEditor):
         self.draft = None          # 与草稿文件一致；没有修改时为 None
         self.blocked = None        # 草稿文件无法读取时的说明；此时不编辑，以免覆盖原文件
         self.saving = False
+        self.save_waiters = []
 
     # ---- 界面 ----
     def build(self):
@@ -48,7 +48,7 @@ class RemoteEditor(PipelineEditor):
         bar = QHBoxLayout()
         bar.addWidget(button("预览输入", self.preview))
         check = button("检查输入文件", self.check_inputs)
-        check.setToolTip(T("由服务器按服务器目录检查流程。"))
+        check.setToolTip(T("由服务器按服务器上的工作目录检查流程。"))
         bar.addWidget(check)
         self.add_button = button("加入流程 ↓", self.add_to_pipeline)
         bar.addWidget(self.add_button)
@@ -126,7 +126,7 @@ class RemoteEditor(PipelineEditor):
             self.show_draft()
             self.reconcile(value=dict(revision=self.base["revision"], config=self.base["config"]))
             return
-        text = T("此服务器目录有 {time} 保存的草稿。", time=saved["updated"])
+        text = T("此服务器上的工作目录有 {time} 保存的草稿。", time=saved["updated"])
         if saved["base_revision"] != self.base["revision"]:
             text += "\n" + T("服务器流程在此之后已改变；恢复后保存会被拒绝，可导出草稿。")
         box = QMessageBox(QMessageBox.Question, T("恢复草稿"), text, parent=self.calc)
@@ -218,7 +218,7 @@ class RemoteEditor(PipelineEditor):
         source = self.calc.source
         if (getattr(source, "server_type", "workstation") == "workstation" and
                 "run_settings_v1" in getattr(source, "server", {}).get("capabilities", [])):
-            saved = core.load_config().get("remote_hosts", {}).get(source.client.host, {}).get("run")
+            saved = ssh.host_profile(source.client).get("run")
             if saved is not None:
                 args["run_settings"] = saved
         return args
@@ -240,19 +240,29 @@ class RemoteEditor(PipelineEditor):
             QMessageBox.information(self.calc, T("检查输入文件"), text)
         self.calc.source.submit("preview_upload", self.preview_args(cfg, revision), checked)
 
-    def save_to_server(self, done=None):
+    def save_to_server(self, done=None, *, wait=False):
         """预览差异 → 自定义命令单独确认 → 最终确认 (默认“否”) → update_workdir。done(成功与否)。"""
-        finish = done or (lambda ok: None)
+        completed = done or (lambda ok: None)
         if self.draft is None:
-            finish(True)
+            completed(True)
             return
         if self.saving:
-            finish(False)
+            if wait and done is not None:
+                self.save_waiters.append(done)
+            else:
+                completed(False)
             return
         if self.draft.get("pending"):
             self.reconcile()
-            finish(False)
+            completed(False)
             return
+
+        def finish(ok):
+            waiting, self.save_waiters = self.save_waiters, []
+            completed(ok)
+            for callback in waiting:
+                callback(ok)
+
         title = T("保存到服务器")
         cfg = self.checked_configuration(title)
         if cfg is None:

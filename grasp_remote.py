@@ -11,6 +11,7 @@ from pathlib import Path
 import pwd
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -64,6 +65,19 @@ def integer(value, low, high):
     return value
 
 
+GRASP_CHECK = "grasp_check_v1"
+GRASP_PROGRAMS = ("rnucleus", "rcsfgenerate", "rangular", "rwfnestimate", "rmcdhf", "rci")
+
+
+def grasp_check(*, use_saved=True):
+    directory, source = core.bindir_selection(use_saved=use_saved)
+    names = [name + suffix for suffix in ("", "_mpi") for name in GRASP_PROGRAMS]
+    programs = {name: bool(core.program_path(directory, name)) for name in names}
+    return dict(directory=directory if source else "", source=source, programs=programs,
+                path_programs=[name for name in names if shutil.which(name)],
+                bindir_env=os.environ.get("GRASP_BINDIR", ""), path_env=os.environ.get("PATH", ""))
+
+
 class Operations(service.Service):
     def __init__(self, cancel=None):
         super().__init__("/")
@@ -79,12 +93,17 @@ class Operations(service.Service):
 
     def hello(self, protocol, version=""):
         if type(protocol) is not int or protocol != PROTOCOL:
-            raise ValueError(T("远程协议不兼容，请更新服务器端程序"))
+            raise ValueError(T("远程协议不兼容，请更新 GRASP GUI 服务器版"))
         executable = os.environ.get("GRASP_GUI_REMOTE_EXECUTABLE") or (
             sys.executable if getattr(sys, "frozen", False) else sys.argv[0])
+        check = grasp_check()
+        if check["source"] == "saved":
+            # 远程表单留空时的自动查找，与 checked_run_settings 使用同一规则。
+            check["empty_bindir"] = grasp_check(use_saved=False)
         return dict(protocol=PROTOCOL, version=core.VERSION, executable=os.path.abspath(executable),
-                    home=str(Path.home()), server_types=["workstation", "slurm"],
-                    capabilities=["workdir_write_v1", "run_range_v1", "run_settings_v1", "workdir_clean_v1"])
+                    home=str(Path.home()), server_types=["workstation", "slurm"], grasp_check=check,
+                    capabilities=["workdir_write_v1", "run_range_v1", "run_settings_v1", "workdir_clean_v1",
+                                  GRASP_CHECK])
 
     def preview_clean(self, directory):
         return workdir.preview_clean(self.path(directory, directory=True))
@@ -315,7 +334,7 @@ class Operations(service.Service):
             operation = service.Service("/", allow_custom=allow_custom)
             settings = dict(plan["run_settings"])
             if not settings["bindir"]:
-                # 表单留空表示 PATH；不能让运行进程的 PATH 以空项（当前目录）开头。
+                # 服务器默认设置无法定位目录时，交给运行进程前再按环境自动查找。
                 settings["bindir"] = core.default_bindir(use_saved=False)
             script_options = {}
             if run_settings is not None:

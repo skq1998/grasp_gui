@@ -19,13 +19,15 @@ def association(directory):
 
 
 def bind(directory, value):
-    copies = core.load_config().get("remote_copies", {})
     key = str(Path(directory).resolve())
-    if value is None:
-        copies.pop(key, None)
-    else:
-        copies[key] = dict(value)
-    core.save_config(remote_copies=copies)
+
+    def update(copies):
+        if value is None:
+            copies.pop(key, None)
+        else:
+            copies[key] = dict(value)
+
+    core.update_config("remote_copies", update)
 
 
 def fingerprint(configuration):

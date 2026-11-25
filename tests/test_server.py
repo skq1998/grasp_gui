@@ -25,7 +25,7 @@ def command(args):
 def test_gui_commands_have_server_diagnostic_without_qt(args):
     result = command(["--lang", "en", *args])
     assert result.returncode == 2 and not result.stdout
-    assert "server build" in result.stderr and "desktop or legacy" in result.stderr
+    assert "GRASP GUI server" in result.stderr and "desktop or legacy" in result.stderr
     assert "Traceback" not in result.stderr
 
 

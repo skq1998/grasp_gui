@@ -319,7 +319,7 @@ def test_old_server_stays_read_only(desk, answers):
     source.respond("pipeline", dict(jobs=config.session(configuration())["pipeline"], revision="r1",
                                     directory="/srv/a"))
     assert workspace.calc.editor is None and "get_pipeline" not in methods(source)
-    assert "Install / update server" in workspace.calc.readonly_hint.text()
+    assert "Install / update GRASP GUI server" in workspace.calc.readonly_hint.text()
     assert workspace.calc.steps.count() == 2
 
 

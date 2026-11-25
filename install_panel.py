@@ -15,7 +15,7 @@ from gui_common import button
 class InstallDialog(QDialog):
     def __init__(self, client, parent=None, remove=False):
         super().__init__(parent)
-        self.setWindowTitle(T("从服务器移除") if remove else T("安装 / 更新服务器版"))
+        self.setWindowTitle(T("从服务器移除") if remove else T("安装 / 更新 GRASP GUI 服务器版"))
         self.resize(720, 440)
         self.client, self.remove, self.installer = client, remove, install.Installer(client)
         self.events, self.busy, self.package, self.checked = queue.Queue(), False, None, None
@@ -28,7 +28,7 @@ class InstallDialog(QDialog):
         form.addRow(T("SSH 主机（沿用 ~/.ssh/config）"), QLabel(client.host))
         self.root = QLineEdit(install.DEFAULT_ROOT)
         self.root.textChanged.connect(self.invalidate)
-        form.addRow(T("安装目录"), self.root)
+        form.addRow(T("GRASP GUI 服务器版安装目录"), self.root)
         layout.addLayout(form)
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
@@ -86,7 +86,7 @@ class InstallDialog(QDialog):
         versions = "\n".join(value["versions"]) or T("没有本程序安装的版本")
         self.details.appendPlainText(T("架构：{a}；{g}；可用空间：{n} MiB", a=value["architecture"],
                                       g=value["glibc"], n=round(value["free"] / (1024 * 1024))))
-        self.details.appendPlainText(T("安装目录：{p}\n链接：{l}\n已安装版本：\n{v}", p=value["root"],
+        self.details.appendPlainText(T("GRASP GUI 服务器版安装目录：{p}\n链接：{l}\n已安装版本：\n{v}", p=value["root"],
                                       l=value["link"], v=versions))
         self.action.setEnabled(True)
 

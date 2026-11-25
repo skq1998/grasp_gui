@@ -22,7 +22,7 @@ def bundle(directory=None):
     root = Path(directory) if directory else Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "server"
     archive = root if root.is_file() else root / ARCHIVE
     if not archive.is_file():
-        raise ValueError(T("本构建不含服务器版"))
+        raise ValueError(T("本构建不含 GRASP GUI 服务器版"))
     h = hashlib.sha256()
     with archive.open("rb") as stream:
         for data in iter(lambda: stream.read(1 << 20), b""):
@@ -40,7 +40,7 @@ def bundle(directory=None):
             size += item.size
             if item.name == "grasp_gui-server/SERVER_VERSION":
                 if item.size > 1024:
-                    raise ValueError(T("服务器版本记录无效"))
+                    raise ValueError(T("GRASP GUI 服务器版版本记录无效"))
                 version = stream.extractfile(item).read().decode("utf-8").strip()
     if version != "GRASP GUI " + core.VERSION + " (server; remote protocol 1)":
         raise ValueError(T("捆绑服务器版的版本或协议与桌面版不一致"))
@@ -168,7 +168,7 @@ rm -f "$root/.grasp-gui-previous"
 
 def command(script, root=DEFAULT_ROOT, *args):
     if not isinstance(root, str) or not root.startswith(("/", "~/")) or any(c in root for c in "\n\r\x00"):
-        raise ValueError(T("安装目录必须是完整路径或 ~/ 路径"))
+        raise ValueError(T("GRASP GUI 服务器版安装目录必须是完整路径或 ~/ 路径"))
     return "sh -c " + shlex.quote(script) + " sh " + shlex.join([root, *args])
 
 
@@ -179,7 +179,7 @@ def probe_result(raw, required):
     if tuple(map(int, values[1].split()[1].split("."))) < (2, 17):
         raise ValueError(T("服务器需要 glibc 2.17 或更新版本"))
     if not values[2].isdigit() or int(values[2]) * 1024 < required:
-        raise ValueError(T("服务器安装目录空间不足"))
+        raise ValueError(T("GRASP GUI 服务器版安装目录空间不足"))
     return dict(architecture=values[0], glibc=values[1], free=int(values[2]) * 1024,
                 root=values[3], link=values[4], versions=values[5:])
 

@@ -32,7 +32,7 @@ def test_host_classification_saved_without_losing_other_preferences(qapp, tmp_pa
         dialog.source, dialog.directory = Source(dialog), "/calc"
         dialog.accept()
         assert dialog.result() == QDialog.Accepted and dialog.source.server_type == "slurm"
-        profile = core.load_config()["remote_hosts"]["cluster"]
+        profile = core.load_config()["remote_hosts"]["@cluster:22"]
         assert profile["server_type"] == "slurm" and profile["rsync"] == "/bin/rsync"
         dialog.host.setCurrentText("desktop")
         dialog.server_type.setCurrentIndex(dialog.server_type.findData("workstation"))
@@ -150,7 +150,7 @@ def test_slurm_submission_confirmation_and_scheduler_button_states(qapp, tmp_pat
         assert not panel.run_button.isEnabled() and not panel.stop_button.isEnabled()
         panel.show_state(dict(source.state, scheduler_state="COMPLETED", status="ok", active=False, can_cancel=False))
         assert panel.run_button.isEnabled() and not panel.stop_button.isEnabled()
-        assert core.load_config()["remote_hosts"]["cluster"]["slurm"]["ntasks"] == "32"
+        assert core.load_config()["remote_hosts"]["@cluster:22"]["slurm"]["ntasks"] == "32"
     finally:
         if hasattr(source, "pending"):
             source.pending = None
