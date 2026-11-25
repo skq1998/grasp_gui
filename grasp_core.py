@@ -24,7 +24,7 @@ import threading
 IS_LINUX = sys.platform.startswith("linux")
 IS_MACOS = sys.platform == "darwin"
 
-VERSION = "2.10.0"         # 发布时改为发布的版本号 (写入导出的共享配置)
+VERSION = "2.11.0"         # 发布时改为发布的版本号 (写入导出的共享配置)
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "grasp_gui.json")
 
@@ -1233,7 +1233,7 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     "包括大文件": "Include large files",
     "大小": "Size",
     "大文件": "Large file",
-    ".w、.c、.cm、角系数等大文件通常不需要下载；能级、组成和波函数曲线可直接在远程窗口查看。": (
+    ".w、.c、.cm、角系数等大文件通常不需要下载；能级、组成和波函数曲线可直接在服务器工作区查看。": (
         "Large .w, .c, .cm and angular files usually need no download. View levels, compositions and "
         "wavefunctions remotely."),
     "正在读取文件清单…": "Reading file list…",
@@ -1601,6 +1601,57 @@ No window is opened; from the sources, python3 grasp_config.py can be used inste
     " · 之后已清理（{time}）": " · Cleaned since then ({time})",
     "清理结果未知。将重新读取文件清单，请核对后再操作。":
         "Cleanup result is unknown. The file list will refresh. Check it before trying again.",
+    # 多工作区 (#52)
+    "本机：{name}": "Local: {name}",
+    "最近的服务器目录": "Recent server directories",
+    "服务器操作": "Server actions",
+    "已连接": "Connected",
+    "已断开": "Disconnected",
+    "打开远程工作区": "Open server workspace",
+    "传输仍在进行，关闭工作区将取消传输。是否取消并关闭？":
+        "A transfer is active. Cancel the transfer and close this workspace?",
+    # 服务器工作区编辑与草稿 (#52)
+    "由服务器按服务器目录检查流程。": "The server checks the pipeline in the server directory.",
+    "草稿": "Draft",
+    "{e}\n文件已保留；在此之前服务器流程只读。": "{e}\nThe file was kept. The server pipeline stays read-only until then.",
+    "此服务器目录有 {time} 保存的草稿。": "This server directory has a draft saved at {time}.",
+    "服务器流程在此之后已改变；恢复后保存会被拒绝，可导出草稿。":
+        "The server pipeline has changed since then. Saving a restored draft will be refused; you can export it.",
+    "恢复草稿": "Restore draft",
+    "放弃草稿": "Discard draft",
+    "保留草稿": "Keep draft",
+    "无法保存草稿：{e}": "Cannot save the draft: {e}",
+    "重新读取服务器流程": "Reload server pipeline",
+    "将放弃草稿，重新读取服务器流程。可先导出草稿。是否继续？":
+        "The draft will be discarded and the server pipeline reloaded. You can export the draft first. Continue?",
+    "导出草稿为配置…": "Export draft as configuration…",
+    "保存到服务器": "Save to server",
+    "保存到服务器…": "Save to server…",
+    "名称或参数不合法，不能保存": "Invalid names or parameters; cannot save",
+    "流程包含可运行任意程序的自定义命令。确认写入服务器吗？":
+        "The pipeline contains custom commands that can run any program. Write it to the server?",
+    "将修改写入服务器 {h}:{p}，是否确认？": "Write the changes to server {h}:{p}?",
+    "已保存到服务器": "Saved to server",
+    "草稿已保留。": "The draft was kept.",
+    "重新读取服务器流程 (放弃草稿)": "Reload server pipeline (discard draft)",
+    "写入结果未确认；重新连接后将读取服务器流程核对。":
+        "The write result is unconfirmed. The server pipeline will be checked after reconnecting.",
+    "已核对：上次保存已写入服务器。": "Checked: the last save was written to the server.",
+    "已核对：上次保存没有执行，可以再次保存到服务器。":
+        "Checked: the last save was not applied. You can save to the server again.",
+    "服务器流程已被修改，与草稿和上次保存都不一致。草稿已保留，请导出或重新读取。":
+        "The server pipeline was modified and matches neither the draft nor the last save. "
+        "The draft was kept; export it or reload.",
+    "继续…": "Continue…",
+    "未保存的服务器流程": "Unsaved server pipelines",
+    "下列服务器工作区有草稿：": "These server workspaces have drafts:",
+    "修改先保存为本机草稿，点“保存到服务器…”后写入服务器。":
+        "Changes are kept as a local draft until you click “Save to server…”.",
+    "流程有未保存到服务器的修改，需要先保存。现在保存吗？":
+        "The pipeline has changes not yet saved to the server. They must be saved first. Save now?",
+    "有服务器流程没有保存，程序没有退出。": "A server pipeline was not saved; the program did not quit.",
+    "草稿版本无法识别：{p}": "Unrecognised draft version: {p}",
+    "草稿格式有误：{p}": "Malformed draft: {p}",
     # 配置选项校验 (#69)
     "{field} 的值 {value} 不在可选范围内 ({options})":
         "Value {value} for {field} is not one of the supported options ({options})",

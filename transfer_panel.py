@@ -7,12 +7,12 @@ import threading
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QMessageBox, QProgressBar, QSpinBox, QTableWidget,
-                               QTableWidgetItem, QVBoxLayout)
+                               QTableWidgetItem)
 
 import grasp_core as core
 import grasp_transfer as transfer
 from grasp_core import T
-from gui_common import button
+from gui_common import button, renew_layout
 
 
 class TransferDialog(QDialog):
@@ -26,7 +26,17 @@ class TransferDialog(QDialog):
         self.source, self.directory, self.local, self.names = source, directory, local, names
         self.upload, self.rows, self.busy, self.closed = upload, [], False, False
         self.job, self.events, self.generation = None, queue.Queue(), 0
-        layout = QVBoxLayout(self)
+        self.status_message = ("正在读取文件清单…", {})
+        self.build_view()
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.poll)
+        self.timer.start(50)
+        self.load()
+
+    def build_view(self):
+        source, directory, upload = self.source, self.directory, self.upload
+        self.setWindowTitle(T("从本机上传…") if upload else T("下载到本机…"))
+        layout = renew_layout(self)
         self.source_label = QLabel(T("服务器 {h}:{p}", h=source.client.host, p=directory))
         self.source_label.setWordWrap(True)
         layout.addWidget(self.source_label)
@@ -75,14 +85,15 @@ class TransferDialog(QDialog):
         self.table.setColumnWidth(0, 520)
         self.table.itemChanged.connect(self.changed)
         layout.addWidget(self.table)
-        self.note = QLabel(T(".w、.c、.cm、角系数等大文件通常不需要下载；能级、组成和波函数曲线可直接在远程窗口查看。"))
+        self.note = QLabel(T(".w、.c、.cm、角系数等大文件通常不需要下载；能级、组成和波函数曲线可直接在服务器工作区查看。"))
         self.note.setWordWrap(True)
         self.note.hide()
         layout.addWidget(self.note)
         self.counts = QLabel()
         self.counts.setWordWrap(True)
         layout.addWidget(self.counts)
-        self.status = QLabel(T("正在读取文件清单…"))
+        self.status = QLabel()
+        self.show_status(*self.status_message)
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.progress = QProgressBar()
@@ -99,10 +110,31 @@ class TransferDialog(QDialog):
         bar.addWidget(button("关闭", self.reject))
         layout.addLayout(bar)
         self.threshold.valueChanged.connect(self.reset_checks)
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.poll)
-        self.timer.start(50)
-        self.load()
+
+    def rebuild(self):
+        values = self.rsync.text(), self.target.text(), self.threshold.value(), self.policy.currentIndex()
+        selected = {row["name"] for row in self.selected()}
+        rows, self.rows = self.rows, []
+        progress, status = self.progress.value(), self.status_message
+        self.build_view()
+        self.rsync.setText(values[0])
+        self.target.setText(values[1])
+        self.threshold.setValue(values[2])
+        self.policy.setCurrentIndex(values[3])
+        if rows:
+            self.show_files(dict(files=rows, skipped=[]))
+            self.table.blockSignals(True)
+            for i, row in enumerate(rows):
+                self.table.item(i, 0).setCheckState(Qt.Checked if row["name"] in selected else Qt.Unchecked)
+            self.table.blockSignals(False)
+        self.controls(self.busy)
+        self.changed()
+        self.progress.setValue(progress)
+        self.show_status(*status)
+
+    def show_status(self, message, values=None):
+        self.status_message = (message, values or {})
+        self.status.setText(T(message, **self.status_message[1]))
 
     def choose_target(self):
         path = QFileDialog.getExistingDirectory(self, T("下载到本机…"), self.target.text())
@@ -121,7 +153,7 @@ class TransferDialog(QDialog):
             if self.closed or generation != self.generation:
                 return
             if error:
-                self.status.setText(str(error))
+                self.show_status(str(error))
             elif self.upload:
                 def scan():
                     try:
@@ -147,7 +179,7 @@ class TransferDialog(QDialog):
                 self.table.setItem(i, col, cell)
         self.table.blockSignals(False)
         self.reset_checks()
-        self.status.setText(T("已跳过符号链接或特殊文件：{n}", n=len(data["skipped"])))
+        self.show_status("已跳过符号链接或特殊文件：{n}", dict(n=len(data["skipped"])))
 
     def reset_checks(self):
         self.table.blockSignals(True)
@@ -214,7 +246,7 @@ class TransferDialog(QDialog):
         if not rows or self.busy:
             return
         if not self.target.text().strip():
-            self.status.setText(T("请选择目标目录"))
+            self.show_status("请选择目标目录")
             return
         text = self.counts.text() + "\n" + self.policy.currentText() + "\n" + self.target.text()
         if QMessageBox.question(self, self.windowTitle(), text, QMessageBox.Yes | QMessageBox.No,
@@ -255,20 +287,20 @@ class TransferDialog(QDialog):
                         if kind == "files":
                             self.show_files(data)
                         else:
-                            self.status.setText(str(data))
+                            self.show_status(str(data))
                     continue
                 if kind == "progress":
                     self.progress.setValue(value["percent"])
-                    self.status.setText(T("传输 {n}% · {s} · 剩余 {t}", n=value["percent"],
-                                          s=value["speed"], t=value["eta"]))
+                    self.show_status("传输 {n}% · {s} · 剩余 {t}",
+                                     dict(n=value["percent"], s=value["speed"], t=value["eta"]))
                 else:
                     self.controls(False)
-                    self.status.setText((str(value) or T("传输失败，请查看 SSH 连接状态")) if kind == "error" else
-                                        T("已按所选规则处理 {n} 个文件", n=value["count"]))
                     if kind == "done":
+                        self.show_status("已按所选规则处理 {n} 个文件", dict(n=value["count"]))
                         self.progress.setValue(100)
                         self.transferred.emit(value)
                     else:
+                        self.show_status(str(value) or "传输失败，请查看 SSH 连接状态")
                         self.transferFailed.emit(str(value))
                 if self.parent() and hasattr(self.parent(), "statusBar"):
                     self.parent().statusBar().showMessage(self.status.text())

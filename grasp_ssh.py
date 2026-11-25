@@ -58,6 +58,26 @@ def hosts(path=None, seen=None):
     return list(dict.fromkeys(result))
 
 
+def connection_identity(client, *, resolve=True):
+    """读取 OpenSSH 生效的配置，让指向同一目标的别名使用同一个标识。"""
+    user, _, host = client.host.rpartition("@")
+    port = "22"
+    if resolve and getattr(client, "command_override", None) is None:
+        try:
+            result = subprocess.run([getattr(client, "ssh", "ssh"), "-G", *getattr(client, "options", ()),
+                                     "--", client.host], capture_output=True, text=True, timeout=2,
+                                    env=core.child_env())
+            if result.returncode == 0:
+                fields = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
+                user, host, port = fields.get("user", user), fields.get("hostname", host), fields.get("port", port)
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass  # 旧 OpenSSH 或不可用的配置仍可按原来的主机名区分。
+    host = host.lower().rstrip(".")
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"{user}@{host}:{port}"
+
+
 def private_dir(path):
     path = Path(path)
     path.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -155,6 +175,7 @@ class Client:
             raise ValueError(T("请输入有效的 SSH 主机或 user@host"))
         self.host, self.program, self.ssh, self.options = host, program, ssh, tuple(options)
         self.command_override = command
+        self.identity = connection_identity(self, resolve=False)
         self.events, self.outbound, self.incoming = queue.Queue(), queue.Queue(), queue.Queue()
         self.pending, self.counter, self.generation = {}, 0, 0
         self.guard = threading.Lock()
@@ -345,6 +366,8 @@ class Client:
     def _run(self):
         failures = 0
         try:
+            # 在首个目录请求完成之前取得生效配置，避免阻塞 Qt。
+            self.identity = connection_identity(self)
             while not self.closed.is_set():
                 try:
                     if not self.connected:

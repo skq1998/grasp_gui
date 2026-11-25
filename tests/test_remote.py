@@ -183,7 +183,7 @@ def wait_for(qapp, predicate, timeout=10):
 
 @pytest.mark.gui
 def test_existing_viewers_remote_data_without_local_reads(tmp_path, qapp, monkeypatch):
-    from remote_panel import Source, RemoteWindow
+    from remote_panel import Source, RemoteWorkspace
     from PySide6.QtCore import Qt
 
     make_files(tmp_path, 100, 3)
@@ -199,7 +199,7 @@ def test_existing_viewers_remote_data_without_local_reads(tmp_path, qapp, monkey
         return request(method, *args, **kwargs)
     monkeypatch.setattr(client, "request", recorded)
     source = Source(client)
-    win = RemoteWindow(source, str(tmp_path))
+    win = RemoteWorkspace(source, str(tmp_path))
     win.show()
     try:
         wait_for(qapp, lambda: win.levels.level_table.rowCount() == 3 and win.waves.table.rowCount() == 1
@@ -219,6 +219,7 @@ def test_existing_viewers_remote_data_without_local_reads(tmp_path, qapp, monkey
         wait_for(qapp, lambda: not source.waiting)
         assert calls[count:] == ["composition"]
     finally:
+        win.shutdown()
         win.close()
         client.thread.join(timeout=5)
 
@@ -629,7 +630,7 @@ def test_view_signature_invalidates_results_but_not_gui_log(tmp_path):
 def test_fake_server_directory_does_not_exist_on_desktop(tmp_path, qapp, monkeypatch):
     from PySide6.QtCore import QObject, Signal
     from types import SimpleNamespace
-    from remote_panel import RemoteWindow
+    from remote_panel import RemoteWorkspace
     import grasp_mix as mix
 
     make_files(tmp_path, 100, 2)
@@ -645,6 +646,7 @@ def test_fake_server_directory_does_not_exist_on_desktop(tmp_path, qapp, monkeyp
         def __init__(self):
             super().__init__()
             self.client = SimpleNamespace(host="remote.example")
+            self.workspace_identity = "user@remote.example:22"
 
         def submit(self, method, args, callback, **kwargs):
             value = {"pipeline": dict(jobs=config.session(document())["pipeline"], revision="revision"),
@@ -661,7 +663,7 @@ def test_fake_server_directory_does_not_exist_on_desktop(tmp_path, qapp, monkeyp
         raise AssertionError("desktop must not read remote files")
     monkeypatch.setattr(wfn, "read_w", forbidden)
     monkeypatch.setattr(mix, "open_mix", forbidden)
-    win = RemoteWindow(Source(), "/remote-only/not-a-local-directory")
+    win = RemoteWorkspace(Source(), "/remote-only/not-a-local-directory")
     monkeypatch.setattr(win.levels, "workspace", forbidden)
     try:
         assert win.levels.level_table.rowCount() == 2 and win.waves.table.rowCount() == 1
@@ -676,6 +678,7 @@ def test_fake_server_directory_does_not_exist_on_desktop(tmp_path, qapp, monkeyp
         assert "remote.example:/remote-only/" in win.windowTitle()
         assert "server log" in win.calc.output.toPlainText()
     finally:
+        win.shutdown()
         win.close()
 
 

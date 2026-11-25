@@ -42,7 +42,6 @@ def setup(qapp, tmp_path, monkeypatch):
         stream.truncate(101_000_000)
     class Panel(QWidget):
         cur_workdir = str(local)
-        remote_windows = []
         def refresh_remote_copy(self):
             self.link = edit.association(local)
     class Source(QObject):
@@ -321,23 +320,17 @@ def test_take_out_opens_original_local_editor_and_preserves_unrelated_files(qapp
         qapp.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
-def test_upload_opens_remote_window_only_on_request_without_running(setup, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox, QWidget
-    import remote_edit_panel
+def test_upload_opens_remote_workspace_only_on_request_without_running(setup, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
     dialog, source, panel, cfg = setup
     calls = []
-    class Window(QWidget):
-        def __init__(self, received, directory, parent, run_after_load=False):
-            super().__init__(parent)
-            received.setParent(self)
-            calls.append((received, directory, run_after_load))
-    monkeypatch.setattr(remote_edit_panel, "RemoteWindow", Window)
+    panel.open_remote_workspace = lambda received, directory, **options: calls.append((received, directory, options))
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Yes)
     monkeypatch.setattr(dialog, "begin_transfer", lambda rows: dialog.completed_upload(dict(count=len(rows))))
     dialog.start_transfer()
     assert calls == [] and dialog.open_button.isEnabled()
     dialog.open_button.click()
-    assert calls == [(source, dialog.directory, False)]
+    assert calls == [(source, dialog.directory, dict(refresh=True))] and dialog.keep_source
     assert not any(method in ("run_plan", "run") for method, _ in source.calls)
 
 

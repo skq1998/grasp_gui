@@ -104,26 +104,45 @@ prompts use OpenSSH ASKPASS; old OpenSSH supports keys only. First-contact host-
 prompt/fingerprint with a visible input field and a verification reminder; passwords remain hidden. Hardware-key
 notifications have no input or reply and close when ssh finishes the operation. Details and installation: [REMOTE.md](REMOTE.md).
 
-The separate remote window shows **Server host:/path (服务器 host:/path)** above all three tabs and in its title.
-Calculation is read-only: select a pipeline step to inspect parameters/input, run all/from selection, stop, refresh,
+The main window has one permanent **Local** workspace followed by the server directories you open.
+Each server tab displays the full directory, server type and connection state above its three pages.
+Aliases that resolve to the same SSH user, host and port reuse an open tab for that directory.
+**Ctrl+PgUp / Ctrl+PgDn** switch workspaces. **Ctrl+1–3** switch pages in the active workspace, and **Ctrl+4**
+opens Convergence in the Local workspace. Local directory, import, export and parameter commands are disabled
+while a server workspace is active. Changing the language or font size keeps open workspaces, connections,
+reads and transfers. At startup only the saved Local page opens. Open a recent server directory explicitly
+from the connection dialog.
+With a server that supports writing (`workdir_write_v1`), the Calculation page uses the same program pages, pipeline
+list and input preview as the Local workspace. **Check input files** asks the server to check its directory. Edits are
+kept as a local draft, and the tab shows **●** while a draft exists. **Save to server…** previews the changes,
+confirms custom commands separately and asks a final question that defaults to No. If the server pipeline changed or
+a calculation is running, saving is refused and the draft is kept. The **Draft** menu can export it as a
+configuration or reload the server pipeline (discarding the draft). There is no forced overwrite. A lost reply is
+never resent: the client reads the server pipeline and compares revisions and fingerprints. Running asks you to
+save the draft first. When reopening a directory with a draft, choose **Restore draft** or **Discard draft**.
+Closing a tab, or quitting with drafts, asks for each one: **Save to server**, **Keep draft** (default) or
+**Discard draft**. A disconnected tab keeps its draft and shows **Reconnect**. Older servers stay read-only with
+an update hint. You can select a pipeline step to inspect parameters/input, run all/from selection, stop, refresh,
 and follow pushed logs. Custom commands require confirmation. Logging-out policies may require choosing user scope,
 Slurm export or explicit normal startup. Radial and level tabs reuse the existing viewers with remote data;
 levels/compositions and coarse/fine curves appear progressively. Hover, selection, zoom and pan use cached data.
 Load more components explicitly requests up to 500 items. Remote transitions display existing results; drawing a
 pair never starts a new transition calculation. Diagram marks are temporary. Export CSV/figures locally;
-original GRASP transition-file export is unavailable because raw data stays on the server. Window opens extra viewers sharing
-the same session, with the same source in their titles, and offers Reconnect after bounded automatic retries.
+original GRASP transition-file export is unavailable because raw data stays on the server. **Window** opens extra viewers sharing
+the workspace connection. **Server actions → Reconnect** retries the connection when needed.
 Results summary on the remote Levels tab uses the same dialog, with server-generated text and server-only run
 state. Changing sections/level count requests a new summary. The dialog title shows the source; save chooses a
 local file, starting in the desktop home directory. Cancel/older responses do not alter the clipboard or preview.
-Closing the remote window closes its viewers and connection; it does not stop a background calculation.
+Closing a server tab closes its extra viewers and connection. A running server calculation continues.
+If a file transfer is active, closing the tab asks whether to cancel it and defaults to No.
+[English screenshot](images/en_server_workspaces.png) / [中文截图](images/zh_server_workspaces.png).
 
 Workstation runs always open **Server run settings**, including runs after creation/upload and selected ranges.
 The shared RunSettings fields show the server's GRASP bin path, process count, mpirun, MPI_TMP and nice.
 Saved desktop values for this host take precedence over server defaults. Checks run on opening, on **Check**,
 and automatically before confirmation if values changed. Missing programs (including MPI variants/launcher)
 and input preflight are shown; missing programs default to Cancel but allow explicit continuation.
-Confirming saves only this host's desktop preferences. **File → Server run settings…** also checks/saves without
+Confirming saves only this host's desktop preferences. **Server actions → Server run settings…** also checks/saves without
 starting a calculation. Older servers show read-only settings and an update instruction; their run requests remain
 unchanged. Slurm continues to use its resource dialog. [中文截图](images/zh_server_run_settings.png) /
 [English screenshot](images/en_server_run_settings.png).
@@ -153,30 +172,39 @@ to the same `~/grasp_calcs/remote/<host>/<directory>/` location as downloads. An
 is refused. Re-fetching the same copy asks default-No before replacing pipeline edits; local input conflicts remain.
 The main window opens its original Calculation tab, with a persistent Server copy host:/path label and title.
 Old servers without `workdir_write_v1` show an update instruction and receive no write requests.
-远程“在本机编辑…”取出流程、附带小输入和修订号，用本机原计算页编辑；不提供第二套远程表单或新标签页。
+远程“在本机编辑…”取出流程、附带小输入和修订号，切换到本机工作区的计算页编辑。
 无作业号时按队列 comment 找回；离队且无记账时可用 EXIT 标记判定脚本退出。未知/损坏状态显示“我已核对，清除此作业记录…”，
 默认否确认后由服务器重查队列和记录修订号，通过后归档原记录，保留日志与脚本。清除不取消任务，也不代表计算成功。
 路径不匹配的有效记录不属于当前目录，不影响副本使用。新连接提示说明集群登录节点不宜直接运行计算。
 
 “连接服务器”对话框可选 SSH 别名或手输 user@host、设置程序完整路径、浏览目录；成功使用目录后保存每台主机的
-程序位置与目录，不保存密码。连接失败显示原始诊断和手动安装提示。远程窗口及独立查看器显示服务器来源，计算流程
-只读，参数和输入预览不能编辑；可运行、停止和跟踪日志，自定义命令须确认。会受退出登录清理影响时默认取消，
+程序位置与目录，不保存密码。连接失败显示原始诊断和手动安装提示。主窗口保留一个不可关闭的本机工作区，已打开的服务器目录
+各占一个标签。服务器标签顶部显示完整路径、服务器类型和连接状态。SSH 别名解析到同一用户、主机和端口时，同一目录复用标签。
+Ctrl+PgUp / Ctrl+PgDn 切换工作区，Ctrl+1–3 切换当前工作区的页面，Ctrl+4 在本机打开收敛页。服务器工作区激活时，
+本机目录、导入导出和参数菜单禁用。切换语言或字号会保留工作区、连接、读取和传输。启动时恢复本机页面，最近使用的服务器目录
+可通过连接对话框手动打开。服务器工作区及独立查看器显示服务器来源。服务器支持写入 (`workdir_write_v1`) 时，计算页使用与本机相同的
+程序页、流程列表和输入预览，“检查输入文件”由服务器按服务器目录检查。修改先保存为本机草稿，有草稿时标签显示 ●。
+“保存到服务器…”先预览差异，自定义命令单独确认，最终确认默认为“否”。服务器流程已改变或有计算正在运行时拒绝写入，
+草稿保留；“草稿”菜单可导出草稿为配置或重新读取服务器流程 (放弃草稿)，不提供强制覆盖。失去回答时不重发，读取服务器流程
+按修订号和指纹核对。运行前先要求保存草稿。重新打开有草稿的目录时选择“恢复草稿 / 放弃草稿”；关闭标签或退出程序时逐个选择
+“保存到服务器 / 保留草稿 / 放弃草稿”，默认保留草稿。断线时草稿保留，标签显示“重新连接”。旧服务器端只读并提示更新。
+可运行、停止和跟踪日志，自定义命令须确认。会受退出登录清理影响时默认取消，
 用户可选 scope、导出 Slurm 或明确照常启动。能级/组成、粗/细曲线渐进显示；选中、悬停、缩放和平移使用缓存，
-“读取更多组成”才补取数据。远程跃迁页只读已有结果，图上标记不写文件。“窗口”菜单可开共享连接的查看器并重新连接。
+“读取更多组成”才补取数据。远程跃迁页只读已有结果，图上标记不写文件。“窗口”菜单可开共享连接的查看器，“服务器操作”菜单可重新连接。
 远程“结果摘要…”由服务器读流程、状态并生成文本；勾选/能级数改变后重新请求，复制与本机保存沿用同一对话框。
 标题显示服务器来源，保存从本机家目录开始选择；不使用桌面会话历史，不在桌面读取服务器目录，取消或旧回答不改变剪贴板。
-关闭远程窗口同时关闭这些查看器和连接，后台计算继续。完整协议、缓存/重连限制见 [REMOTE.md](REMOTE.md)。
+关闭服务器标签会关闭这些查看器和连接，后台计算继续。传输中关闭时询问是否取消传输，默认否。完整协议、缓存/重连限制见 [REMOTE.md](REMOTE.md)。
 
 工作站每次运行（含新建后运行、上传后运行和选定范围）先显示“服务器运行设置”，复用本机的路径、进程数、
 mpirun、MPI_TMP 和 nice 控件；该主机在桌面保存过的值优先，否则用服务器默认值。打开时、点“检查”时，
 以及修改后确认前均在服务器检查，显示缺少的程序（包括 MPI 程序和启动器）和输入预检。缺少程序时默认取消，
-仍可明确继续。确认只保存桌面端的该主机偏好；“文件 → 服务器运行设置…”可单独检查、保存而不启动。
+仍可明确继续。确认只保存桌面端的该主机偏好；“服务器操作 → 服务器运行设置…”可单独检查、保存而不启动。
 旧服务器只读显示并提示更新，运行请求不增加参数；Slurm 仍用资源设置对话框。
 按主机保存的运行设置失效时，上传预览提示原因并改用服务器默认值检查，不阻断上传；运行时仍严格校验。
 bin 留空仍表示 PATH，服务器只在交给运行进程前补上非空默认目录。
 上传警告截图：[中文](images/zh_upload_run_settings_warning.png) / [English](images/en_upload_run_settings_warning.png)。
 
-The remote window's **File** menu offers **Download to this computer…**, **Upload from this computer…**
+The workspace's **Server actions** menu offers **Download to this computer…**, **Upload from this computer…**
 and **Upload local directory…**. The transfer dialog lists all regular files and sizes in decimal MB, excludes symbolic
 links/special files and defaults to selecting files no larger than 100 MB each (decimal MB). The threshold and
 server rsync path are saved per host. Changing the threshold resets the selection; large files need individual
@@ -185,14 +213,14 @@ large files. Skip existing files is the default, with Resume / verify and Overwr
 progress shows speed and remaining time, and can be cancelled; partial data is kept for a later resume.
 Transfer windows are non-modal, so analysis and the main window remain usable. Closing a transfer window
 while it is busy asks whether to cancel, with No as the default; declining keeps it open and transferring. Closing
-the remote window cancels its transfers. The default download location is `~/grasp_calcs/remote/<host>/<directory>/`.
+a server workspace also asks before cancelling active transfers. The default download location is `~/grasp_calcs/remote/<host>/<directory>/`.
 
-远程窗口“文件”菜单提供下载、上传文件和上传目录；清单列出全部普通文件及十进制 MB 大小，跳过符号链接及特殊文件。
+工作区的“服务器操作”菜单提供下载、上传文件和上传目录；清单列出全部普通文件及十进制 MB 大小，跳过符号链接及特殊文件。
 单个文件大于 100 MB 默认不勾选，可逐个勾选或使用“包括大文件”；阈值按主机保存，修改后重置勾选。
 确认时分别列出小文件、选中大文件和未选大文件的数量/大小；同名文件默认跳过，也可续传/校验或覆盖。
 传输窗口为非模态，传输时仍可操作远程分析和主窗口；进度、速度、剩余时间同时显示在传输窗口和远程状态栏。
 传输中关闭传输窗口会询问是否取消，默认否；拒绝时窗口保持打开，传输继续。取消保留部分数据。
-关闭远程窗口会直接取消其传输；下载目录可自行选择。
+传输中关闭工作区也要确认取消。下载目录可自行选择。
 
 The connection dialog also has **Install / update server…** and **Remove from server…**. They show the host,
 bundled version/size, editable installation root, checks and exact paths before a default-No confirmation.
@@ -899,9 +927,8 @@ with that action and missing inputs stated in the confirmation/status. Attached 
 keep their existing installation behavior. No separate pipeline-only button is added.
 
 Confirmation defaults to No; custom commands have a separate default-No confirmation. The record is saved
-before file transfer. Completion offers **Open remote window**; it does not run a calculation. An already open
-window for the same host/directory is raised and refreshed. Otherwise a new remote window takes ownership of
-the SSH session. Use that window's existing range/run controls to start, with workstation/Slurm confirmation.
+before file transfer. Completion offers **Open server workspace**. An open tab for the same connection and directory is selected
+and refreshed. The tab's range and run controls start the calculation after workstation or Slurm confirmation.
 **Upload and run…** is removed; direct server import's **Create and run** remains available.
 
 Failed transfer keeps the record/association and offers retry, with a fresh server revision check. Lost write replies
@@ -923,8 +950,8 @@ and changes only desktop preferences. The source label and confirmation for runn
 取消流程生成、服务器已有同名及大文件；内部记录不列出，同名文件仍保留。全不选时，确认框和状态明确说明
 “只写入流程，不传输输入文件”并列出缺少的输入；配置自带文件仍按原机制安装，不另加“只上传流程”按钮。
 
-最终确认默认否，自定义命令另确认，先写流程再传输入。完成后可“打开远程窗口”；已有同主机、同目录窗口时前置并刷新，
-新窗口接管 SSH 会话，均不自动运行。运行范围和工作站 / Slurm 确认使用远程窗口的原有按钮。
+最终确认默认否，自定义命令另确认，先写流程再传输入。完成后可“打开远程工作区”。已打开同一连接、同一目录时切换并刷新该标签。
+通过服务器计算页的运行范围按钮及工作站或 Slurm 确认启动计算。
 删除“上传并运行…”；直接在服务器新建计算的“新建并运行”保留。
 传输失败、结果未确认、修订冲突的处理不变：先核对，绝不自动重发写入；解除关联仅改本机偏好。
 
@@ -936,7 +963,7 @@ Screenshots / 界面截图（本地协议替身，不连接真实 SSH）：
 | Nonempty without a record / 非空且无记录 | [拒绝说明](images/zh_upload_nonempty.png) | [Refusal](images/en_upload_nonempty.png) |
 | No input files / 不传输入 | [只写流程](images/zh_upload_pipeline_only.png) | [Pipeline only](images/en_upload_pipeline_only.png) |
 | Update preview / 更新预览 | [更新](images/zh_upload_update.png) | [Update](images/en_upload_update.png) |
-| Completion / 完成后 | [打开远程窗口](images/zh_upload_complete.png) | [Open remote window](images/en_upload_complete.png) |
+| Completion / 完成后 | [打开远程工作区](images/zh_upload_complete.png) | [Open server workspace](images/en_upload_complete.png) |
 
 ## Convergence panel / 收敛面板
 
@@ -972,8 +999,7 @@ filtered levels and report excitation energies and increments in cm⁻¹.
 ## Direct server configuration import / 直接导入到服务器
 
 The connection browser and an empty remote Calculation tab offer **Create calculation here…**.
-In the remote tab this entry remains hidden while loading and after a failed load; only a successfully loaded
-empty pipeline makes it visible.
+In the workspace, use **Server actions → Create calculation here…**. An empty pipeline also shows the action on the Calculation page.
 The existing configuration dialog accepts examples, local files and clipboard text; remote mode hides
 **Update current working directory**, suggests `<remote directory>/<sanitized title>`, and offers **Create and run**.
 Program availability is checked on the server, without creating a local working directory or association.
@@ -983,12 +1009,12 @@ Custom commands have a separate confirmation and the final host/path confirmatio
 Success opens the new remote directory; **Create and run** invokes the usual Workstation/Slurm confirmation.
 Lost replies trigger fingerprint verification and never automatic replay. Older servers show update guidance.
 
-连接目录浏览和无流程的远程计算页提供“在此新建计算…”。远程页读取中或读取失败时隐藏该入口，只有成功读到空流程才显示。
+连接目录浏览和工作区的“服务器操作”菜单提供“在此新建计算…”。成功读到空流程时，服务器计算页也显示该入口。
 复用配置选择窗口：示例、文件、剪贴板均可；隐藏“更新当前工作目录”，
 默认服务器子目录取经清理的配置标题，可选“新建并运行”。缺少程序/输入由服务器检查。复用上传清单，可选现有本机输入目录；
 缺少外部输入也可稍后上传。创建目标必须不存在或为空，最终主机/路径确认默认否，自定义命令另行确认。
 不创建本机计算目录或关联；写入核对状态仅留在当前窗口。关闭后重新浏览服务器目录核对结果。
-成功后打开新目录；从空远程窗口发起时沿用 SSH 连接替换原视图。运行仍经过普通工作站/Slurm 预检与确认。
+成功后打开新目录；从空服务器工作区发起时沿用 SSH 连接替换该标签。运行仍经过普通工作站/Slurm 预检与确认。
 回复丢失不自动重发，旧服务器明确提示更新。
 
 Screenshots / 截图：[configuration English](images/en_remote_import_config.png) / [配置中文](images/zh_remote_import_config.png)；

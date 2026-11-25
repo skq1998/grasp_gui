@@ -79,7 +79,9 @@ def environment(qapp, tmp_path, monkeypatch):
         def refresh_remote_copy(self):
             self.link = edit.association(local)
     window = QMainWindow()
-    window.remote_windows = []
+    window.opened = []
+    window.open_remote_workspace = lambda received, directory, **options: window.opened.append(
+        (received, directory, options))
     panel = Panel(window)
     window.setCentralWidget(panel)
     source = Source()
@@ -118,8 +120,6 @@ def environment(qapp, tmp_path, monkeypatch):
         else:
             dialog.reject()
         dialog.deleteLater()
-    for win in window.remote_windows:
-        win.close()
     window.close()
     window.deleteLater()
     qapp.sendPostedEvents(None, QEvent.DeferredDelete)
@@ -275,31 +275,17 @@ def test_pipeline_only_upload_reports_missing_inputs_and_does_not_transfer(envir
     assert not any(method in ("run", "run_plan") for method, _ in e.source.calls)
 
 
-@pytest.mark.parametrize("reuse", [False, True])
-def test_open_remote_reuses_window_and_never_runs_automatically(environment, monkeypatch, reuse):
+def test_open_remote_hands_the_connection_to_a_workspace_and_never_runs(environment, monkeypatch):
     e = environment
     dialog = e.upload()
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Yes)
     dialog.none_button.click()
     dialog.start_transfer()
-    existing = None
-    if reuse:
-        existing_source = Source()
-        existing = ui.RemoteWindow(existing_source, str(e.server), e.window)
-        existing.show()
-        e.window.remote_windows.append(existing)
-        before = len([method for method, _ in existing_source.calls if method == "pipeline"])
+    assert e.window.opened == []
     dialog.open_button.click()
-    assert len(e.window.remote_windows) == 1
-    win = e.window.remote_windows[0]
-    assert win.directory == str(e.server) and win.isVisible()
-    if reuse:
-        assert win is existing
-        assert len([method for method, _ in existing_source.calls if method == "pipeline"]) == before + 1
-        assert e.source.client.closed.is_set() and not existing_source.client.closed.is_set()
-    else:
-        assert win.source is e.source and e.source.parent() is win and not e.source.client.closed.is_set()
-    assert not any(method in ("run", "run_plan") for method, _ in win.source.calls)
+    assert e.window.opened == [(e.source, str(e.server), dict(refresh=True))]
+    assert dialog.keep_source and not dialog.isVisible()
+    assert not any(method in ("run", "run_plan") for method, _ in e.source.calls)
 
 
 @pytest.mark.parametrize("language", ["zh", "en"])

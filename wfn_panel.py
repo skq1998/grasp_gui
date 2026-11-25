@@ -325,8 +325,10 @@ class WfnPanel(Panel):
     def __init__(self, workdir):
         super().__init__()
         self.cache = {}            # 路径 -> (mtime, 轨道列表 或 错误信息)
+        self.build_view(QVBoxLayout(self), workdir)
+        self.scan()
 
-        lay = QVBoxLayout(self)
+    def build_view(self, lay, workdir):
         top = self.dir_bar(workdir)
         top.addStretch()
         lay.addLayout(top)
@@ -408,7 +410,6 @@ class WfnPanel(Panel):
         split.setSizes([260, 990])
         lay.addWidget(split, 1)
         self.layout_plots()
-        self.scan()
 
     # ---- 文件 ----
     def files_checked(self):

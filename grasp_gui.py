@@ -113,9 +113,9 @@ if core.IS_LINUX:
 
 from PySide6.QtCore import QByteArray, QEvent, QObject, QPointF, Qt  # noqa: E402
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QFontDatabase, QKeySequence, QPainter,  # noqa: E402
-                           QPalette)
-from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QLineEdit,  # noqa: E402
-                               QMainWindow, QMessageBox, QSplitter, QSplitterHandle, QTabWidget, QToolButton,
+                           QPalette, QShortcut)
+from PySide6.QtWidgets import (QApplication, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,  # noqa: E402
+                               QMainWindow, QMessageBox, QSplitter, QSplitterHandle, QTabBar, QTabWidget, QToolButton,
                                QVBoxLayout, QWidget)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -176,7 +176,8 @@ class MainWindow(QMainWindow):
         self.cur_workdir = os.path.abspath(workdir)
         self.run = None
         self.calc = None
-        self.remote_windows = []
+        self.remote_workspaces = {}
+        self.drafts_resolved = False
         self.panels = {}           # 已创建的查看器面板：种类 -> 面板 (第一次切换到该标签页时创建)
         self.pending = {}          # 重新创建面板后要恢复的勾选文件：种类 -> [路径]
         gc.PANEL_FACTORIES.update(wfn=wfn_panel, levels=self.make_level_panel, convergence=convergence_panel)
@@ -186,6 +187,13 @@ class MainWindow(QMainWindow):
         gc.remember_dir(self.cur_workdir)
         self.calc.open_workdir(self.cur_workdir)
         self.show_tab(tab or cfg.get("main_tab", "calc"))
+        self.workspace_shortcuts = []
+        for key, delta in (("Ctrl+PgUp", -1), ("Ctrl+PgDown", 1)):
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.WindowShortcut)
+            shortcut.setEnabled(False)
+            shortcut.activated.connect(lambda d=delta: self.cycle_workspace(d))
+            self.workspace_shortcuts.append(shortcut)
 
     # ---- 布局 ----
     def build(self):
@@ -226,7 +234,7 @@ class MainWindow(QMainWindow):
         self.tabs.tabBar().setStyleSheet("QTabBar::tab { font-weight: bold; padding: 6px 28px; }")
         if self.calc is None:
             self.calc = CalcPanel(self.run, self.cur_workdir)
-            self.calc.message.connect(self.statusBar().showMessage)
+            self.calc.message.connect(self.local_status)
             self.calc.copyChanged.connect(lambda text: self.setWindowTitle(T("GRASP 图形界面") +
                                           (" · " + text if text else "")))
             # 运行进度放在常驻标签中：其他页的消息和菜单提示只替换左侧的临时消息
@@ -258,13 +266,25 @@ class MainWindow(QMainWindow):
         self.detach_btn = detach
         self.tabs.currentChanged.connect(self.tab_changed)
         lay.addWidget(self.tabs, 1)
-        self.setCentralWidget(central)
+        self.workspaces = QTabWidget()
+        self.workspaces.setTabsClosable(True)
+        self.workspaces.addTab(central, self.local_workspace_title())
+        self.workspaces.setTabToolTip(0, self.cur_workdir)
+        for side in (QTabBar.LeftSide, QTabBar.RightSide):
+            self.workspaces.tabBar().setTabButton(0, side, None)
+        for workspace in self.remote_workspaces.values():
+            self.add_remote_tab(workspace)
+        self.workspaces.currentChanged.connect(self.workspace_changed)
+        self.workspaces.tabCloseRequested.connect(self.close_remote_tab)
+        self.setCentralWidget(self.workspaces)
+        self.workspace_changed()
         self.statusBar().showMessage(T("就绪"))
 
     def build_menu(self):
         mb = self.menuBar()
         mb.clear()
         fm = mb.addMenu(T("文件"))
+        self.local_actions = []
         calc = lambda name: lambda: getattr(self.calc, name)()      # noqa: E731 (self.calc 在菜单之后创建)
         for item in [("导入示例…", calc("import_demo")), ("导入配置文件…", calc("import_file")),
                      ("导出配置…", calc("export_config")), None,
@@ -274,11 +294,14 @@ class MainWindow(QMainWindow):
             if item is None:
                 fm.addSeparator()
             else:
-                fm.addAction(T(item[0])).triggered.connect(item[1])
+                action = fm.addAction(T(item[0]))
+                action.triggered.connect(item[1])
+                self.local_actions.append(action)
         act = fm.addAction(T("打开工作目录…"))
         act.setShortcut(QKeySequence.Open)
         act.triggered.connect(self.pick_workdir)
-        fm.addMenu(gc.recent_menu(fm, self.change_workdir, T("最近的工作目录"), self.pick_workdir))
+        recent = fm.addMenu(gc.recent_menu(fm, self.change_workdir, T("最近的工作目录"), self.pick_workdir))
+        self.local_actions += [act, recent]
         fm.addSeparator()
         fm.addAction(T("连接服务器…")).triggered.connect(self.connect_server)
         quit_action = fm.addAction(T("退出"))
@@ -292,10 +315,12 @@ class MainWindow(QMainWindow):
             act.setShortcuts([QKeySequence(k) for k in keys])
             act.triggered.connect(lambda _=False, d=step: self.change_font_size(d))
         vm.addSeparator()
+        self.view_actions = {}
         for i, (kind, title) in enumerate(self.TABS, 1):
             act = vm.addAction(T(title))
             act.setShortcut(QKeySequence(f"Ctrl+{i}"))
-            act.triggered.connect(lambda _=False, k=kind: self.show_tab(k))
+            act.triggered.connect(lambda _=False, k=kind: self.show_active_tab(k))
+            self.view_actions[kind] = act
         settings_menu = mb.addMenu(T("设置"))
         self.mcp_action = settings_menu.addAction(T("允许 AI agent 通过 MCP 使用本程序"))
         self.mcp_action.setCheckable(True)
@@ -303,9 +328,11 @@ class MainWindow(QMainWindow):
         self.mcp_action.toggled.connect(self.toggle_mcp)
         settings_menu.addAction(T("关于 GRASP GUI…")).triggered.connect(self.about)
         wm = mb.addMenu(T("窗口"))
+        self.viewer_actions = {}
         for kind, title in self.TABS[1:]:
-            wm.addAction(T("在新窗口中打开{t}", t=T(title))).triggered.connect(
-                lambda _=False, k=kind: gc.PanelWindow.open(gc.PANEL_FACTORIES[k], self.cur_workdir))
+            act = wm.addAction(T("在新窗口中打开{t}", t=T(title)))
+            act.triggered.connect(lambda _=False, k=kind: self.open_viewer(k))
+            self.viewer_actions[kind] = act
         lm = mb.addMenu(T("语言") + " / Language" if core.LANG == "zh" else "Language / 语言")
         group = QActionGroup(self)
         for code, label in [("zh", "中文"), ("en", "English")]:
@@ -316,9 +343,159 @@ class MainWindow(QMainWindow):
 
     def connect_server(self):
         from remote_panel import connect_window
-        win = connect_window(self)
-        if win is not None:
-            self.remote_windows.append(win)
+        connect_window(self)
+
+    def local_workspace_title(self):
+        return T("本机：{name}", name=os.path.basename(self.cur_workdir) or self.cur_workdir)
+
+    def add_remote_tab(self, workspace):
+        index = self.workspaces.addTab(workspace, "")
+        self.workspaces.setTabToolTip(index, f"{workspace.label}\n{workspace.server_label()}")
+        self.update_remote_title(workspace)
+
+    def update_remote_title(self, workspace):
+        from pathlib import PurePosixPath
+
+        index = self.workspaces.indexOf(workspace)
+        if index > 0:
+            title = PurePosixPath(workspace.directory).name or workspace.directory
+            mark = "● " if workspace.has_draft() else ""
+            self.workspaces.setTabText(index, f"{mark}{workspace.client.host}:{title}")
+
+    def open_remote_workspace(self, source, directory, *, refresh=False, run_after_load=False, replace=None):
+        from remote_panel import RemoteWorkspace, remote_recent_entries, workspace_key
+
+        key = workspace_key(source, directory)
+        workspace = self.remote_workspaces.get(key)
+        if workspace is None:
+            workspace = RemoteWorkspace(source, key[1], self, run_after_load)
+            workspace.draftChanged.connect(lambda: self.update_remote_title(workspace))
+            self.remote_workspaces[key] = workspace
+            self.add_remote_tab(workspace)
+            if len(self.remote_workspaces) == 1:
+                QApplication.instance().installEventFilter(self)
+                for shortcut in self.workspace_shortcuts:
+                    shortcut.setEnabled(True)
+        elif refresh or run_after_load:
+            workspace.calc.run_after_load |= run_after_load
+            workspace.calc.load()
+            workspace.refresh_results()
+        if replace is not None and replace is not workspace:
+            replace.keep_source = workspace.source is source
+            self.remove_remote_workspace(replace)
+        elif all(item.source is not source for item in self.remote_workspaces.values()):
+            source.close()
+        self.workspaces.setCurrentWidget(workspace)
+        identity, directory = key
+        aliases = {workspace.client.host, source.client.host}
+        recent = [(host, path, saved) for host, path, saved in remote_recent_entries()
+                  if path != directory or (saved != identity if saved else host not in aliases)]
+        core.save_config(remote_recent=[(workspace.client.host, directory, identity), *recent[:11]])
+        return workspace
+
+    def active_remote(self):
+        return self.workspaces.currentWidget() if self.workspaces.currentIndex() > 0 else None
+
+    def workspace_changed(self, *_):
+        remote = self.active_remote() is not None
+        self.statusBar().clearMessage()
+        for action in self.local_actions:
+            action.setEnabled(not remote)
+        self.view_actions["convergence"].setEnabled(not remote)
+        self.viewer_actions["convergence"].setEnabled(not remote)
+
+    def local_status(self, text):
+        if not hasattr(self, "workspaces") or self.active_remote() is None:
+            self.statusBar().showMessage(text)
+
+    def show_active_tab(self, kind):
+        workspace = self.active_remote()
+        if workspace is None:
+            self.show_tab(kind)
+        else:
+            workspace.show_tab(kind)
+
+    def open_viewer(self, kind):
+        workspace = self.active_remote()
+        if workspace is not None:
+            return workspace.open_view(kind)
+        return gc.PanelWindow.open(gc.PANEL_FACTORIES[kind], self.cur_workdir)
+
+    def eventFilter(self, watched, event):
+        if (event.type() == QEvent.ShortcutOverride and event.modifiers() == Qt.ControlModifier
+                and event.key() in (Qt.Key_PageUp, Qt.Key_PageDown)
+                and isinstance(watched, QWidget) and watched.window() is self):
+            # 内层标签栏、表格和文本框把同一组合键留给窗口级快捷键。
+            event.ignore()
+            return True
+        return super().eventFilter(watched, event)
+
+    def cycle_workspace(self, delta):
+        index = self.workspaces.currentIndex()
+        self.workspaces.setCurrentIndex((index + delta) % self.workspaces.count())
+
+    def close_remote_tab(self, index):
+        if index > 0:
+            workspace = self.workspaces.widget(index)
+            if not workspace.may_close():
+                return
+            choice = "keep"
+            if workspace.has_draft():
+                from remote_editor import DraftsDialog
+                dialog = DraftsDialog(self, [workspace])
+                if dialog.exec() != QDialog.Accepted:
+                    return
+                choice = dialog.selected()[0][1]
+
+            def resolved(ok):
+                if ok and workspace in self.remote_workspaces.values():
+                    self.remove_remote_workspace(workspace)
+            workspace.resolve_draft(choice, resolved)
+
+    def resolve_drafts(self):
+        """退出前处理各服务器工作区的草稿；需要等待保存时返回 False，保存全部成功后再次关闭窗口。"""
+        if self.drafts_resolved:
+            self.drafts_resolved = False
+            return True
+        waiting = [workspace for workspace in self.remote_workspaces.values() if workspace.has_draft()]
+        if not waiting:
+            return True
+        from remote_editor import DraftsDialog
+        dialog = DraftsDialog(self, waiting)
+        if dialog.exec() != QDialog.Accepted:
+            return False
+        saves = []
+        for workspace, choice in dialog.selected():
+            if choice == "save":
+                saves.append(workspace)
+            else:
+                workspace.resolve_draft(choice, lambda ok: None)
+        if not saves:
+            return True
+
+        def next_save(ok=True):
+            if not ok:
+                self.statusBar().showMessage(T("有服务器流程没有保存，程序没有退出。"))
+                return
+            if saves:
+                saves.pop(0).resolve_draft("save", next_save)
+                return
+            self.drafts_resolved = True
+            self.close()
+        next_save()
+        return False
+
+    def remove_remote_workspace(self, workspace):
+        from remote_panel import workspace_key
+
+        self.remote_workspaces.pop(workspace_key(workspace.source, workspace.directory))
+        if not self.remote_workspaces:
+            QApplication.instance().removeEventFilter(self)
+            for shortcut in self.workspace_shortcuts:
+                shortcut.setEnabled(False)
+        workspace.shutdown()
+        self.workspaces.removeTab(self.workspaces.indexOf(workspace))
+        workspace.deleteLater()
 
     def about(self):
         from grasp_shells import snapshot
@@ -375,6 +552,12 @@ class MainWindow(QMainWindow):
             self.calc.bsplit.setSizes(cfg["bsplit"])
 
     def closeEvent(self, event):
+        if any(not workspace.may_close() for workspace in self.remote_workspaces.values()):
+            event.ignore()
+            return
+        if not self.resolve_drafts():
+            event.ignore()
+            return
         panels = list(self.panels.values()) + [w.panel for w in gc.PANEL_WINDOWS]
         others = any(p.busy() for p in panels)
         stop = False
@@ -405,8 +588,8 @@ class MainWindow(QMainWindow):
         if not self.calc.shutdown(stop):
             event.ignore()
             return
-        for win in self.remote_windows:
-            win.close()
+        for workspace in list(self.remote_workspaces.values()):
+            self.remove_remote_workspace(workspace)
         for p in self.panels.values():
             p.shutdown()
         for w in list(gc.PANEL_WINDOWS):
@@ -451,7 +634,7 @@ class MainWindow(QMainWindow):
     def panel_message(self, kind, text):
         """查看器的状态消息只在它的标签页显示时出现 (计算完成后后台刷新不覆盖计算页的消息)。"""
         if self.current_tab() == kind:
-            self.statusBar().showMessage(text)
+            self.local_status(text)
 
     def refresh_panels(self, *_):
         for p in self.panels.values():
@@ -479,6 +662,8 @@ class MainWindow(QMainWindow):
             self.workdir.setText(self.cur_workdir)
             return
         self.cur_workdir = new
+        self.workspaces.setTabText(0, self.local_workspace_title())
+        self.workspaces.setTabToolTip(0, new)
         for p in self.panels.values():
             p.set_dir(new)
         core.save_config(workdir=new)
@@ -486,6 +671,7 @@ class MainWindow(QMainWindow):
 
     def open_path(self, path):
         """打开一个目录 (作为工作目录) 或文件 (切换到它所在的目录和对应的查看器，只勾选这个文件)。"""
+        self.workspaces.setCurrentIndex(0)
         path = os.path.abspath(path)
         if os.path.isdir(path):
             self.change_workdir(path)
@@ -517,8 +703,11 @@ class MainWindow(QMainWindow):
     def rebuild(self):
         """重新创建全部控件：计算页保留参数、流程和输出；查看器面板重新创建 (保留勾选的文件)，
         正在计算跃迁的面板保留原样。"""
-        tab = self.current_tab()
+        tab, active = self.current_tab(), self.active_remote()
         self.calc.setParent(None)
+        for workspace in self.remote_workspaces.values():
+            workspace.setParent(None)
+            workspace.rebuild()
         for kind, p in list(self.panels.items()):
             p.setParent(None)
             if not p.busy():
@@ -528,6 +717,8 @@ class MainWindow(QMainWindow):
                 del self.panels[kind]
         self.build()
         self.show_tab(tab)
+        if active is not None:
+            self.workspaces.setCurrentWidget(active)
 
 
 # ---------------------------------------------------------------------------

@@ -985,10 +985,318 @@ class StepNav(QWidget):
 TAG_COLORS = {"": QColor("#dcdcdc"), "head": QColor("#6cb6ff"), "info": QColor("#a0d080"), "err": QColor("#ff7070")}
 
 
-class CalcPanel(QWidget):
+class PipelineEditor(QWidget):
+    """程序页表单、态组和流程编辑；本机计算页与服务器工作区共用。
+    记录保存、运行和输入检查由子类处理 (见 pipeline_changed、groups_changed)。"""
+    message = Signal(str)                  # 状态栏消息
+
+    def __init__(self, run):
+        super().__init__()
+        self.run = run                 # 提供 bindir() 和 mpi_prefix()
+        self.pipeline = []
+        self.preview_source = None     # 流程行号或程序页 key；只保留在界面中
+        self.group = core.GROUPS[0]
+        self.groups = {g: core.group_defaults(g) for g in core.GROUPS}
+
+    def pipeline_changed(self):
+        """流程改变之后调用。"""
+
+    def groups_changed(self):
+        """切换或复制态组之后调用。"""
+
+    def update_run_buttons(self):
+        pass
+
+    def show_preview(self):
+        pass
+
+    def show_pipeline(self):
+        pass
+
+    def build_forms(self, lay):
+        """态组切换和各程序页；加到 lay 中。"""
+        # 态组切换放在分组标签栏右侧的空白处，不单独占一行
+        corner = QWidget()
+        gb = QHBoxLayout(corner)
+        gb.setContentsMargins(0, 0, 4, 2)
+        group_hint = T("标签上带组名的程序页按态组分别保存参数，其余程序页两组共用。")
+        label = QLabel(T("态组"))
+        label.setToolTip(group_hint)
+        gb.addWidget(label)
+        self.group_buttons = QButtonGroup(lay.parentWidget())
+        for g in core.GROUPS:
+            b = QPushButton(g)
+            b.setCheckable(True)
+            b.setChecked(g == self.group)
+            b.setToolTip(group_hint)
+            b.setStyleSheet("QPushButton { padding: 2px 16px; } "
+                            "QPushButton:checked { background: #2d6cdf; color: white; font-weight: bold; }")
+            b.clicked.connect(lambda _=False, g=g: self.switch_group(g))
+            self.group_buttons.addButton(b)
+            gb.addWidget(b)
+        self.copy_btn = QPushButton()
+        self.copy_btn.clicked.connect(self.copy_group)
+        gb.addWidget(self.copy_btn)
+
+        self.forms = [StepForm(step, self.run.bindir(), self.nuclear_element) for step in core.STEPS]
+        self.nav = StepNav(self.forms)
+        self.nav.groups.setCornerWidget(corner, Qt.TopRightCorner)
+        for f in self.group_forms():
+            f.set_values(self.groups[self.group][f.step.key])
+        self.update_group_labels()
+        lay.addWidget(self.nav)
+
+    def apply_fields(self, data):
+        """载入程序页参数、态组、流程和当前程序页；返回无法识别的选项。"""
+        choice_warnings = []
+
+        def warn(step, values, location):
+            errors = list(grasp_config.choice_errors(step, values))
+            choice_warnings.extend(f"{location} · {error}" for error in errors)
+            return bool(errors)
+
+        steps = data.get("steps", {})
+        for f in self.forms:
+            # 兼容旧版本以中文标签页名保存的"自定义"参数
+            d = steps.get(f.step.key) or steps.get(f.step.name)
+            if d and f.step.key not in core.GROUP_STEPS:
+                warn(f.step, d, T("表单 ({step})", step=f.step.key))
+                f.set_values(d)
+        saved = data.get("groups")
+        if saved is None:
+            # 旧版本的参数没有态组：作为 odd 组的参数，even 组用默认值
+            saved = {core.GROUPS[0]: {k: steps[k] for k in core.GROUP_STEPS if k in steps}}
+        self.groups = {g: {k: dict(v, **saved.get(g, {}).get(k, {})) for k, v in core.group_defaults(g).items()}
+                       for g in core.GROUPS}
+        for group, pages in self.groups.items():
+            for key, values in pages.items():
+                step = grasp_config.STEPS[key]
+                if warn(step, values, T("态组 {group} ({step})", group=group, step=key)):
+                    for field in step.fields:
+                        if isinstance(field, core.Choice):
+                            values[field.key] = core.normalize(field, values[field.key])
+        self.group = data.get("group") if data.get("group") in core.GROUPS else core.GROUPS[0]
+        self.load_group()
+        self.pipeline = []
+        for i, job in enumerate(data.get("pipeline", []), 1):
+            step = grasp_config.STEPS.get(job.get("step"))
+            values = job.get("vals")
+            if step is not None and isinstance(values, dict) and warn(
+                    step, values, T("第 {i} 步 ({step})", i=i, step=step.key)):
+                job = dict(job, **grasp_config.make_job(job))
+            try:
+                job = core.refresh_block_input(job)
+            except ValueError:
+                # 保留可编辑的旧记录；运行前预检会给出提示。
+                pass
+            self.pipeline.append(dict(job, pre=[tuple(a) for a in job["pre"]], post=[tuple(a) for a in job["post"]]))
+        self.refresh_list()
+        tab = data.get("tab")
+        if isinstance(tab, int):                # 旧版本按序号保存
+            if 0 <= tab < len(self.forms):
+                self.nav.setCurrentWidget(self.forms[tab])
+        elif tab:
+            for f in self.forms:
+                if f.step.key == tab:
+                    self.nav.setCurrentWidget(f)
+        return choice_warnings
+
+    def status(self, text):
+        self.message.emit(text)
+
+    def nuclear_element(self):
+        return next((form.get["z"]() for form in self.forms if form.step.key == "rnucleus"), "Li")
+
+    # ---- 态组 ----
+    def group_forms(self):
+        return [f for f in self.forms if f.step.key in core.GROUP_STEPS]
+
+    def other_group(self):
+        return next(g for g in core.GROUPS if g != self.group)
+
+    def flush_group(self):
+        """把表单中当前态组的参数存回 self.groups。"""
+        for f in self.group_forms():
+            self.groups[self.group][f.step.key] = f.values()
+
+    def load_group(self):
+        for f in self.group_forms():
+            f.set_values(self.groups[self.group][f.step.key])
+        self.update_group_labels()
+
+    def update_group_labels(self):
+        for b in self.group_buttons.buttons():
+            b.setChecked(b.text() == self.group)
+        self.copy_btn.setText(T("复制到 {g}（替换名称）", g=self.other_group()))
+        for f in self.forms:
+            name = T(f.step.name)
+            self.nav.setText(f, f"{name} · {self.group}" if f.step.key in core.GROUP_STEPS else name)
+
+    def switch_group(self, g):
+        if g == self.group:
+            return
+        self.flush_group()
+        self.group = g
+        self.load_group()
+        self.status(T("当前态组：{g}", g=g))
+        self.groups_changed()
+
+    def copy_group(self):
+        a, b = self.group, self.other_group()
+        if QMessageBox.question(self, T("态组"), T("确定用 {a} 组的参数覆盖 {b} 组吗？", a=a, b=b)) != QMessageBox.Yes:
+            return
+        self.flush_group()
+        self.groups[b] = core.rename_group(self.groups[a], a, b)
+        self.status(
+            T("已把 {a} 组的参数复制到 {b} 组 (名称中的 {a} 已替换为 {b})；请检查 {b} 的参考组态、2J 范围和能级。", a=a, b=b))
+        self.groups_changed()
+
+    def calculation_fields(self):
+        self.flush_group()
+        steps = {f.step.key: f.values() for f in self.forms if f.step.key not in core.GROUP_STEPS}
+        return steps, self.groups, self.pipeline
+
+    def current_job(self):
+        try:
+            return self.nav.currentWidget().job()
+        except (ValueError, KeyError) as e:
+            QMessageBox.critical(self, T("参数错误"), T("参数格式有误：{e}", e=e))
+            return None
+
+    def preview(self):
+        job = self.current_job()
+        if job:
+            self.preview_source = self.nav.currentWidget().step.key
+            self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
+            self.show_preview()
+
+    def preview_row_changed(self, *_):
+        """自动预览只换文字；不能把窄窗口中的流程标签切走。"""
+        self.preview_source = self.selected()
+        self.refresh_preview()
+
+    def refresh_preview(self, *_):
+        source = self.preview_source
+        if source is None:
+            self.prev.clear()
+            return
+        if isinstance(source, int):
+            if not 0 <= source < len(self.pipeline):
+                self.preview_source = None
+                self.prev.clear()
+                return
+            job = self.pipeline[source]
+        else:
+            form = next(f for f in self.forms if f.step.key == source)
+            try:
+                job = form.job()
+            except (ValueError, KeyError):
+                return                    # 设置变化时表单可能尚未填完，保留旧文字且不弹框
+        try:
+            text = core.describe(job, self.run.mpi_prefix())
+        except ValueError as e:
+            text = str(e)
+        self.prev.setPlainText(text + "\n")
+
+    def add_to_pipeline(self):
+        job = self.current_job()
+        if job:
+            if job["step"] in core.GROUP_STEPS:
+                job["group"] = self.group           # 导出共享配置时需要
+            self.pipeline.append(job)
+            self.refresh_list()
+            self.show_pipeline()
+            self.pipeline_changed()
+
+    def refresh_list(self):
+        # 重建列表产生的临时空行不能改变独立的表单预览来源。
+        blocked = self.plist.blockSignals(True)
+        self.plist.clear()
+        self.plist.addItems([f"{i:2d}. {j['title']}" for i, j in enumerate(self.pipeline, 1)])
+        self.plist.blockSignals(blocked)
+        self.update_run_buttons()
+        if isinstance(self.preview_source, int):
+            self.preview_row_changed()
+
+    def selected(self):
+        i = self.plist.currentRow()
+        return i if 0 <= i < len(self.pipeline) else None
+
+    def show_job(self, *_):
+        i = self.selected()
+        if i is not None:
+            self.preview_row_changed()
+            self.show_preview()
+
+    def move(self, d):
+        i = self.selected()
+        if i is None or not 0 <= i + d < len(self.pipeline):
+            return
+        p = self.pipeline
+        p[i], p[i + d] = p[i + d], p[i]
+        self.refresh_list()
+        self.plist.setCurrentRow(i + d)
+        self.pipeline_changed()
+
+    def edit_job(self):
+        """把选中步骤的参数载入它的程序页 (切换到该步骤的态组)，改好后用“更新所选”写回。"""
+        i = self.selected()
+        if i is None:
+            return
+        job = self.pipeline[i]
+        form = next((f for f in self.forms if f.step.key == job.get("step")), None)
+        if form is None or not isinstance(job.get("vals"), dict):
+            QMessageBox.information(self, T("编辑"), T("这一步没有程序页参数 (导入的命令)，不能载入表单。"))
+            return
+        if job["step"] in core.GROUP_STEPS and job.get("group") in core.GROUPS:
+            self.switch_group(job["group"])
+        form.set_values(job["vals"])
+        self.nav.setCurrentWidget(form)
+        self.status(T("已把第 {i} 步载入表单；修改后点“更新所选”替换这一步", i=i + 1))
+
+    def update_job(self):
+        """用当前程序页的参数替换选中的步骤 (须是同一个程序)。"""
+        i = self.selected()
+        if i is None:
+            return
+        form = self.nav.currentWidget()
+        if self.pipeline[i].get("step") != form.step.key:
+            QMessageBox.information(self, T("更新所选"), T("第 {i} 步不是 {p}：先选中这一步并点“编辑”，修改后再更新。",
+                                                          i=i + 1, p=T(form.step.name)))
+            return
+        job = self.current_job()
+        if job:
+            if job["step"] in core.GROUP_STEPS:
+                job["group"] = self.group
+            self.pipeline[i] = job
+            self.refresh_list()
+            self.plist.setCurrentRow(i)
+            self.show_job()
+            self.pipeline_changed()
+            self.status(T("已更新第 {i} 步", i=i + 1))
+
+    def remove_job(self):
+        i = self.selected()
+        if i is not None:
+            del self.pipeline[i]
+            self.refresh_list()
+            self.pipeline_changed()
+
+    def clear_pipeline(self):
+        self.pipeline.clear()
+        self.refresh_list()
+        self.pipeline_changed()
+
+    def need_pipeline(self):
+        if not self.pipeline:
+            QMessageBox.information(self, T("导出"), T("流程为空：先在各标签页点击“加入流程”。"))
+            return False
+        return True
+
+
+class CalcPanel(PipelineEditor):
     """计算：各程序的参数表单、流程、运行和程序输出。工作目录和运行设置 (RunSettings) 由主窗口提供；
     参数和流程按工作目录保存在 core.SESSION_FILE 中。"""
-    message = Signal(str)                  # 状态栏消息
     progress = Signal(str)                 # 运行进度 (状态栏右侧的常驻标签；空字符串 = 没有运行)
     filesChanged = Signal()                # 更新目录内容后刷新查看器
     runFinished = Signal(bool)             # 一次运行结束 (查看器据此刷新)
@@ -996,8 +1304,7 @@ class CalcPanel(QWidget):
     copyChanged = Signal(str)
 
     def __init__(self, run, workdir):
-        super().__init__()
-        self.run = run
+        super().__init__(run)
         self.cur_workdir = os.path.abspath(workdir)
         self.q = queue.Queue()
         self.client = None             # 与后台运行进程的连接 (见 grasp_bg)；连着时 busy
@@ -1007,8 +1314,6 @@ class CalcPanel(QWidget):
         self.cleaned_at = None
         self.run_span = None           # 仅本次会话的范围；不扩展后台记录格式
         self.remote = None             # 本目录的计算在另一台机器上运行时：读取其 RUN_LOG 的线程的标记
-        self.pipeline = []
-        self.preview_source = None     # 流程行号或程序页 key；只保留在界面中
         self.preview_run = None
         self.session_cleared = False
         self.session_revision = None
@@ -1016,8 +1321,6 @@ class CalcPanel(QWidget):
         self.summary_runs = {}
         self.summary_record = None
         self.busy = False
-        self.group = core.GROUPS[0]
-        self.groups = {g: core.group_defaults(g) for g in core.GROUPS}
         self.slurm = dict(core.SLURM_DEFAULTS, **core.load_config().get("slurm", {}))
         self.formats = {}
         for tag, color in TAG_COLORS.items():
@@ -1036,9 +1339,6 @@ class CalcPanel(QWidget):
         self.ptimer = QTimer(self)
         self.ptimer.timeout.connect(self.update_progress)
         self.ptimer.start(1000)
-
-    def status(self, text):
-        self.message.emit(text)
 
     def update_progress(self):
         """运行中：当前步骤、本步已运行的时间和最后一次输出距今的时间 (每秒更新)。
@@ -1115,37 +1415,7 @@ class CalcPanel(QWidget):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
-
-        # 态组切换放在分组标签栏右侧的空白处，不单独占一行
-        corner = QWidget()
-        gb = QHBoxLayout(corner)
-        gb.setContentsMargins(0, 0, 4, 2)
-        group_hint = T("标签上带组名的程序页按态组分别保存参数，其余程序页两组共用。")
-        label = QLabel(T("态组"))
-        label.setToolTip(group_hint)
-        gb.addWidget(label)
-        self.group_buttons = QButtonGroup(w)
-        for g in core.GROUPS:
-            b = QPushButton(g)
-            b.setCheckable(True)
-            b.setChecked(g == self.group)
-            b.setToolTip(group_hint)
-            b.setStyleSheet("QPushButton { padding: 2px 16px; } "
-                            "QPushButton:checked { background: #2d6cdf; color: white; font-weight: bold; }")
-            b.clicked.connect(lambda _=False, g=g: self.switch_group(g))
-            self.group_buttons.addButton(b)
-            gb.addWidget(b)
-        self.copy_btn = QPushButton()
-        self.copy_btn.clicked.connect(self.copy_group)
-        gb.addWidget(self.copy_btn)
-
-        self.forms = [StepForm(step, self.run.bindir(), self.nuclear_element) for step in core.STEPS]
-        self.nav = StepNav(self.forms)
-        self.nav.groups.setCornerWidget(corner, Qt.TopRightCorner)
-        for f in self.group_forms():
-            f.set_values(self.groups[self.group][f.step.key])
-        self.update_group_labels()
-        lay.addWidget(self.nav)
+        self.build_forms(lay)
         bar = QHBoxLayout()
         bar.addWidget(button("预览输入", self.preview))
         check = button("检查输入文件", self.check_inputs)
@@ -1157,9 +1427,6 @@ class CalcPanel(QWidget):
         bar.addWidget(button("■ 停止", self.stop_run))
         lay.addLayout(bar)
         return w
-
-    def nuclear_element(self):
-        return next((form.get["z"]() for form in self.forms if form.step.key == "rnucleus"), "Li")
 
     def build_bottom(self):
         split = QSplitter(Qt.Horizontal)
@@ -1285,49 +1552,18 @@ class CalcPanel(QWidget):
         self.detach()
         return True
 
-    # ---- 态组 ----
-    def group_forms(self):
-        return [f for f in self.forms if f.step.key in core.GROUP_STEPS]
+    def pipeline_changed(self):
+        self.save_session(create_record=True)
 
-    def other_group(self):
-        return next(g for g in core.GROUPS if g != self.group)
-
-    def flush_group(self):
-        """把表单中当前态组的参数存回 self.groups。"""
-        for f in self.group_forms():
-            self.groups[self.group][f.step.key] = f.values()
-
-    def load_group(self):
-        for f in self.group_forms():
-            f.set_values(self.groups[self.group][f.step.key])
-        self.update_group_labels()
-
-    def update_group_labels(self):
-        for b in self.group_buttons.buttons():
-            b.setChecked(b.text() == self.group)
-        self.copy_btn.setText(T("复制到 {g}（替换名称）", g=self.other_group()))
-        for f in self.forms:
-            name = T(f.step.name)
-            self.nav.setText(f, f"{name} · {self.group}" if f.step.key in core.GROUP_STEPS else name)
-
-    def switch_group(self, g):
-        if g == self.group:
-            return
-        self.flush_group()
-        self.group = g
-        self.load_group()
-        self.status(T("当前态组：{g}", g=g))
+    def groups_changed(self):
         self.save_session()
 
-    def copy_group(self):
-        a, b = self.group, self.other_group()
-        if QMessageBox.question(self, T("态组"), T("确定用 {a} 组的参数覆盖 {b} 组吗？", a=a, b=b)) != QMessageBox.Yes:
-            return
-        self.flush_group()
-        self.groups[b] = core.rename_group(self.groups[a], a, b)
-        self.status(
-            T("已把 {a} 组的参数复制到 {b} 组 (名称中的 {a} 已替换为 {b})；请检查 {b} 的参考组态、2J 范围和能级。", a=a, b=b))
-        self.save_session()
+    def show_pipeline(self):
+        self.btabs.setCurrentIndex(0)
+
+    def add_to_pipeline(self):
+        self.session_cleared = False
+        super().add_to_pipeline()
 
     # ---- 工作目录中的记录 ----
     def set_workdir(self, d):
@@ -1418,11 +1654,6 @@ class CalcPanel(QWidget):
             self.write("\n" + notice + "\n", "err")
             QTimer.singleShot(0, lambda: self.status(notice))
 
-    def calculation_fields(self):
-        self.flush_group()
-        steps = {f.step.key: f.values() for f in self.forms if f.step.key not in core.GROUP_STEPS}
-        return steps, self.groups, self.pipeline
-
     def save_session(self, require_saved=False, *, create_record=False):
         if self.session_cleared:
             return True
@@ -1493,48 +1724,6 @@ class CalcPanel(QWidget):
         self.q.put((s, tag))
 
     # ---- 动作 ----
-    def current_job(self):
-        try:
-            return self.nav.currentWidget().job()
-        except (ValueError, KeyError) as e:
-            QMessageBox.critical(self, T("参数错误"), T("参数格式有误：{e}", e=e))
-            return None
-
-    def preview(self):
-        job = self.current_job()
-        if job:
-            self.preview_source = self.nav.currentWidget().step.key
-            self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
-            self.show_preview()
-
-    def preview_row_changed(self, *_):
-        """自动预览只换文字；不能把窄窗口中的流程标签切走。"""
-        self.preview_source = self.selected()
-        self.refresh_preview()
-
-    def refresh_preview(self, *_):
-        source = self.preview_source
-        if source is None:
-            self.prev.clear()
-            return
-        if isinstance(source, int):
-            if not 0 <= source < len(self.pipeline):
-                self.preview_source = None
-                self.prev.clear()
-                return
-            job = self.pipeline[source]
-        else:
-            form = next(f for f in self.forms if f.step.key == source)
-            try:
-                job = form.job()
-            except (ValueError, KeyError):
-                return                    # 设置变化时表单可能尚未填完，保留旧文字且不弹框
-        try:
-            text = core.describe(job, self.run.mpi_prefix())
-        except ValueError as e:
-            text = str(e)
-        self.prev.setPlainText(text + "\n")
-
     def check_inputs(self):
         form = self.nav.currentWidget()
         jobs = self.pipeline[self.selected() or 0:] if self.pipeline else [
@@ -1790,27 +1979,6 @@ class CalcPanel(QWidget):
             self.prev.setPlainText(core.describe(job, self.run.mpi_prefix()) + "\n")
             self.start([job])
 
-    def add_to_pipeline(self):
-        self.session_cleared = False
-        job = self.current_job()
-        if job:
-            if job["step"] in core.GROUP_STEPS:
-                job["group"] = self.group           # 导出共享配置时需要
-            self.pipeline.append(job)
-            self.refresh_list()
-            self.btabs.setCurrentIndex(0)
-            self.save_session(create_record=True)
-
-    def refresh_list(self):
-        # 重建列表产生的临时空行不能改变独立的表单预览来源。
-        blocked = self.plist.blockSignals(True)
-        self.plist.clear()
-        self.plist.addItems([f"{i:2d}. {j['title']}" for i, j in enumerate(self.pipeline, 1)])
-        self.plist.blockSignals(blocked)
-        self.update_run_buttons()
-        if isinstance(self.preview_source, int):
-            self.preview_row_changed()
-
     def update_run_buttons(self):
         for mode, button in (("all", self.run_all), ("from", self.run_from),
                              ("to", self.run_to), ("selected", self.run_selected)):
@@ -1838,75 +2006,6 @@ class CalcPanel(QWidget):
             QMessageBox.information(self, T("运行"), str(e))
             return
         self.start(self.pipeline[first:last], span=(first + 1, last, len(self.pipeline)))
-
-    def selected(self):
-        i = self.plist.currentRow()
-        return i if 0 <= i < len(self.pipeline) else None
-
-    def show_job(self, *_):
-        i = self.selected()
-        if i is not None:
-            self.preview_row_changed()
-            self.show_preview()
-
-    def move(self, d):
-        i = self.selected()
-        if i is None or not 0 <= i + d < len(self.pipeline):
-            return
-        p = self.pipeline
-        p[i], p[i + d] = p[i + d], p[i]
-        self.refresh_list()
-        self.plist.setCurrentRow(i + d)
-        self.save_session(create_record=True)
-
-    def edit_job(self):
-        """把选中步骤的参数载入它的程序页 (切换到该步骤的态组)，改好后用“更新所选”写回。"""
-        i = self.selected()
-        if i is None:
-            return
-        job = self.pipeline[i]
-        form = next((f for f in self.forms if f.step.key == job.get("step")), None)
-        if form is None or not isinstance(job.get("vals"), dict):
-            QMessageBox.information(self, T("编辑"), T("这一步没有程序页参数 (导入的命令)，不能载入表单。"))
-            return
-        if job["step"] in core.GROUP_STEPS and job.get("group") in core.GROUPS:
-            self.switch_group(job["group"])
-        form.set_values(job["vals"])
-        self.nav.setCurrentWidget(form)
-        self.status(T("已把第 {i} 步载入表单；修改后点“更新所选”替换这一步", i=i + 1))
-
-    def update_job(self):
-        """用当前程序页的参数替换选中的步骤 (须是同一个程序)。"""
-        i = self.selected()
-        if i is None:
-            return
-        form = self.nav.currentWidget()
-        if self.pipeline[i].get("step") != form.step.key:
-            QMessageBox.information(self, T("更新所选"), T("第 {i} 步不是 {p}：先选中这一步并点“编辑”，修改后再更新。",
-                                                          i=i + 1, p=T(form.step.name)))
-            return
-        job = self.current_job()
-        if job:
-            if job["step"] in core.GROUP_STEPS:
-                job["group"] = self.group
-            self.pipeline[i] = job
-            self.refresh_list()
-            self.plist.setCurrentRow(i)
-            self.show_job()
-            self.save_session(create_record=True)
-            self.status(T("已更新第 {i} 步", i=i + 1))
-
-    def remove_job(self):
-        i = self.selected()
-        if i is not None:
-            del self.pipeline[i]
-            self.refresh_list()
-            self.save_session(create_record=True)
-
-    def clear_pipeline(self):
-        self.pipeline.clear()
-        self.refresh_list()
-        self.save_session(create_record=True)
 
     def run_pipeline(self):
         self.start(list(self.pipeline))
@@ -1937,12 +2036,6 @@ class CalcPanel(QWidget):
         names = sorted(os.listdir(self.cur_workdir))
         self.write("\n" + T("----- {d} ({n} 个文件) -----", d=self.cur_workdir, n=len(names)) + "\n", "head")
         self.write("  ".join(names) + "\n")
-
-    def need_pipeline(self):
-        if not self.pipeline:
-            QMessageBox.information(self, T("导出"), T("流程为空：先在各标签页点击“加入流程”。"))
-            return False
-        return True
 
     def save_text(self, title, name, text):
         path, _ = QFileDialog.getSaveFileName(self, title, os.path.join(self.cur_workdir, name))
@@ -1993,13 +2086,6 @@ class CalcPanel(QWidget):
 
     def apply(self, data, *, user_run_settings=False):
         self.session_cleared = False
-        choice_warnings = []
-
-        def warn(step, values, location):
-            errors = list(grasp_config.choice_errors(step, values))
-            choice_warnings.extend(f"{location} · {error}" for error in errors)
-            return bool(errors)
-
         self.run.apply(data, user=user_run_settings)
         if "workdir" in data:
             d = os.path.abspath(str(data["workdir"]))
@@ -2008,50 +2094,7 @@ class CalcPanel(QWidget):
                 _, self.session_revision = sessions.read(d)
                 self.workdirRequested.emit(d)       # 主窗口更新工作目录一栏 (不再载入该目录的记录)
         self.slurm.update(data.get("slurm", {}))
-        steps = data.get("steps", {})
-        for f in self.forms:
-            # 兼容旧版本以中文标签页名保存的"自定义"参数
-            d = steps.get(f.step.key) or steps.get(f.step.name)
-            if d and f.step.key not in core.GROUP_STEPS:
-                warn(f.step, d, T("表单 ({step})", step=f.step.key))
-                f.set_values(d)
-        saved = data.get("groups")
-        if saved is None:
-            # 旧版本的参数没有态组：作为 odd 组的参数，even 组用默认值
-            saved = {core.GROUPS[0]: {k: steps[k] for k in core.GROUP_STEPS if k in steps}}
-        self.groups = {g: {k: dict(v, **saved.get(g, {}).get(k, {})) for k, v in core.group_defaults(g).items()}
-                       for g in core.GROUPS}
-        for group, pages in self.groups.items():
-            for key, values in pages.items():
-                step = grasp_config.STEPS[key]
-                if warn(step, values, T("态组 {group} ({step})", group=group, step=key)):
-                    for field in step.fields:
-                        if isinstance(field, core.Choice):
-                            values[field.key] = core.normalize(field, values[field.key])
-        self.group = data.get("group") if data.get("group") in core.GROUPS else core.GROUPS[0]
-        self.load_group()
-        self.pipeline = []
-        for i, job in enumerate(data.get("pipeline", []), 1):
-            step = grasp_config.STEPS.get(job.get("step"))
-            values = job.get("vals")
-            if step is not None and isinstance(values, dict) and warn(
-                    step, values, T("第 {i} 步 ({step})", i=i, step=step.key)):
-                job = dict(job, **grasp_config.make_job(job))
-            try:
-                job = core.refresh_block_input(job)
-            except ValueError:
-                # 保留可编辑的旧记录；运行前预检会给出提示。
-                pass
-            self.pipeline.append(dict(job, pre=[tuple(a) for a in job["pre"]], post=[tuple(a) for a in job["post"]]))
-        self.refresh_list()
-        tab = data.get("tab")
-        if isinstance(tab, int):                # 旧版本按序号保存
-            if 0 <= tab < len(self.forms):
-                self.nav.setCurrentWidget(self.forms[tab])
-        elif tab:
-            for f in self.forms:
-                if f.step.key == tab:
-                    self.nav.setCurrentWidget(f)
+        choice_warnings = self.apply_fields(data)
         if choice_warnings:
             QMessageBox.warning(self, T("工作目录记录"),
                                 T("记录中的下列选项无法识别，已用默认值替换：\n{details}",

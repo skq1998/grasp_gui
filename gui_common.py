@@ -294,6 +294,15 @@ def saved_settings():
 #  查看器面板
 # ---------------------------------------------------------------------------
 
+def renew_layout(owner):
+    """替换控件，保留持有布局、后台任务和信号的面板对象。"""
+    if owner.layout() is not None:
+        retired = QWidget()
+        retired.setLayout(owner.layout())
+        retired.deleteLater()
+    return QVBoxLayout(owner)
+
+
 class Panel(QWidget):
     """径向波函数和能级图面板的基类。
 

@@ -761,8 +761,10 @@ class LevelPanel(Panel):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(100)
+        self.build_view(QVBoxLayout(self), workdir, nist_comparison)
+        self.scan()
 
-        lay = QVBoxLayout(self)
+    def build_view(self, lay, workdir, nist_comparison):
         top = self.dir_bar(workdir)
         top.addSpacing(12)
         top.addWidget(QLabel(T("能量单位")))
@@ -869,7 +871,6 @@ class LevelPanel(Panel):
         split.addWidget(right)
         split.setSizes([220, 660, 520])
         lay.addWidget(split, 1)
-        self.scan()
 
     # ---- 文件 ----
     def files_checked(self):

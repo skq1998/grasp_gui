@@ -379,51 +379,6 @@ def test_configuration_selection_reaches_shared_uploader(factory, qapp, monkeypa
     assert source.closed is False
 
 
-def test_new_directory_replaces_empty_window_without_reconnecting(qapp, monkeypatch):
-    from PySide6.QtCore import QEvent, QObject, Signal
-    from PySide6.QtWidgets import QWidget
-    import remote_panel
-    class Source(QObject):
-        push = Signal(object)
-        notice = Signal(str)
-        client = SimpleNamespace(host="fixture")
-        server = dict(capabilities=[edit.CAPABILITY])
-        closes = 0
-        def submit(self, method, args, callback):
-            if method == "pipeline":
-                callback(dict(jobs=[], revision="empty"), None)
-            elif method == "watch":
-                callback(dict(text="", state=None), None)
-        def close(self):
-            self.closes += 1
-        def reconnect(self):
-            pass
-    class View(QWidget):
-        message = Signal(str)
-        def __init__(self, *args):
-            super().__init__()
-        def shutdown(self):
-            pass
-    monkeypatch.setattr(remote_panel, "RemoteWaves", View)
-    monkeypatch.setattr(remote_panel, "RemoteLevels", View)
-    parent = QWidget()
-    parent.remote_windows = []
-    source = Source()
-    old = remote_panel.RemoteWindow(source, "/srv", parent)
-    try:
-        old.show()
-        old.open_created("/srv/new", False)
-        new = old.created_window
-        assert new.directory == "/srv/new" and source.parent() is new
-        assert not old.isVisible() and new.isVisible() and source.closes == 0
-        assert parent.remote_windows == [new]
-        new.close()
-        assert source.closes == 1
-    finally:
-        parent.deleteLater()
-        qapp.sendPostedEvents(None, QEvent.DeferredDelete)
-
-
 @pytest.mark.parametrize("inputs", ["ok", "missing", "pending"])
 def test_final_confirmation_has_one_preflight_and_one_pending_section(factory, tmp_path, qapp, monkeypatch, inputs):
     from PySide6.QtWidgets import QMessageBox
