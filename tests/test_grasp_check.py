@@ -79,9 +79,11 @@ def test_grasp_check_refreshes_from_settings_and_reconnects(qapp, tmp_path, monk
     try:
         client.events.put(dict(event="connected", capabilities=[]))
         source.poll()
+        qapp.processEvents()
         assert "Update it" in grasp_check_text(source, "workstation")[0]
         client.events.put(dict(event="connected", capabilities=[remote.GRASP_CHECK], grasp_check=report))
         source.poll()
+        qapp.processEvents()
         text, settings = grasp_check_text(source, "slurm")
         assert settings and "PATH=/no-grasp" in text and "login node" in text
         assert "Non-interactive SSH" in text
@@ -92,18 +94,21 @@ def test_grasp_check_refreshes_from_settings_and_reconnects(qapp, tmp_path, monk
         future.set_result(dict(directory="/home/research/grasp/bin",
                                files=[dict(name="rmcdhf", directory=False)]))
         source.poll()
+        qapp.processEvents()
         text, settings = grasp_check_text(source, "workstation")
         assert not settings and "/home/research/grasp/bin" in text and "settings saved" in text
         assert "Program files not found: rci_mpi" in text
         env = dict(report, source="env", directory="/from-env", programs=dict(rmcdhf=True))
         client.events.put(dict(event="connected", capabilities=[remote.GRASP_CHECK], grasp_check=env))
         source.poll()
+        qapp.processEvents()
         method, args, future = requests[-1]
         assert (method, args) == ("list_dir", {"directory": "~/grasp/bin"})
         assert not future.done()
         future.set_result(dict(directory="/home/research/grasp/bin",
                                files=[dict(name="rmcdhf", directory=False)]))
         source.poll()
+        qapp.processEvents()
         assert "/home/research/grasp/bin (settings saved for this host)" in grasp_check_text(source, "workstation")[0]
         core.save_config(remote_hosts={"fixture": dict(run=dict(bindir=""))})
         source.refresh_grasp_check()
@@ -151,12 +156,16 @@ def test_status_run_plan_and_launch_agree_with_saved_bindir(qapp, tmp_path, monk
     try:
         client.events.put(dict(event="connected", **report))
         source.poll()
+        qapp.processEvents()
+        source.poll()
+        qapp.processEvents()
         status, _ = grasp_check_text(source, "workstation")
         dialog = ServerRunDialog(None, source, str(calc), operations.run_plan(str(calc)), {}, run=False)
         try:
             assert dialog.settings.bindir() == saved_bindir
             dialog.check()
             source.poll()
+            qapp.processEvents()
             actual = dialog.plan["run_settings"]["bindir"]
             assert actual == expected
             assert f"{actual} ({origin})" in status

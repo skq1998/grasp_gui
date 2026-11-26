@@ -32,14 +32,20 @@ class Source(QObject):
     push = Signal(object)
     connectionChanged = Signal()
     graspCheckChanged = Signal()
+    _event_ready = Signal(object, object)
+    _response_ready = Signal(object)
 
     def __init__(self, client, parent=None):
         super().__init__(parent)
         self.client, self.waiting = client, {}
+        self._queued = set()
+        self._closed = False
         self.rtt = 0.0
         self.server = {}
         self.grasp_check = None
         self.grasp_generation = 0
+        self._event_ready.connect(self._dispatch_event, Qt.QueuedConnection)
+        self._response_ready.connect(self._dispatch_response, Qt.QueuedConnection)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(40)
@@ -55,46 +61,60 @@ class Source(QObject):
             pending[0].cancel()
 
     def poll(self):
+        # 槽立即返回，让回调打开模态对话框后仍能继续轮询。
+        client = self.client
         try:
             while True:
-                event = self.client.events.get_nowait()
-                kind = event.get("event")
-                if kind == "progress":
-                    pending = self.waiting.get(event.get("id"))
-                    if pending and pending[2]:
-                        pending[2](event["data"])
-                elif kind in ("log", "state"):
-                    self.push.emit(event)
-                elif kind in ("error", "notice", "disconnected"):
-                    self.notice.emit(event.get("text", ""))
-                    if kind == "disconnected":
-                        self.connectionChanged.emit()
-                elif kind in ("connected", "latency"):
-                    if kind == "connected":
-                        self.server = event
-                        self.connectionChanged.emit()
-                        self.refresh_grasp_check()
-                    self.rtt = event.get("rtt", 0)
-                    self.notice.emit(T("服务器 {h} 延迟 {n} ms", h=self.client.host, n=round(self.rtt * 1000)))
+                self._event_ready.emit(client, client.events.get_nowait())
         except queue.Empty:
             pass
-        for ident, (future, callback, _) in list(self.waiting.items()):
-            if not future.done():
-                continue
-            if self.waiting.pop(ident, None) is None:
-                continue
-            try:
-                value = future.result()
-            except Exception as e:
-                self.notice.emit(str(e))
-                callback(None, e)
-            else:
-                callback(value, None)
+        for ident, (future, _, _) in self.waiting.items():
+            if ident not in self._queued and future.done():
+                self._queued.add(ident)
+                self._response_ready.emit(ident)
+
+    def _dispatch_event(self, client, event):
+        if self._closed or client is not self.client:
+            return
+        kind = event.get("event")
+        if kind == "progress":
+            pending = self.waiting.get(event.get("id"))
+            if pending and pending[2]:
+                pending[2](event["data"])
+        elif kind in ("log", "state"):
+            self.push.emit(event)
+        elif kind in ("error", "notice", "disconnected"):
+            self.notice.emit(event.get("text", ""))
+            if kind == "disconnected":
+                self.connectionChanged.emit()
+        elif kind in ("connected", "latency"):
+            if kind == "connected":
+                self.server = event
+                self.connectionChanged.emit()
+                self.refresh_grasp_check()
+            self.rtt = event.get("rtt", 0)
+            self.notice.emit(T("服务器 {h} 延迟 {n} ms", h=client.host, n=round(self.rtt * 1000)))
+
+    def _dispatch_response(self, ident):
+        self._queued.discard(ident)
+        pending = self.waiting.pop(ident, None)
+        if pending is None:
+            return
+        future, callback, _ = pending
+        try:
+            value = future.result()
+        except Exception as e:
+            self.notice.emit(str(e))
+            callback(None, e)
+        else:
+            callback(value, None)
 
     def close(self):
+        self._closed = True
         self.timer.stop()
         self.client.close(wait=False)
         self.waiting.clear()
+        self._queued.clear()
 
     def refresh_grasp_check(self):
         self.grasp_generation += 1

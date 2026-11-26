@@ -1,18 +1,21 @@
 """服务器运行设置的真实控件、异步检查与公共启动入口。"""
 
+from concurrent.futures import Future
 from copy import deepcopy
+from queue import Queue
 from types import SimpleNamespace
 
 import pytest
 
 pytestmark = pytest.mark.gui
 pytest.importorskip("PySide6.QtWidgets")
-from PySide6.QtCore import QEvent, QObject, QTimer, Signal  # noqa: E402
+from PySide6.QtCore import QEvent, QEventLoop, QObject, QTimer, Signal  # noqa: E402
 from PySide6.QtWidgets import QDialog  # noqa: E402
 
 import grasp_core as core  # noqa: E402
 import grasp_config as config  # noqa: E402
-from remote_panel import RemoteCalculation, ServerRunDialog  # noqa: E402
+from remote_panel import (RemoteCalculation, ServerRunDialog, Source as RemoteSource,  # noqa: E402
+                          show_server_run_settings)
 
 
 class Source(QObject):
@@ -181,3 +184,145 @@ def test_standalone_settings_can_be_saved_without_starting(qapp, preferences):
         assert not any(method == "run" for method, _ in source.calls)
     finally:
         dispose(qapp, panel)
+
+
+class AsyncClient:
+    host = "fixture"
+
+    def __init__(self):
+        self.events = Queue()
+        self.fixture = Source()
+        self.calls = []
+
+    def request(self, method, args, cached=False):
+        self.calls.append((method, args))
+        future = Future()
+        future.request_id = len(self.calls)
+        if method == "run_plan":
+            answer = self.fixture.plan(args)
+        elif method == "pipeline":
+            answer = dict(jobs=self.fixture.jobs, revision="rev")
+        elif method == "hold":
+            return future
+        else:
+            answer = dict(text="", state=None)
+        QTimer.singleShot(0, lambda: future.set_result(answer) if not future.cancelled() else None)
+        return future
+
+    def close(self, wait=False):
+        pass
+
+
+@pytest.mark.parametrize("run", [False, True])
+def test_settings_entry_points_receive_async_answers_during_modal_dialog(qapp, preferences, run):
+    client = AsyncClient()
+    source = RemoteSource(client)
+    source.server = client.fixture.server
+    panel = RemoteCalculation(source, "/server/calc") if run else None
+    if panel is not None:
+        panel.jobs, panel.revision = client.fixture.jobs, "rev"
+    loop, monitor = QEventLoop(), QTimer()
+    result = {}
+
+    def accept_checked():
+        dialog = qapp.activeModalWidget()
+        if not isinstance(dialog, ServerRunDialog) or dialog.checked_values is None:
+            return
+        if dialog.settings.bindir() != "/new/bin":
+            dialog.settings.bindir_edit.setText("/new/bin")
+            dialog.check()
+            return
+        result["checked"] = dialog.plan["run_settings"]["bindir"]
+        dialog.ok.click()
+        if not run:
+            loop.quit()
+
+    def timeout():
+        dialog = qapp.activeModalWidget()
+        if isinstance(dialog, ServerRunDialog):
+            dialog.reject()
+        loop.quit()
+
+    def observe():
+        accept_checked()
+        if run and any(method == "run" for method, _ in client.calls):
+            loop.quit()
+
+    try:
+        monitor.timeout.connect(observe)
+        monitor.start(10)
+        deadline = QTimer()
+        deadline.setSingleShot(True)
+        deadline.timeout.connect(timeout)
+        deadline.start(1000)
+        if run:
+            panel.prepare_run(1)
+        else:
+            show_server_run_settings(None, source, "/server/calc")
+        (getattr(loop, "exec", None) or loop.exec_)()
+        assert result == {"checked": "/new/bin"}
+        assert core.load_config()["remote_hosts"]["@fixture:22"]["run"]["bindir"] == "/new/bin"
+        if run:
+            assert [args["run_settings"]["bindir"] for method, args in client.calls if method == "run"] == ["/new/bin"]
+    finally:
+        monitor.stop()
+        source.close()
+        if panel is not None:
+            dispose(qapp, panel)
+
+
+def test_modal_callback_keeps_queued_responses_progress_and_push_events_moving(qapp):
+    client = AsyncClient()
+    source = RemoteSource(client)
+    received = []
+    source.push.connect(lambda event: received.append(event["event"]))
+    source.notice.connect(received.append)
+    outer_loop = QEventLoop()
+    outer_deadline = QTimer()
+    outer_deadline.setSingleShot(True)
+    outer_deadline.timeout.connect(outer_loop.quit)
+
+    def modal_callback(*_):
+        dialog = QDialog()
+        source.submit("watch", {}, lambda *_: dialog.accept())
+        client.events.put(dict(event="progress", id=progress_id, data="progress"))
+        client.events.put(dict(event="log"))
+        client.events.put(dict(event="state"))
+        client.events.put(dict(event="notice", text="notice"))
+        deadline = QTimer(dialog)
+        deadline.setSingleShot(True)
+        deadline.timeout.connect(dialog.reject)
+        deadline.start(1000)
+        received.append(dialog.exec())
+        deadline.stop()
+        outer_loop.quit()
+
+    try:
+        source.submit("watch", {}, modal_callback)
+        source.submit("watch", {}, lambda *_: received.append("response"))
+        progress_id = source.submit("hold", {}, lambda *_: None, received.append)
+        outer_deadline.start(2000)
+        (getattr(outer_loop, "exec", None) or outer_loop.exec_)()
+        assert received == ["response", "progress", "log", "state", "notice", QDialog.Accepted]
+    finally:
+        outer_deadline.stop()
+        source.close()
+
+
+def test_cancel_after_poll_queues_response_and_progress(qapp):
+    client = AsyncClient()
+    source = RemoteSource(client)
+    source.timer.stop()
+    received = []
+    try:
+        ident = source.submit("watch", {}, lambda *_: received.append("response"), received.append)
+        qapp.processEvents()
+        assert source.waiting[ident][0].done()
+        client.events.put(dict(event="progress", id=ident, data="progress"))
+        source.poll()
+        source.poll()
+        source.cancel(ident)
+        qapp.processEvents()
+        assert received == [] and not source.waiting
+    finally:
+        source.close()
