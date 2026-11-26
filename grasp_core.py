@@ -25,7 +25,7 @@ import threading
 IS_LINUX = sys.platform.startswith("linux")
 IS_MACOS = sys.platform == "darwin"
 
-VERSION = "2.11.1"         # 发布时改为发布的版本号 (写入导出的共享配置)
+VERSION = "2.11.2"         # 发布时改为发布的版本号 (写入导出的共享配置)
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "grasp_gui.json")
 
