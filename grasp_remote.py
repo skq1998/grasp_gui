@@ -11,7 +11,6 @@ from pathlib import Path
 import pwd
 import queue
 import re
-import shutil
 import subprocess
 import sys
 import threading
@@ -66,15 +65,17 @@ def integer(value, low, high):
 
 
 GRASP_CHECK = "grasp_check_v1"
-GRASP_PROGRAMS = ("rnucleus", "rcsfgenerate", "rangular", "rwfnestimate", "rmcdhf", "rci")
+GRASP_PROGRAMS = ("rnucleus", "rcsfgenerate", "rangular", "rwfnestimate", "rmcdhf", "rci") + core.PIPELINE_MPI_PROGRAMS
 
 
-def grasp_check(*, use_saved=True):
-    directory, source = core.bindir_selection(use_saved=use_saved)
-    names = [name + suffix for suffix in ("", "_mpi") for name in GRASP_PROGRAMS]
-    programs = {name: bool(core.program_path(directory, name)) for name in names}
+def grasp_check(*, use_saved=True, on_path=None):
+    if on_path is None:
+        on_path = core.path_program_paths(GRASP_PROGRAMS)
+    directory, source = core.bindir_selection(use_saved=use_saved, on_path=on_path)
+    programs = core.program_paths(directory, GRASP_PROGRAMS, on_path=on_path)
+    programs = {name: bool(path) for name, path in programs.items()}
     return dict(directory=directory if source else "", source=source, programs=programs,
-                path_programs=[name for name in names if shutil.which(name)],
+                path_programs=[name for name in GRASP_PROGRAMS if name in on_path],
                 bindir_env=os.environ.get("GRASP_BINDIR", ""), path_env=os.environ.get("PATH", ""))
 
 
@@ -96,10 +97,11 @@ class Operations(service.Service):
             raise ValueError(T("远程协议不兼容，请更新 GRASP GUI 服务器版"))
         executable = os.environ.get("GRASP_GUI_REMOTE_EXECUTABLE") or (
             sys.executable if getattr(sys, "frozen", False) else sys.argv[0])
-        check = grasp_check()
+        on_path = core.path_program_paths(GRASP_PROGRAMS)
+        check = grasp_check(on_path=on_path)
         if check["source"] == "saved":
             # 远程表单留空时的自动查找，与 checked_run_settings 使用同一规则。
-            check["empty_bindir"] = grasp_check(use_saved=False)
+            check["empty_bindir"] = grasp_check(use_saved=False, on_path=on_path)
         return dict(protocol=PROTOCOL, version=core.VERSION, executable=os.path.abspath(executable),
                     home=str(Path.home()), server_types=["workstation", "slurm"], grasp_check=check,
                     capabilities=["workdir_write_v1", "run_range_v1", "run_settings_v1", "workdir_clean_v1",

@@ -10,7 +10,6 @@ import math
 import os
 import queue
 import shlex
-import shutil
 import struct
 import threading
 
@@ -1785,10 +1784,14 @@ class LevelPanel(Panel):
     def mpi_programs(self, cfg):
         """MPI 版本能用时返回 None，否则返回原因。"""
         launcher = shlex.split(cfg["mpirun"] or "mpirun")[:1]
-        if not launcher or not shutil.which(launcher[0]):
+        if not launcher:
             return T("找不到 {p}", p=cfg["mpirun"] or "mpirun")
-        for prog in ("rbiotransform_mpi", "rtransition_mpi"):
-            if not (os.access(os.path.join(cfg["bindir"], prog), os.X_OK) or shutil.which(prog)):
+        programs = core.TRANSITION_MPI_PROGRAMS
+        on_path = core.path_program_paths(programs, bindir=cfg["bindir"], path_only=launcher)
+        if launcher[0] not in on_path:
+            return T("找不到 {p}", p=cfg["mpirun"] or "mpirun")
+        for prog, path in core.program_paths(cfg["bindir"], programs, on_path=on_path).items():
+            if not path:
                 return T("找不到 {p}", p=prog)
         return None
 

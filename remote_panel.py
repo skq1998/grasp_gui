@@ -27,6 +27,9 @@ from level_panel import LevelPanel
 from wfn_panel import WfnPanel
 
 
+_OLD_GRASP_CHECK_PROGRAMS = {"rnucleus_mpi", "rcsfgenerate_mpi", "rwfnestimate_mpi"}
+
+
 class Source(QObject):
     notice = Signal(str)
     push = Signal(object)
@@ -198,10 +201,13 @@ def grasp_check_text(source, server_type):
             text += "\n" + T("保存的程序目录不可用：{path}", path=report["invalid"])
         text += "\n" + "GRASP_BINDIR=" + report.get("bindir_env", "") + "\nPATH=" + report.get("path_env", "")
     if report.get("programs"):
-        missing = [name for name, available in report["programs"].items() if not available]
+        missing = [name for name, available in report["programs"].items()
+                   if not available and name not in _OLD_GRASP_CHECK_PROGRAMS]
         text += "\n" + T("服务器缺少程序：{names}", names=", ".join(missing) or "—")
     elif report.get("missing_files"):
-        text += "\n" + T("未找到程序文件：{names}", names=", ".join(report["missing_files"]))
+        missing = [name for name in report["missing_files"] if name not in _OLD_GRASP_CHECK_PROGRAMS]
+        if missing:
+            text += "\n" + T("未找到程序文件：{names}", names=", ".join(missing))
     if server_type == "slurm":
         text += "\n" + T("此检查仅代表 Slurm 登录节点。")
     return text, not path or report.get("programs", {}).get("rmcdhf") is False

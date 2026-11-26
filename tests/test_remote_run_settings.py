@@ -121,8 +121,13 @@ def test_remote_plan_is_readonly_and_default_run_still_uses_saved_values(tmp_pat
 def test_mpi_program_checks_follow_selected_range(tmp_path, monkeypatch):
     root = tmp_path / "calc"
     install(root, [job("rnucleus"), job("rangular")])
-    monkeypatch.setattr(core, "program_path", lambda bindir, program:
-                        "/bin/" + program if program == "rnucleus" else None)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    nucleus = bindir / "rnucleus"
+    nucleus.write_text("#!/bin/sh\n")
+    nucleus.chmod(0o700)
+    monkeypatch.setenv("GRASP_BINDIR", str(bindir))
+    monkeypatch.setenv("PATH", "")
     settings = dict(bindir="", np=2, mpirun="/missing/mpirun")
     op = remote.Operations()
     assert op.run_plan(str(root), end=1, run_settings=settings)["missing_programs"] == []
