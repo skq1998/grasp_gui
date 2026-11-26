@@ -110,7 +110,7 @@ Symmetry List File"). The importing GUI checks these limits (`grasp_gui check`).
 | rwfnestimate | `wfile` | 128 bytes | `genrwf.f90`: `INFILE*128` |
 | rcsfzerofirst | `zero`, `full` | 256 bytes | `set_CSF_ZFlist.f90`: `FILNAM*256` |
 | rtabtrans2 | `tfile` | 80 bytes | `rtabtrans2.f90`: `FILENAME1*80` |
-| rlevels, rtabhfs | each of `files` | 80 bytes | `rlevels.f90`: `strInFile*80`; rtabhfs: GUI limit |
+| rlevels, rlevelseV, rtabhfs | each of `files` | 80 bytes | `rlevels.f90`, `rlevelseV.f90`: `strInFile*80`; rtabhfs: GUI limit |
 
 State names use letters, digits, `_`, `.` and `-` (not starting with `.` or `-`), no blanks or non-ASCII characters.
 **Keep every state name at most 23 characters**, also in the forms without a limit of their own (`rmcdhf` `save`,

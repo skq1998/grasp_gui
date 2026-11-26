@@ -299,7 +299,7 @@ A symbolic link named `grasp_levels` / `grasp_wfn` behaves like `levels` / `wfn`
   * *SCF & CI (自洽场与 CI)*: `rangular`, `rwfnestimate`, `rmcdhf`, `rsave`, `rci`
   * *Properties & transitions (性质与跃迁)*: `rhfs` (optionally followed by `rhfs_lsj`), `rhfszeeman95`, `ris4`,
     `rbiotransform`, `rtransition`
-  * *Results & tools (结果与工具)*: `jj2lsj`, `Coupling`, `rlevels`, `rtablevels`, `rtabtrans1`, `rtabtrans2`, `rmixextract`, `rmixaccumulate`, `rtabhfs`, `rasfsplit`, *Custom (自定义)*
+  * *Results & tools (结果与工具)*: `jj2lsj`, `Coupling`, `rlevels`, `rlevelseV`, `rtablevels`, `rtabtrans1`, `rtabtrans2`, `rmixextract`, `rmixaccumulate`, `rtabhfs`, `rasfsplit`, *Custom (自定义)*
     (any program with hand-written input)
 * **Forms**: one per program, generated from the field definitions in `grasp_core.py` (description line, fields
   with hints at the right). Inputs follow each program's default-settings question order; they reproduce the inputs
