@@ -290,6 +290,17 @@ program `rlevels`
 | `files` | string | `"odd2.m even2.m"` | 混合系数文件 / Mixing coefficient files — 空格分隔 / space separated |
 | `log` | string | `""` | 输出日志文件 / Output log file |
 
+## `rlevelseV`
+
+program `rlevelseV`
+
+> 列出能级，能量差以 eV 表示 (rlevels 用 cm⁻¹)。可给多个 .m / .cm 文件。 / List energy levels with energy differences in eV (rlevels uses cm⁻¹). Several .m / .cm files may be given.
+
+| key | type | default | meaning / 含义 |
+|---|---|---|---|
+| `files` | string | `"odd2.m even2.m"` | 混合系数文件 / Mixing coefficient files — 空格分隔 / space separated |
+| `log` | string | `""` | 输出日志文件 / Output log file |
+
 ## `rtablevels`
 
 program `rtablevels`

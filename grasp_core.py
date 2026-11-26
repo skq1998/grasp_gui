@@ -723,6 +723,9 @@ EN = {
     # rlevels
     "列出能级。可给多个 .m / .cm 文件。": "List energy levels. Several .m / .cm files may be given.",
     "空格分隔": "space separated",
+    # rlevelseV
+    "列出能级，能量差以 eV 表示 (rlevels 用 cm⁻¹)。可给多个 .m / .cm 文件。":
+        "List energy levels with energy differences in eV (rlevels uses cm⁻¹). Several .m / .cm files may be given.",
     # rbiotransform / rtransition
     "跃迁计算前的双正交变换。": "Biorthogonal transformation before transition calculations.",
     "计算跃迁参数 (需先运行 rbiotransform)。": "Compute transition parameters (run rbiotransform first).",
@@ -3035,12 +3038,22 @@ class RLevels(Step):
     ]
 
     def validate(self, v):
-        for f in shlex.split(v["files"]):          # rlevels.f90: strInFile*80
-            file_name(f, 80, "rlevels", "files")
+        for f in shlex.split(v["files"]):          # rlevels.f90 / rlevelseV.f90: strInFile*80
+            file_name(f, 80, self.prog, "files")
 
     def args(self, v):
         self.validate(v)
         return shlex.split(v["files"])
+
+
+class RLevelseV(RLevels):
+    """GRASP2018 src/tool/rlevelseV.f90：与 rlevels 读法相同，能量差以 eV 而不是 cm^-1 给出。"""
+    key = name = prog = "rlevelseV"
+    fields = [
+        Note("列出能级，能量差以 eV 表示 (rlevels 用 cm⁻¹)。可给多个 .m / .cm 文件。"),
+        Entry("files", "混合系数文件", "odd2.m even2.m", "空格分隔"),
+        Entry("log", "输出日志文件", ""),
+    ]
 
 
 class RTableLevels(Step):
@@ -3226,7 +3239,7 @@ class Custom(Step):
 
 STEPS = [RNucleus(), RcsfGenerate(), RcsfInteract(), RcsfSplit(), RcsfZeroFirst(), RAngular(), RWfnEstimate(), RMcdhf(), RSave(),
          RCi(), Jj2lsj(), Coupling(), RHfs(), RHfsZeeman95(), RIs4(), RMixExtract(), RMixAccumulate(), RTabHfs(),
-         RAsfSplit(), RLevels(),
+         RAsfSplit(), RLevels(), RLevelseV(),
          RTableLevels(), RTabTrans1(), RTabTrans2(),
          RBioTransform(), RTransition(), Custom()]
 
@@ -3282,8 +3295,8 @@ STEP_GROUPS = [
     ("准备", ["rnucleus", "rcsfgenerate", "rcsfinteract", "rcsfsplit", "rcsfzerofirst"]),
     ("自洽场与 CI", ["rangular", "rwfnestimate", "rmcdhf", "rsave", "rci"]),
     ("性质与跃迁", ["rhfs", "rhfszeeman95", "ris4", "rbiotransform", "rtransition"]),
-    ("结果与工具", ["jj2lsj", "coupling", "rlevels", "rtablevels", "rtabtrans1", "rtabtrans2", "rmixextract",
-                  "rmixaccumulate", "rtabhfs", "rasfsplit", "custom"]),
+    ("结果与工具", ["jj2lsj", "coupling", "rlevels", "rlevelseV", "rtablevels", "rtabtrans1", "rtabtrans2",
+                  "rmixextract", "rmixaccumulate", "rtabhfs", "rasfsplit", "custom"]),
 ]
 assert sorted(k for _, keys in STEP_GROUPS for k in keys) == sorted(s.key for s in STEPS)
 
@@ -3291,7 +3304,7 @@ assert sorted(k for _, keys in STEP_GROUPS for k in keys) == sorted(s.key for s 
 # ---------------------------------------------------------------------------
 #  态组 (宇称)
 #
-#  odd 与 even 各有一套参数的程序页；其余程序页 (rnucleus, rlevels, rtablevels,
+#  odd 与 even 各有一套参数的程序页；其余程序页 (rnucleus, rlevels, rlevelseV, rtablevels,
 #  rbiotransform, rtransition, 自定义) 两组共用。文件名中的组名 (odd2.c, outodd_rci,
 #  oddCI6 …) 在两组之间按名称替换对应。
 # ---------------------------------------------------------------------------

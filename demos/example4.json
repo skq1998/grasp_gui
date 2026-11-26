@@ -303,11 +303,9 @@
    }
   },
   {
-   "step": "custom",
+   "step": "rlevelseV",
    "vals": {
-    "prog": "rlevelseV",
-    "args": "even4.cm odd4.cm",
-    "stdin": "",
+    "files": "even4.cm odd4.cm",
     "log": "energy4eV"
    }
   },

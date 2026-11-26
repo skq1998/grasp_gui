@@ -135,7 +135,7 @@ def test_long_jj2lsj_state_rejected_on_check():
 
 
 @pytest.mark.parametrize("step,key,limit", [("rcsfzerofirst", "zero", 256), ("rtabtrans2", "tfile", 80),
-                                            ("rlevels", "files", 80)])
+                                            ("rlevels", "files", 80), ("rlevelseV", "files", 80)])
 def test_file_name_limits_from_grasp_sources(step, key, limit):
     s = config.STEPS[step]
     v = s.defaults()
@@ -144,3 +144,13 @@ def test_file_name_limits_from_grasp_sources(step, key, limit):
     v[key] = "a" * (limit + 1)
     with pytest.raises(ValueError):
         s.validate(v)
+
+
+def test_rlevelsev_is_a_grasp_program_not_a_custom_command():
+    """rlevelseV 是 GRASP2018 自带的程序 (src/tool/rlevelseV.f90)：有自己的程序页，example4 运行前不需要确认自定义命令。"""
+    step = config.STEPS["rlevelseV"]
+    v = dict(step.defaults(), files="even4.cm odd4.cm", log="energy4eV")
+    assert step.prog == "rlevelseV" and step.args(v) == ["even4.cm", "odd4.cm"]
+    cfg, _ = config.load(os.path.join(ROOT, "demos", "example4.json"))
+    assert "rlevelseV" in [job["step"] for job in cfg["jobs"]]
+    assert all("rlevelseV" not in text for _, text in config.custom_commands(cfg))
