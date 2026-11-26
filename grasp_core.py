@@ -25,24 +25,76 @@ import threading
 IS_LINUX = sys.platform.startswith("linux")
 IS_MACOS = sys.platform == "darwin"
 
-VERSION = "2.11.1"         # 发布时改为发布的版本号 (写入导出的共享配置)
+VERSION = "2.11.2"         # 发布时改为发布的版本号 (写入导出的共享配置)
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "grasp_gui.json")
 
 # 同一份 GRASP 源码由不同构建方式安装出的名称；不包含输入不同的旧版程序。
 PROGRAM_ALIASES = {"jj2lsj": ["jj2lsj_2025"]}
+PIPELINE_MPI_PROGRAMS = ("rangular_mpi", "rmcdhf_mpi", "rci_mpi")
+TRANSITION_MPI_PROGRAMS = ("rbiotransform_mpi", "rtransition_mpi")
 
 
-def program_path(bindir, prog):
+def _executable_file(path):
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def program_path(bindir, prog, *, on_path=None):
     """优先查找原名，再尝试同源程序的替代名；与导出脚本的 PATH 优先级一致。"""
     for name in [prog] + PROGRAM_ALIASES.get(prog, []):
         p = os.path.join(bindir, name)
-        if os.path.isfile(p) and os.access(p, os.X_OK):
+        if _executable_file(p):
             return p
-        p = shutil.which(name)
+        p = shutil.which(name) if on_path is None else on_path.get(name)
         if p:
             return p
     return None
+
+
+def path_program_paths(programs, *, bindir=None, path_only=()):
+    """按 PATH 顺序批量查找原名和替代名，返回实际找到的名称及路径。"""
+    names = set(filter(None, path_only))
+    for name in programs:
+        if name and (bindir is None or not _executable_file(os.path.join(bindir, name))):
+            names.add(name)
+            names.update(PROGRAM_ALIASES.get(name, []))
+    explicit = {name for name in names if os.path.dirname(name)}
+    found = {name: name for name in explicit if _executable_file(name)}
+    remaining = names - explicit
+    path = os.environ.get("PATH")
+    if path is None:
+        path = os.confstr("CS_PATH") if hasattr(os, "confstr") else None
+        path = os.defpath if path is None else path
+    seen = set()
+    for directory in path.split(os.pathsep) if path else ():
+        if not remaining:
+            break
+        entry = directory or os.curdir
+        if entry in seen:
+            continue
+        seen.add(entry)
+        try:
+            entries = {name.casefold() for name in os.listdir(entry)}
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError:
+            # 目录可能允许查找已知文件，却不允许列出内容。
+            candidates = remaining
+        else:
+            candidates = {name for name in remaining if name.casefold() in entries}
+        matches = {name: os.path.join(directory, name) for name in candidates}
+        matches = {name: filename for name, filename in matches.items() if _executable_file(filename)}
+        found.update(matches)
+        remaining.difference_update(matches)
+    return found
+
+
+def program_paths(bindir, programs, *, on_path=None):
+    """批量查找，沿用 program_path 的原名、替代名和程序目录优先级。"""
+    programs = dict.fromkeys(programs)
+    if on_path is None:
+        on_path = path_program_paths(programs, bindir=bindir)
+    return {prog: program_path(bindir, prog, on_path=on_path) for prog in programs}
 
 
 def physical_cpu_count():
@@ -80,10 +132,11 @@ def default_mpi_np(bindir, mpirun):
         launcher = shlex.split(mpirun or "mpirun")
     except ValueError:
         return 1
-    if not launcher or not shutil.which(launcher[0]):
+    if not launcher:
         return 1
-    programs = ("rangular_mpi", "rmcdhf_mpi", "rci_mpi", "rbiotransform_mpi", "rtransition_mpi")
-    if not all(program_path(bindir, prog) for prog in programs):
+    programs = PIPELINE_MPI_PROGRAMS + TRANSITION_MPI_PROGRAMS
+    on_path = path_program_paths(programs, bindir=bindir, path_only=launcher[:1])
+    if launcher[0] not in on_path or not all(program_paths(bindir, programs, on_path=on_path).values()):
         return 1
     return min(physical_cpu_count(), 4)
 
@@ -1863,14 +1916,14 @@ def update_config(key, edit):
     return _edit_config(update)
 
 
-def bindir_selection(*, use_saved=True):
+def bindir_selection(*, use_saved=True, on_path=None):
     """给运行与连接检查共用的程序目录和来源。"""
     env = os.environ.get("GRASP_BINDIR", "")
     saved = load_config().get("bindir", "") if use_saved else ""
     if not env and saved and os.path.isdir(saved):
         return saved, "saved"
     candidates = [(env, "env"), (saved, "saved")]
-    p = shutil.which("rmcdhf")
+    p = shutil.which("rmcdhf") if on_path is None else on_path.get("rmcdhf")
     if p:
         candidates.append((os.path.dirname(p), "path"))
     fallback = os.path.join(REPO_DIR, "bin")

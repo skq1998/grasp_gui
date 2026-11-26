@@ -108,7 +108,8 @@ prompt/fingerprint with a visible input field and a verification reminder; passw
 notifications have no input or reply and close when ssh finishes the operation. Details and installation: [REMOTE.md](REMOTE.md).
 
 The connection status and server workspace show the GRASP programs directory and its source. If GRASP
-is missing, **Settings…** opens server run settings. Slurm reports describe the login node.
+is missing, **Settings…** opens server run settings. The check covers six serial programs and three MPI
+programs (`rangular_mpi`, `rmcdhf_mpi`, and `rci_mpi`). Slurm reports describe the login node.
 [Connection dialog (English)](images/en_connect_grasp.png) / [连接对话框](images/zh_connect_grasp.png).
 
 The main window has one permanent **Local** workspace followed by the server directories you open.
@@ -208,7 +209,9 @@ Ctrl+PgUp / Ctrl+PgDn 切换工作区，Ctrl+1–3 切换当前工作区的页�
 按修订号和指纹核对。运行前先要求保存草稿。重新打开有草稿的目录时选择“恢复草稿 / 放弃草稿”；关闭标签或退出程序时逐个选择
 “保存到服务器 / 保留草稿 / 放弃草稿”，默认保留草稿。断线时草稿保留，标签显示“重新连接”。旧服务器端只读并提示更新。
 
-连接对话框显示 SSH 主机、服务器类型和服务器上的工作目录。GRASP GUI 服务器版程序路径可留空自动查找。连接后自动显示 GRASP 程序目录和来源，未找到时点“设置…”打开服务器运行设置。Slurm 的检查只代表登录节点。
+连接对话框显示 SSH 主机、服务器类型和服务器上的工作目录。GRASP GUI 服务器版程序路径可留空自动查找。
+连接后自动显示 GRASP 程序目录和来源，未找到时点“设置…”打开服务器运行设置。自动检查涵盖六个串行程序和三个 MPI 程序
+（`rangular_mpi`、`rmcdhf_mpi`、`rci_mpi`）。Slurm 的检查只代表登录节点。
 
 可运行、停止和跟踪日志，自定义命令须确认。会受退出登录清理影响时默认取消，
 用户可选 scope、导出 Slurm 或明确照常启动。能级/组成、粗/细曲线渐进显示；选中、悬停、缩放和平移使用缓存，

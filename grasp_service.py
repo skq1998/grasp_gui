@@ -55,15 +55,28 @@ def missing_run_programs(configuration, settings):
         parallel = parallel or mpi
         names.append(job["prog"] + ("_mpi" if mpi else ""))
         names.extend(action[1][0] for action in job["pre"] + job["post"] if action[0] == "run")
-    missing = [p for p in dict.fromkeys(names) if not core.program_path(settings["bindir"], p)]
+    bindir = settings["bindir"]
+    launcher = []
     if parallel:
         try:
             launcher = shlex.split(settings["mpirun"])
         except ValueError:
-            launcher = []
-        search_path = settings["bindir"] + os.pathsep + os.environ.get("PATH", "")
-        if not launcher or not shutil.which(launcher[0], path=search_path):
-            missing.append(launcher[0] if launcher else settings["mpirun"] or "mpirun")
+            pass
+    on_path = core.path_program_paths(dict.fromkeys(names), bindir=bindir, path_only=launcher[:1])
+    missing = [name for name, path in core.program_paths(bindir, names, on_path=on_path).items() if not path]
+    if parallel and not launcher:
+        missing.append(settings["mpirun"] or "mpirun")
+    elif launcher:
+        command = launcher[0]
+        if os.path.dirname(command):
+            available = shutil.which(command)
+        else:
+            # 与启动脚本相同：程序目录在前，空 PATH 保留当前目录项。
+            available = shutil.which(command, path=bindir or os.curdir)
+            if not available:
+                available = on_path.get(command) if os.environ.get("PATH") else shutil.which(command, path=os.curdir)
+        if not available:
+            missing.append(command)
     return missing
 
 MAX_TEXT = 65536

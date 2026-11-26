@@ -1,5 +1,6 @@
 """连接检查的程序目录、旧版本兼容性和重新检查。"""
 
+from collections import Counter
 from concurrent.futures import Future
 import os
 from pathlib import Path
@@ -49,13 +50,87 @@ def test_hello_reports_same_directory_as_run_plan(tmp_path, monkeypatch, source)
     assert report["directory"] == operations.run_plan(str(calc))["run_settings"]["bindir"]
     assert report["bindir_env"] == (str(env_bin) if source == "env" else "")
     assert report["path_env"] == str(path_bin)
-    assert len(report["programs"]) == 12
+    assert len(report["programs"]) == 9
     assert report["programs"]["rmcdhf"] is bool(source)
     assert report["programs"]["rci_mpi"] is (source == "env")
     if source == "saved":
         # Explicitly clearing the desktop field uses the server environment.
         automatic = operations.run_plan(str(calc), run_settings={"bindir": ""})["run_settings"]["bindir"]
         assert report["empty_bindir"]["directory"] == automatic == str(path_bin)
+
+
+STANDARD_PROGRAMS = ("rnucleus", "rcsfgenerate", "rangular", "rwfnestimate", "rmcdhf", "rci",
+                     "rangular_mpi", "rmcdhf_mpi", "rci_mpi")
+
+
+def test_hello_accepts_standard_grasp_and_reuses_one_path_scan(tmp_path, monkeypatch):
+    installed, first, second = (tmp_path / part for part in ("installed", "first", "second"))
+    for name in STANDARD_PROGRAMS:
+        install_program(installed, name)
+    install_program(second, "rmcdhf")
+    first.mkdir()
+    monkeypatch.setattr(core, "CONFIG_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.delenv("GRASP_BINDIR", raising=False)
+    monkeypatch.setenv("PATH", os.pathsep.join(map(str, (first, second, first))))
+    core.save_config(bindir=str(installed))
+    listdir = os.listdir
+    reads = Counter()
+
+    def counted(path):
+        reads[path] += 1
+        return listdir(path)
+
+    monkeypatch.setattr(os, "listdir", counted)
+    report = remote.Operations().hello(remote.PROTOCOL)["grasp_check"]
+    assert report["programs"] == dict.fromkeys(STANDARD_PROGRAMS, True)
+    assert report["path_programs"] == ["rmcdhf"]
+    assert report["empty_bindir"]["directory"] == str(second)
+    assert report["empty_bindir"]["path_programs"] == ["rmcdhf"]
+    assert reads == {str(first): 1, str(second): 1}
+
+
+def test_batch_lookup_matches_individual_programs(tmp_path, monkeypatch):
+    bindir, first, second, cwd = (tmp_path / part for part in ("bin", "first", "second", "cwd"))
+    for path in (bindir, first, second, cwd):
+        path.mkdir()
+    for path in (bindir, first, second):
+        install_program(path, "local_first")
+    for path in (first, second):
+        install_program(path, "path_first")
+    (first / "usable").write_text("not executable")
+    (first / "directory").mkdir()
+    install_program(second, "usable")
+    install_program(second, "directory")
+    install_program(second, "cwd_first")
+    install_program(cwd, "cwd_first")
+    install_program(bindir, "jj2lsj_2025")
+    install_program(first, "jj2lsj")
+    monkeypatch.chdir(cwd)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(first), "", str(tmp_path / "missing"), str(second)]))
+    names = ("local_first", "path_first", "usable", "directory", "cwd_first", "jj2lsj", "absent",
+             str(second / "usable"), "./cwd_first")
+    expected = {name: core.program_path(str(bindir), name) for name in names}
+    assert core.program_paths(str(bindir), iter(names)) == expected
+    assert expected["cwd_first"] == "cwd_first"
+    assert expected["jj2lsj"] == str(first / "jj2lsj")
+    (first / "jj2lsj").unlink()
+    assert core.program_paths(str(bindir), ["jj2lsj"]) == {"jj2lsj": str(bindir / "jj2lsj_2025")}
+    monkeypatch.setenv("PATH", "")
+    assert core.program_paths(str(bindir), ["cwd_first"]) == {"cwd_first": None}
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("field", ["programs", "missing_files"])
+def test_older_server_reports_hide_nonexistent_mpi_programs(field):
+    pytest.importorskip("PySide6.QtWidgets")
+    from remote_panel import grasp_check_text
+
+    obsolete = ["rnucleus_mpi", "rcsfgenerate_mpi", "rwfnestimate_mpi"]
+    report = dict(directory="/grasp/bin", source="saved")
+    source = SimpleNamespace(server=dict(capabilities=[remote.GRASP_CHECK]), grasp_check=report)
+    report[field] = dict.fromkeys(obsolete + ["rci_mpi"], False) if field == "programs" else obsolete + ["rci_mpi"]
+    text, _ = grasp_check_text(source, "workstation")
+    assert "rci_mpi" in text and all(name not in text for name in obsolete)
 
 
 @pytest.mark.gui
@@ -79,9 +154,11 @@ def test_grasp_check_refreshes_from_settings_and_reconnects(qapp, tmp_path, monk
     try:
         client.events.put(dict(event="connected", capabilities=[]))
         source.poll()
+        qapp.processEvents()
         assert "Update it" in grasp_check_text(source, "workstation")[0]
         client.events.put(dict(event="connected", capabilities=[remote.GRASP_CHECK], grasp_check=report))
         source.poll()
+        qapp.processEvents()
         text, settings = grasp_check_text(source, "slurm")
         assert settings and "PATH=/no-grasp" in text and "login node" in text
         assert "Non-interactive SSH" in text
@@ -92,18 +169,21 @@ def test_grasp_check_refreshes_from_settings_and_reconnects(qapp, tmp_path, monk
         future.set_result(dict(directory="/home/research/grasp/bin",
                                files=[dict(name="rmcdhf", directory=False)]))
         source.poll()
+        qapp.processEvents()
         text, settings = grasp_check_text(source, "workstation")
         assert not settings and "/home/research/grasp/bin" in text and "settings saved" in text
         assert "Program files not found: rci_mpi" in text
         env = dict(report, source="env", directory="/from-env", programs=dict(rmcdhf=True))
         client.events.put(dict(event="connected", capabilities=[remote.GRASP_CHECK], grasp_check=env))
         source.poll()
+        qapp.processEvents()
         method, args, future = requests[-1]
         assert (method, args) == ("list_dir", {"directory": "~/grasp/bin"})
         assert not future.done()
         future.set_result(dict(directory="/home/research/grasp/bin",
                                files=[dict(name="rmcdhf", directory=False)]))
         source.poll()
+        qapp.processEvents()
         assert "/home/research/grasp/bin (settings saved for this host)" in grasp_check_text(source, "workstation")[0]
         core.save_config(remote_hosts={"fixture": dict(run=dict(bindir=""))})
         source.refresh_grasp_check()
@@ -151,12 +231,16 @@ def test_status_run_plan_and_launch_agree_with_saved_bindir(qapp, tmp_path, monk
     try:
         client.events.put(dict(event="connected", **report))
         source.poll()
+        qapp.processEvents()
+        source.poll()
+        qapp.processEvents()
         status, _ = grasp_check_text(source, "workstation")
         dialog = ServerRunDialog(None, source, str(calc), operations.run_plan(str(calc)), {}, run=False)
         try:
             assert dialog.settings.bindir() == saved_bindir
             dialog.check()
             source.poll()
+            qapp.processEvents()
             actual = dialog.plan["run_settings"]["bindir"]
             assert actual == expected
             assert f"{actual} ({origin})" in status

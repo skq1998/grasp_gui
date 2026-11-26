@@ -9,7 +9,9 @@
 ## GRASP check / GRASP 程序检查
 
 The connection dialog and server workspace show the programs directory discovered by the GRASP GUI server,
-its source and missing common serial/MPI programs. A nonempty path saved on the desktop for this host takes
+its source and any missing programs. The check covers `rnucleus`, `rcsfgenerate`, `rangular`,
+`rwfnestimate`, `rmcdhf`, `rci`, and the GRASP2018 MPI variants `rangular_mpi`, `rmcdhf_mpi`,
+and `rci_mpi`. A nonempty path saved on the desktop for this host takes
 precedence over `GRASP_BINDIR` and the directory of `rmcdhf` on `PATH`. The check shows which program files
 could not be found there or on `PATH`. The run preflight checks executability. When a workstation has no
 desktop override yet, the form and the check use the server's run-plan defaults. A blank programs path
@@ -20,7 +22,9 @@ Reconnect to repeat the check. Saving server run settings updates the display. O
 show an update hint. On Slurm the check describes only the login node. A submitted job or a systemd user scope
 may have a different environment.
 
-连接对话框和服务器工作区显示服务器版发现的程序目录、来源和缺失的常用串行及 MPI 程序。优先使用桌面为该主机保存的
+连接对话框和服务器工作区显示服务器版发现的程序目录、来源和缺失程序。检查六个串行程序
+（`rnucleus`、`rcsfgenerate`、`rangular`、`rwfnestimate`、`rmcdhf`、`rci`）和 GRASP2018 提供的三个对应 MPI 程序
+（`rangular_mpi`、`rmcdhf_mpi`、`rci_mpi`）。优先使用桌面为该主机保存的
 非空程序目录，再查 `GRASP_BINDIR` 和 `PATH` 中 `rmcdhf` 所在的目录。检查会列出该目录和 `PATH` 中未找到的程序文件，
 运行预检会核对可执行性。工作站尚无桌面设置时，界面和检查采用服务器运行计划的默认值。保存空路径时自动依次查找
 `GRASP_BINDIR`、`PATH` 中 `rmcdhf` 所在的目录和安装树。
